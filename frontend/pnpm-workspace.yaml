@@ -1,0 +1,7 @@
+# frontend/pnpm-workspace.yaml
+# pnpm 10+ bloquea los scripts de instalacion por defecto. esbuild (que Vite
+# usa por dentro) necesita el suyo para dejar su binario disponible; sin esto
+# `pnpm build` falla. Declararlo aca evita que cada integrante tenga que
+# correr `pnpm approve-builds` a mano.
+allowBuilds:
+  esbuild: true
