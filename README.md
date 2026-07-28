@@ -29,32 +29,68 @@ terminal nueva.
 
 ---
 
-## 1. Crear la base de datos
+## 1. Configurar el acceso a MySQL (una sola vez)
 
-Abrir PowerShell y entrar al cliente de MySQL:
+Para no escribir la contraseña en cada comando ni dejarla en el historial
+de la terminal, se usa un **login-path** de MySQL. Queda guardado cifrado
+en `%APPDATA%\MySQL\.mylogin.cnf`, fuera del repositorio.
+
+Cada integrante lo crea una vez en su máquina:
 
 ```powershell
-mysql -u root -p
+mysql_config_editor set --login-path=asisto --host=localhost --user=root --password
 ```
 
-Dentro del cliente:
+Pide la contraseña de MySQL y no la vuelve a pedir. Verificar que quedó
+bien:
 
-```sql
-CREATE DATABASE asisto CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
-EXIT;
+```powershell
+mysql --login-path=asisto -e "SELECT VERSION();"
 ```
 
-> **PENDIENTE — cargar el schema.** Las tablas, los procedimientos
-> almacenados y los datos semilla todavía no existen. Cuando el schema esté
-> escrito va a vivir en `backend/database/` y este paso pasa a ser:
-> `mysql -u root -p asisto < backend/database/schema.sql`
->
-> Hasta entonces la base queda vacía. El backend levanta igual: el endpoint
-> `/api/health` reporta `database.conectada: false` sin tirar la API abajo.
+Si tira `mysql_config_editor no se reconoce`, falta agregar al `Path` la
+carpeta `C:\Program Files\MySQL\MySQL Server 8.0\bin`. Para la sesión
+actual alcanza con:
+
+```powershell
+$env:Path += ";C:\Program Files\MySQL\MySQL Server 8.0\bin"
+```
+
+> El login-path es por máquina y no se versiona. Los cuatro integrantes
+> tienen que crearlo con el mismo nombre (`asisto`) para que los comandos
+> del proyecto sean idénticos para todos.
 
 ---
 
-## 2. Backend
+## 2. Crear la base de datos
+
+`schema.sql` crea la base entero: **arranca con `DROP DATABASE IF EXISTS
+asisto`**, así que se puede correr las veces que haga falta, pero borra
+todo lo que haya cargado.
+
+```powershell
+cd C:\dev\asisTO
+mysql --login-path=asisto -e "source backend/database/schema.sql"
+mysql --login-path=asisto -e "source backend/database/seed.sql"
+```
+
+El primero deja 18 tablas, 2 vistas, 3 triggers y 5 procedimientos
+almacenados. El segundo carga datos de prueba con id fijos, para que las
+cuatro instancias locales arranquen idénticas.
+
+Verificar:
+
+```powershell
+mysql --login-path=asisto asisto -e "SELECT * FROM v_resumen_sesiones;"
+```
+
+> Las contraseñas del seed son **placeholders**, no hashes bcrypt válidos:
+> ningún login va a funcionar con esos datos. Se reemplazan cuando exista
+> el módulo de autenticación.
+
+---
+
+## 3. Backend
 
 Desde la raíz del repositorio:
 
@@ -96,7 +132,7 @@ curl http://127.0.0.1:5000/api/health
 
 ---
 
-## 3. Frontend
+## 4. Frontend
 
 Desde la raíz del repositorio, en **otra** terminal (el backend queda
 corriendo en la primera):
@@ -117,7 +153,7 @@ rol, los estados de sesión, los botones y el resultado del ping a
 
 ---
 
-## 4. Levantar todo (resumen)
+## 5. Levantar todo (resumen)
 
 Dos terminales, desde la raíz del repositorio:
 
@@ -144,7 +180,9 @@ asisTO/
 │   │   ├── routes/          un blueprint por módulo
 │   │   ├── services/        lógica de negocio y reglas críticas
 │   │   └── utils/           JWT, decoradores de RBAC
-│   ├── database/            schema MySQL (pendiente)
+│   ├── database/
+│   │   ├── schema.sql       tablas, triggers, procedimientos, vistas
+│   │   └── seed.sql         datos de prueba
 │   ├── config.py            configuración, lee de .env
 │   ├── requirements.txt
 │   ├── run.py               entrypoint de desarrollo
