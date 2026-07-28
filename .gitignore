@@ -1,6 +1,7 @@
 .claude/
 CLAUDE.md
 AUDITORIA.md
+ESTADO.md
 .env
 .env.local
 __pycache__/

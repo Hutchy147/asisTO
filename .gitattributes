@@ -1,0 +1,27 @@
+# Normalizacion de finales de linea.
+# El repositorio guarda siempre LF y el working tree tambien, sin importar el
+# sistema operativo de cada integrante. Sin esto, un commit hecho desde otro
+# SO reescribe el archivo entero y el diff queda ilegible en plena entrega.
+* text=auto eol=lf
+
+# Scripts de Windows: cmd.exe puede fallar si el archivo tiene LF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Archivos que git nunca debe tocar ni intentar convertir.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.xlsx binary
+*.zip binary
+
+# Lockfiles: se versionan, pero no ensucian el diff de un pull request.
+pnpm-lock.yaml -diff linguist-generated
