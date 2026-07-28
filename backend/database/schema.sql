@@ -444,6 +444,39 @@ CREATE TABLE auditoria_accesos (
 
 DELIMITER $$
 
+-- =====================================================================
+-- NOTA DE CONCURRENCIA — leer antes de tocar cualquier trigger de abajo
+--
+-- Todo trigger que valide un CONTEO o un RANGO usa dos locks, y los dos
+-- hacen falta. Sacar cualquiera de los dos reabre una condicion de
+-- carrera real, confirmada con dos conexiones simultaneas:
+--
+--   1. SELECT ... FROM <tabla_padre> WHERE id = ... FOR UPDATE
+--      Serializa a los que escriben sobre el MISMO paciente o el MISMO
+--      terapeuta. No bloquea la tabla entera ni a los demas pacientes.
+--
+--   2. El conteo sobre la propia tabla lleva FOR SHARE.
+--      Sin esto el lock de arriba NO alcanza: en REPEATABLE READ (default
+--      de MySQL) un SELECT comun lee del snapshot que la transaccion fijo
+--      en su PRIMERA lectura, asi que el trigger no ve la fila que la otra
+--      transaccion acaba de confirmar, aunque haya esperado su lock.
+--      FOR SHARE es lectura con lock, y toda lectura con lock lee la
+--      version actual confirmada.
+--
+--      Tiene que ser FOR SHARE y no FOR UPDATE: MySQL rechaza FOR UPDATE
+--      sobre la tabla del propio trigger con ERROR 1442 ("Can't update
+--      table ... already used by statement which invoked this trigger").
+--      FOR SHARE si esta permitido y alcanza, porque el lock de la fila
+--      padre ya garantiza que solo una transaccion este en la seccion
+--      critica a la vez.
+--
+-- Orden de adquisicion de locks, respetado en triggers y procedimientos:
+--      pacientes   -> objetivos_terapeuticos -> evoluciones
+--      terapeutas  -> sesiones               -> evoluciones
+-- Mantener este orden. Invertirlo entre dos rutas de escritura introduce
+-- deadlocks donde hoy no hay.
+-- =====================================================================
+
 -- ---------------------------------------------------------------------
 -- Regla 1 — maximo 4 objetivos ACTIVOS por paciente (alta)
 -- ---------------------------------------------------------------------
@@ -452,13 +485,21 @@ BEFORE INSERT ON objetivos_terapeuticos
 FOR EACH ROW
 BEGIN
   DECLARE v_activos INT UNSIGNED DEFAULT 0;
+  DECLARE v_lock    INT UNSIGNED DEFAULT NULL;
 
   -- Un objetivo que nace archivado no consume cupo
   IF NEW.activo = TRUE THEN
+    -- Ver NOTA DE CONCURRENCIA
+    SELECT id INTO v_lock
+      FROM pacientes
+     WHERE id = NEW.id_paciente
+     FOR UPDATE;
+
     SELECT COUNT(*) INTO v_activos
       FROM objetivos_terapeuticos
      WHERE id_paciente = NEW.id_paciente
-       AND activo = TRUE;
+       AND activo = TRUE
+     FOR SHARE;
 
     IF v_activos >= 4 THEN
       SIGNAL SQLSTATE '45000'
@@ -481,16 +522,40 @@ CREATE TRIGGER trg_objetivos_limite_activos_update
 BEFORE UPDATE ON objetivos_terapeuticos
 FOR EACH ROW
 BEGIN
-  DECLARE v_activos INT UNSIGNED DEFAULT 0;
+  DECLARE v_activos     INT UNSIGNED DEFAULT 0;
+  DECLARE v_evoluciones INT UNSIGNED DEFAULT 0;
+  DECLARE v_lock        INT UNSIGNED DEFAULT NULL;
+
+  -- Mover un objetivo a otro paciente deja las evoluciones ya cargadas
+  -- apuntando a un objetivo cuyo paciente no coincide con el de sus
+  -- sesiones: viola la regla 3 retroactivamente. Se rechaza.
+  IF NEW.id_paciente <> OLD.id_paciente THEN
+    SELECT COUNT(*) INTO v_evoluciones
+      FROM evoluciones
+     WHERE id_objetivo = OLD.id;
+
+    IF v_evoluciones > 0 THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+          'No se puede mover el objetivo a otro paciente: ya tiene evoluciones registradas';
+    END IF;
+  END IF;
 
   IF NEW.activo = TRUE
      AND (OLD.activo = FALSE OR NEW.id_paciente <> OLD.id_paciente) THEN
+
+    -- Ver NOTA DE CONCURRENCIA
+    SELECT id INTO v_lock
+      FROM pacientes
+     WHERE id = NEW.id_paciente
+     FOR UPDATE;
 
     SELECT COUNT(*) INTO v_activos
       FROM objetivos_terapeuticos
      WHERE id_paciente = NEW.id_paciente
        AND activo = TRUE
-       AND id <> OLD.id;
+       AND id <> OLD.id
+     FOR SHARE;
 
     IF v_activos >= 4 THEN
       SIGNAL SQLSTATE '45000'
@@ -504,6 +569,137 @@ BEGIN
     SET NEW.fecha_archivado = NOW();
   ELSEIF NEW.activo = TRUE AND OLD.activo = FALSE THEN
     SET NEW.fecha_archivado = NULL;
+  END IF;
+END$$
+
+
+-- ---------------------------------------------------------------------
+-- Regla 6 — sin sesiones solapadas del mismo terapeuta (alta)
+--
+-- Hasta la auditoria esta regla vivia SOLO en p_registrar_sesion, asi que
+-- cualquier INSERT o UPDATE directo sobre sesiones la eludia. Ahora vive
+-- en la tabla: el procedimiento CONSERVA su validacion (da un mensaje por
+-- OUT p_mensaje en vez de un error), y el trigger es la red de seguridad
+-- para cualquier otro camino de escritura.
+--
+-- Criterio de solape identico al del procedimiento: se usa < y >, no <=
+-- y >=. Una sesion que termina 10:00 y otra que arranca 10:00 se tocan,
+-- no se pisan. Si hora_fin es NULL se asume una hora de duracion.
+--
+-- Las sesiones en 'ausencia' TAMBIEN bloquean el horario (decision
+-- tomada): el paciente falto, pero el turno estaba ocupado igual.
+-- ---------------------------------------------------------------------
+CREATE TRIGGER trg_sesiones_solape_insert
+BEFORE INSERT ON sesiones
+FOR EACH ROW
+BEGIN
+  DECLARE v_hora_fin     TIME         DEFAULT NULL;
+  DECLARE v_superpuestas INT UNSIGNED DEFAULT 0;
+  DECLARE v_lock         INT UNSIGNED DEFAULT NULL;
+
+  -- Ver NOTA DE CONCURRENCIA
+  SELECT id INTO v_lock
+    FROM terapeutas
+   WHERE id = NEW.id_terapeuta
+   FOR UPDATE;
+
+  IF v_lock IS NULL THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'El terapeuta indicado no existe';
+  END IF;
+
+  SET v_hora_fin = IFNULL(NEW.hora_fin, ADDTIME(NEW.hora_inicio, '01:00:00'));
+
+  IF v_hora_fin <= NEW.hora_inicio THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'La hora de fin debe ser posterior a la hora de inicio';
+  END IF;
+
+  SELECT COUNT(*) INTO v_superpuestas
+    FROM sesiones
+   WHERE id_terapeuta = NEW.id_terapeuta
+     AND fecha = NEW.fecha
+     AND NEW.hora_inicio < IFNULL(hora_fin, ADDTIME(hora_inicio, '01:00:00'))
+     AND v_hora_fin > hora_inicio
+   FOR SHARE;
+
+  IF v_superpuestas > 0 THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT =
+        'El terapeuta ya tiene sesiones que se superponen con ese horario';
+  END IF;
+END$$
+
+
+-- ---------------------------------------------------------------------
+-- Regla 6 en UPDATE + regla 2 al cambiar el estado a 'ausencia'
+--
+-- El chequeo de solape solo corre si cambio algo del horario: mover una
+-- sesion de dia u hora. Un UPDATE que solo toca notas o estado no paga el
+-- costo del lock.
+-- ---------------------------------------------------------------------
+CREATE TRIGGER trg_sesiones_solape_update
+BEFORE UPDATE ON sesiones
+FOR EACH ROW
+BEGIN
+  DECLARE v_hora_fin     TIME         DEFAULT NULL;
+  DECLARE v_superpuestas INT UNSIGNED DEFAULT 0;
+  DECLARE v_evoluciones  INT UNSIGNED DEFAULT 0;
+  DECLARE v_lock         INT UNSIGNED DEFAULT NULL;
+
+  -- Regla 2 por la puerta de atras: marcar como ausencia una sesion que
+  -- ya tiene evolucion cargada deja exactamente el estado que la regla 2
+  -- dice que no puede existir.
+  IF NEW.estado = 'ausencia' AND OLD.estado <> 'ausencia' THEN
+    SELECT COUNT(*) INTO v_evoluciones
+      FROM evoluciones
+     WHERE id_sesion = OLD.id;
+
+    IF v_evoluciones > 0 THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+          'No se puede marcar la sesion como ausencia: ya tiene evoluciones cargadas';
+    END IF;
+  END IF;
+
+  IF NEW.id_terapeuta <> OLD.id_terapeuta
+     OR NEW.fecha <> OLD.fecha
+     OR NEW.hora_inicio <> OLD.hora_inicio
+     OR NOT (NEW.hora_fin <=> OLD.hora_fin) THEN
+
+    -- Ver NOTA DE CONCURRENCIA
+    SELECT id INTO v_lock
+      FROM terapeutas
+     WHERE id = NEW.id_terapeuta
+     FOR UPDATE;
+
+    IF v_lock IS NULL THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'El terapeuta indicado no existe';
+    END IF;
+
+    SET v_hora_fin = IFNULL(NEW.hora_fin, ADDTIME(NEW.hora_inicio, '01:00:00'));
+
+    IF v_hora_fin <= NEW.hora_inicio THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'La hora de fin debe ser posterior a la hora de inicio';
+    END IF;
+
+    -- Se excluye la propia fila: mover una sesion no se solapa consigo misma
+    SELECT COUNT(*) INTO v_superpuestas
+      FROM sesiones
+     WHERE id_terapeuta = NEW.id_terapeuta
+       AND fecha = NEW.fecha
+       AND id <> OLD.id
+       AND NEW.hora_inicio < IFNULL(hora_fin, ADDTIME(hora_inicio, '01:00:00'))
+       AND v_hora_fin > hora_inicio
+     FOR SHARE;
+
+    IF v_superpuestas > 0 THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+          'El terapeuta ya tiene sesiones que se superponen con ese horario';
+    END IF;
   END IF;
 END$$
 
@@ -555,18 +751,93 @@ BEGIN
         'No se puede cargar evolucion: la sesion esta marcada como ausencia';
   END IF;
 
+  -- Regla 4 ANTES que la regla 3, y el orden importa: un solo UPDATE puede
+  -- violar las dos a la vez (mover la evolucion a un objetivo que esta
+  -- archivado Y ademas es de otro paciente). Cuando pasan las dos, la que
+  -- hay que reportar es el objetivo archivado: es la condicion que el
+  -- terapeuta puede corregir por si mismo, desarchivando o eligiendo otro.
+  -- Este orden es identico en los dos triggers y tiene que seguir siendolo.
+  IF v_objetivo_activo = FALSE THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT =
+        'No se puede cargar evolucion sobre un objetivo archivado';
+  END IF;
+
   -- Regla 3
   IF v_paciente_objetivo <> v_paciente_sesion THEN
     SIGNAL SQLSTATE '45000'
       SET MESSAGE_TEXT =
         'El objetivo evaluado no pertenece al paciente de esta sesion';
   END IF;
+END$$
 
-  -- Regla 4
+
+-- ---------------------------------------------------------------------
+-- Reglas 2, 3 y 4 en UPDATE — espejo exacto del trigger de INSERT.
+--
+-- Duplicacion deliberada. En MySQL no hay forma limpia de compartir el
+-- cuerpo entre dos triggers (un procedimiento auxiliar no puede leer NEW
+-- y agrega una capa que oscurece que se valida), y tener los dos cuerpos
+-- a la vista hace evidente en la auditoria si uno queda desactualizado
+-- respecto del otro. Si se cambia una regla aca, hay que cambiarla en el
+-- trigger de INSERT tambien.
+--
+-- Sin esto, un solo UPDATE de id_objetivo puede violar la regla 3 y la
+-- regla 4 al mismo tiempo.
+-- ---------------------------------------------------------------------
+CREATE TRIGGER trg_evoluciones_validar_update
+BEFORE UPDATE ON evoluciones
+FOR EACH ROW
+BEGIN
+  DECLARE v_estado_sesion     ENUM('completa','incompleta','ausencia') DEFAULT NULL;
+  DECLARE v_paciente_sesion   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_paciente_objetivo INT UNSIGNED DEFAULT NULL;
+  DECLARE v_objetivo_activo   BOOLEAN      DEFAULT NULL;
+
+  SELECT estado, id_paciente
+    INTO v_estado_sesion, v_paciente_sesion
+    FROM sesiones
+   WHERE id = NEW.id_sesion;
+
+  SELECT id_paciente, activo
+    INTO v_paciente_objetivo, v_objetivo_activo
+    FROM objetivos_terapeuticos
+   WHERE id = NEW.id_objetivo;
+
+  IF v_paciente_sesion IS NULL THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'La sesion indicada no existe';
+  END IF;
+
+  IF v_paciente_objetivo IS NULL THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'El objetivo indicado no existe';
+  END IF;
+
+  -- Regla 2
+  IF v_estado_sesion = 'ausencia' THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT =
+        'No se puede cargar evolucion: la sesion esta marcada como ausencia';
+  END IF;
+
+  -- Regla 4 ANTES que la regla 3, y el orden importa: un solo UPDATE puede
+  -- violar las dos a la vez (mover la evolucion a un objetivo que esta
+  -- archivado Y ademas es de otro paciente). Cuando pasan las dos, la que
+  -- hay que reportar es el objetivo archivado: es la condicion que el
+  -- terapeuta puede corregir por si mismo, desarchivando o eligiendo otro.
+  -- Este orden es identico en los dos triggers y tiene que seguir siendolo.
   IF v_objetivo_activo = FALSE THEN
     SIGNAL SQLSTATE '45000'
       SET MESSAGE_TEXT =
         'No se puede cargar evolucion sobre un objetivo archivado';
+  END IF;
+
+  -- Regla 3
+  IF v_paciente_objetivo <> v_paciente_sesion THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT =
+        'El objetivo evaluado no pertenece al paciente de esta sesion';
   END IF;
 END$$
 
@@ -575,9 +846,38 @@ END$$
 -- 8. PROCEDIMIENTOS ALMACENADOS
 -- =====================================================================
 
+-- =====================================================================
+-- CRITERIO GENERAL DE ERRORES — aplica a TODO procedimiento nuevo
+--
+-- p_mensaje NUNCA lleva texto crudo de MySQL concatenado adentro. Dos
+-- razones, las dos comprobadas:
+--
+--   1. El error nativo incluye nombre de base, tabla y constraint. Eso es
+--      estructura interna filtrada al llamador y, via API, al navegador.
+--   2. Ese texto puede pasarse de los 255 caracteres de p_mensaje. Cuando
+--      pasa, el propio SET dentro del EXIT HANDLER dispara un segundo
+--      error que nadie captura (ERROR 1406) y el CALL entero termina en
+--      un error crudo: el contrato OUT p_mensaje se rompe y el llamador
+--      no recibe nada. El margen dependia del largo del nombre de la
+--      base, asi que cambiar 'asisto' por otro nombre lo rompia.
+--
+-- El patron es siempre el mismo:
+--
+--   a) Validar ANTES del INSERT que exista todo lo que referencia una FK,
+--      y devolver mensaje propio en castellano. Asi la FK nunca llega a
+--      fallar por el camino normal.
+--   b) EXIT HANDLER FOR SQLSTATE '45000' -> propaga MESSAGE_TEXT tal cual.
+--      Ese SQLSTATE solo lo emiten nuestros propios SIGNAL, que ya estan
+--      en castellano y MySQL limita a 128 caracteres: no puede desbordar.
+--   c) EXIT HANDLER FOR SQLEXCEPTION -> mensaje fijo, sin concatenar nada.
+--      Es la red para lo imprevisto.
+--   d) EXIT HANDLER FOR SQLSTATE '23000' donde haya una UNIQUE que pueda
+--      ganar una carrera -> mensaje fijo propio.
+-- =====================================================================
+
 -- ---------------------------------------------------------------------
 -- p_alta_paciente
--- Valida nro_historia duplicado antes de insertar.
+-- Valida nro_historia duplicado y existencia del usuario antes de insertar.
 -- p_id_usuario puede venir NULL: paciente sin login (regla 5).
 -- ---------------------------------------------------------------------
 CREATE PROCEDURE p_alta_paciente (
@@ -591,30 +891,57 @@ CREATE PROCEDURE p_alta_paciente (
   OUT p_mensaje           VARCHAR(255)
 )
 BEGIN
-  DECLARE v_existe  INT UNSIGNED DEFAULT 0;
-  DECLARE v_error   VARCHAR(255) DEFAULT '';
+  DECLARE v_existe        INT UNSIGNED DEFAULT 0;
+  DECLARE v_existe_usuario INT UNSIGNED DEFAULT 0;
+  DECLARE v_error         VARCHAR(255) DEFAULT '';
 
-  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  -- Nuestros propios SIGNAL: texto ya en castellano y acotado a 128
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
   BEGIN
     GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
     ROLLBACK;
     SET p_id_paciente = NULL;
-    SET p_mensaje = CONCAT('Error al dar de alta el paciente: ', v_error);
+    SET p_mensaje = v_error;
+  END;
+
+  -- La UNIQUE de nro_historia gana la carrera si dos altas simultaneas
+  -- pasan el chequeo amigable de abajo
+  DECLARE EXIT HANDLER FOR SQLSTATE '23000'
+  BEGIN
+    ROLLBACK;
+    SET p_id_paciente = NULL;
+    SET p_mensaje = 'Ya existe un paciente con ese numero de historia';
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_id_paciente = NULL;
+    SET p_mensaje = 'No se pudo dar de alta el paciente por un error interno';
   END;
 
   SET p_id_paciente = NULL;
 
-  START TRANSACTION;
-
+  -- Validaciones FUERA de la transaccion: son lecturas y asi la primera
+  -- lectura consistente de la transaccion queda despues de los locks
   SELECT COUNT(*) INTO v_existe
     FROM pacientes
    WHERE nro_historia = p_nro_historia;
 
+  IF p_id_usuario IS NOT NULL THEN
+    SELECT COUNT(*) INTO v_existe_usuario
+      FROM usuarios
+     WHERE id = p_id_usuario;
+  END IF;
+
   IF v_existe > 0 THEN
-    ROLLBACK;
     SET p_mensaje = CONCAT(
       'Ya existe un paciente con el numero de historia ', p_nro_historia);
+  ELSEIF p_id_usuario IS NOT NULL AND v_existe_usuario = 0 THEN
+    SET p_mensaje = 'El usuario indicado no existe';
   ELSE
+    START TRANSACTION;
+
     INSERT INTO pacientes (
       id_usuario, nombre, apellido, fecha_nacimiento, diagnostico,
       nro_historia, activo, fecha_alta
@@ -658,14 +985,25 @@ CREATE PROCEDURE p_registrar_sesion (
 BEGIN
   DECLARE v_hora_fin      TIME         DEFAULT NULL;
   DECLARE v_superpuestas  INT UNSIGNED DEFAULT 0;
+  DECLARE v_existe_ter    INT UNSIGNED DEFAULT 0;
+  DECLARE v_existe_pac    INT UNSIGNED DEFAULT 0;
+  DECLARE v_lock          INT UNSIGNED DEFAULT NULL;
   DECLARE v_error         VARCHAR(255) DEFAULT '';
 
-  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  -- Ver CRITERIO GENERAL DE ERRORES
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
   BEGIN
     GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
     ROLLBACK;
     SET p_id_sesion = NULL;
-    SET p_mensaje = CONCAT('Error al registrar la sesion: ', v_error);
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_id_sesion = NULL;
+    SET p_mensaje = 'No se pudo registrar la sesion por un error interno';
   END;
 
   SET p_id_sesion = NULL;
@@ -673,17 +1011,35 @@ BEGIN
   -- Si no se informa hora de fin, se asume una hora de duracion
   SET v_hora_fin = IFNULL(p_hora_fin, ADDTIME(p_hora_inicio, '01:00:00'));
 
-  IF v_hora_fin <= p_hora_inicio THEN
+  -- Validacion de FK antes de tocar nada, para no depender del error nativo
+  SELECT COUNT(*) INTO v_existe_ter FROM terapeutas WHERE id = p_id_terapeuta;
+  SELECT COUNT(*) INTO v_existe_pac FROM pacientes  WHERE id = p_id_paciente;
+
+  IF v_existe_ter = 0 THEN
+    SET p_mensaje = 'El terapeuta indicado no existe';
+  ELSEIF v_existe_pac = 0 THEN
+    SET p_mensaje = 'El paciente indicado no existe';
+  ELSEIF v_hora_fin <= p_hora_inicio THEN
     SET p_mensaje = 'La hora de fin debe ser posterior a la hora de inicio';
   ELSE
     START TRANSACTION;
+
+    -- Ver NOTA DE CONCURRENCIA. Mismo orden que el trigger de sesiones:
+    -- terapeutas primero, sesiones despues. El trigger vuelve a pedir este
+    -- mismo lock durante el INSERT: como ya lo tiene esta transaccion, no
+    -- espera. Invertir el orden entre ambos introduciria un deadlock.
+    SELECT id INTO v_lock
+      FROM terapeutas
+     WHERE id = p_id_terapeuta
+     FOR UPDATE;
 
     SELECT COUNT(*) INTO v_superpuestas
       FROM sesiones
      WHERE id_terapeuta = p_id_terapeuta
        AND fecha = p_fecha
        AND p_hora_inicio < IFNULL(hora_fin, ADDTIME(hora_inicio, '01:00:00'))
-       AND v_hora_fin > hora_inicio;
+       AND v_hora_fin > hora_inicio
+     FOR SHARE;
 
     IF v_superpuestas > 0 THEN
       ROLLBACK;
@@ -725,6 +1081,15 @@ CREATE PROCEDURE p_registrar_evolucion (
 BEGIN
   DECLARE v_error VARCHAR(255) DEFAULT '';
 
+  -- Los SIGNAL de los triggers: ya vienen en castellano y acotados
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_id_evolucion = NULL;
+    SET p_mensaje = v_error;
+  END;
+
   -- Violacion de integridad: duplicado de (sesion, objetivo) o FK rota
   DECLARE EXIT HANDLER FOR SQLSTATE '23000'
   BEGIN
@@ -734,13 +1099,12 @@ BEGIN
       'Ya existe una evolucion para ese objetivo en esa sesion';
   END;
 
-  -- Cualquier otro error, incluidos los SIGNAL de los triggers
+  -- Ver CRITERIO GENERAL DE ERRORES: mensaje fijo, nunca texto de MySQL
   DECLARE EXIT HANDLER FOR SQLEXCEPTION
   BEGIN
-    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
     ROLLBACK;
     SET p_id_evolucion = NULL;
-    SET p_mensaje = v_error;
+    SET p_mensaje = 'No se pudo registrar la evolucion por un error interno';
   END;
 
   SET p_id_evolucion = NULL;
@@ -776,12 +1140,11 @@ CREATE PROCEDURE p_evolucion_paciente (
 BEGIN
   DECLARE v_total    INT UNSIGNED DEFAULT 0;
   DECLARE v_existe   INT UNSIGNED DEFAULT 0;
-  DECLARE v_error    VARCHAR(255) DEFAULT '';
 
+  -- Ver CRITERIO GENERAL DE ERRORES: mensaje fijo, nunca texto de MySQL
   DECLARE EXIT HANDLER FOR SQLEXCEPTION
   BEGIN
-    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
-    SET p_mensaje = CONCAT('Error al consultar la evolucion: ', v_error);
+    SET p_mensaje = 'No se pudo consultar la evolucion por un error interno';
   END;
 
   SELECT COUNT(*) INTO v_existe FROM pacientes WHERE id = p_id_paciente;
@@ -841,12 +1204,11 @@ CREATE PROCEDURE p_reporte_sesiones_periodo (
 )
 BEGIN
   DECLARE v_total  INT UNSIGNED DEFAULT 0;
-  DECLARE v_error  VARCHAR(255) DEFAULT '';
 
+  -- Ver CRITERIO GENERAL DE ERRORES: mensaje fijo, nunca texto de MySQL
   DECLARE EXIT HANDLER FOR SQLEXCEPTION
   BEGIN
-    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
-    SET p_mensaje = CONCAT('Error al generar el reporte: ', v_error);
+    SET p_mensaje = 'No se pudo generar el reporte por un error interno';
   END;
 
   SELECT

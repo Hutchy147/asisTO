@@ -219,7 +219,11 @@ INSERT INTO notificaciones (id, id_familiar, id_paciente, tipo, mensaje, leida, 
   (2, 1, 1, 'cambio_objetivo',  'Se archivo el objetivo "Vestirse de forma autonoma".',        TRUE,  '2026-05-18 11:05:00'),
   (3, 1, 1, 'informe_generado', 'El informe del segundo trimestre esta disponible.',           FALSE, '2026-07-01 09:00:00'),
   (4, 2, 2, 'nueva_sesion',     'Se registro una nueva sesion para Valentina el 10/06/2026.',  FALSE, '2026-06-10 12:05:00'),
-  (5, 2, 2, 'nueva_sesion',     'Valentina figura como ausente en la sesion del 17/06/2026.',  FALSE, '2026-06-17 12:05:00');
+  -- El texto describe el alta de la sesion, no su resultado: el ENUM de
+  -- notificaciones.tipo no tiene un valor para ausencias, y el tipo se usa
+  -- para filtrar contra preferencias_notificacion. Un mensaje que hable de
+  -- una ausencia bajo tipo 'nueva_sesion' se contradice con su etiqueta.
+  (5, 2, 2, 'nueva_sesion',     'Se registro una nueva sesion para Valentina el 17/06/2026.',  FALSE, '2026-06-17 12:05:00');
 
 INSERT INTO preferencias_notificacion (id_familiar, tipo, habilitada) VALUES
   (1, 'nueva_sesion',     TRUE),
