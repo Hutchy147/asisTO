@@ -107,15 +107,31 @@ Si PowerShell bloquea la activación del entorno virtual:
 Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 ```
 
-Copiar el archivo de ejemplo y completarlo con los datos locales:
+Copiar el archivo de ejemplo:
 
 ```powershell
 copy .env.example .env
+```
+
+**Generar los dos secretos.** `SECRET_KEY` y `JWT_SECRET_KEY` son
+obligatorios y **no tienen valor por defecto**: si falta cualquiera de los
+dos, la aplicación no arranca y explica qué falta. Un default commiteado
+sería un secreto público firmando los JWT de todos.
+
+Generar un valor **distinto** para cada uno:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Después completar el `.env` con esos dos valores, más `DB_USER` y
+`DB_PASSWORD`:
+
+```powershell
 notepad .env
 ```
 
-Como mínimo hay que completar `SECRET_KEY`, `JWT_SECRET_KEY`, `DB_USER` y
-`DB_PASSWORD`. El `.env` está en `.gitignore` y no se commitea nunca.
+El `.env` está en `.gitignore` y no se commitea nunca.
 
 Levantar la API:
 
@@ -130,9 +146,51 @@ terminal:
 curl http://127.0.0.1:5000/api/health
 ```
 
+Si `database.conectada` es `false`, revisar `DB_USER` y `DB_PASSWORD`.
+
 ---
 
-## 4. Frontend
+## 4. Generar las contraseñas de prueba
+
+**Obligatorio para poder loguear.** Los `contrasena_hash` de `seed.sql` son
+placeholders, no hashes bcrypt válidos: recién cargado el seed, ningún
+login funciona.
+
+No están escritos a mano en `seed.sql` a propósito — bcrypt genera un salt
+distinto en cada corrida, así que hardcodearlos dejaría una contraseña fija
+commiteada en el repositorio.
+
+Desde `backend/`, con el venv activo:
+
+```powershell
+python scripts/generar_hashes.py --aplicar
+```
+
+Sin `--aplicar` solo imprime los `UPDATE` sin tocar la base.
+
+**Hay que volver a correrlo cada vez que se recargue `seed.sql`.**
+
+### Usuarios de prueba
+
+Todos con la contraseña **`asisto2026`**. Son de desarrollo: no usar en
+ningún entorno real.
+
+| Email | Rol |
+|---|---|
+| `laura.fernandez@asisto.local` | terapeuta |
+| `diego.moyano@asisto.local` | terapeuta |
+| `silvia.quiroga@asisto.local` | rrhh |
+| `marta.ledesma@asisto.local` | familiar |
+| `jorge.bustos@asisto.local` | familiar |
+| `camila.rios@asisto.local` | paciente |
+
+Los otros dos pacientes del seed (Tomás y Valentina) **no tienen login**, y
+eso es correcto: son menores y su `pacientes.id_usuario` es `NULL`. Existen
+como registro clínico completo sin credenciales (regla 5).
+
+---
+
+## 5. Frontend
 
 Desde la raíz del repositorio, en **otra** terminal (el backend queda
 corriendo en la primera):
@@ -147,13 +205,14 @@ Queda en `http://localhost:5173`. Vite proxea `/api` hacia Flask en el
 puerto 5000, así que no hace falta configurar URLs absolutas ni pelear con
 CORS en desarrollo.
 
-La pantalla inicial es una verificación del theme: muestra los colores por
-rol, los estados de sesión, los botones y el resultado del ping a
-`/api/health`. Se reemplaza por el login cuando arranque la Entrega 1.
+La pantalla inicial es el login. Cada rol entra a su propio dashboard:
+`/terapeuta`, `/rrhh`, `/familiar` y `/paciente`. Entrar a la ruta de otro
+rol muestra un 403 propio; sin sesión, cualquier ruta protegida redirige al
+login.
 
 ---
 
-## 5. Levantar todo (resumen)
+## 6. Levantar todo (resumen)
 
 Dos terminales, desde la raíz del repositorio:
 
@@ -175,11 +234,13 @@ Abrir `http://localhost:5173`.
 asisTO/
 ├── backend/
 │   ├── app/
-│   │   ├── __init__.py      application factory, CORS, blueprints
-│   │   ├── models/          modelos SQLAlchemy (pendiente)
+│   │   ├── __init__.py      factory, CORS, blueprints, manejo de errores
+│   │   ├── models/          modelos SQLAlchemy (mapean schema.sql)
 │   │   ├── routes/          un blueprint por módulo
 │   │   ├── services/        lógica de negocio y reglas críticas
-│   │   └── utils/           JWT, decoradores de RBAC
+│   │   └── utils/           security.py (JWT/RBAC), errors.py, db.py
+│   ├── scripts/
+│   │   └── generar_hashes.py  hashes bcrypt para el seed
 │   ├── database/
 │   │   ├── schema.sql       tablas, triggers, procedimientos, vistas
 │   │   └── seed.sql         datos de prueba

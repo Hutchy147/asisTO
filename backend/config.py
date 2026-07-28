@@ -10,6 +10,16 @@ from dotenv import load_dotenv
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
+# Como generar un valor seguro. Se repite en el mensaje de error y en el
+# README para que nadie tenga que buscarlo.
+COMANDO_GENERAR_SECRETO = (
+    'python -c "import secrets; print(secrets.token_urlsafe(48))"'
+)
+
+
+class ConfigInvalida(RuntimeError):
+    """Falta configuracion obligatoria. La app no puede arrancar."""
+
 
 def _env_int(key, default):
     """Lee un entero del entorno tolerando valores vacios o invalidos."""
@@ -24,12 +34,16 @@ def _env_int(key, default):
 
 class Config:
     # --- Flask ---
-    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-inseguro-cambiar-en-env')
+    # SIN valor por defecto a proposito. Ver Config.validar().
+    SECRET_KEY = os.getenv('SECRET_KEY')
     DEBUG = os.getenv('FLASK_DEBUG', '1') == '1'
 
     # --- JWT ---
-    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', SECRET_KEY)
+    # Tampoco cae en SECRET_KEY si falta: son dos secretos distintos y
+    # rotar uno no tiene por que invalidar lo que firma el otro.
+    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY')
     JWT_ACCESS_TOKEN_EXPIRES = _env_int('JWT_ACCESS_TOKEN_EXPIRES', 3600)
+    JWT_ALGORITHM = 'HS256'
 
     # --- Base de datos ---
     DB_HOST = os.getenv('DB_HOST', 'localhost')
@@ -57,3 +71,32 @@ class Config:
         for origin in os.getenv('CORS_ORIGINS', 'http://localhost:5173').split(',')
         if origin.strip()
     ]
+
+    # --- Secretos obligatorios ---
+    # Un default para estos dos seria un secreto conocido y commiteado
+    # firmando los JWT de todos: cualquiera que lea el repositorio podria
+    # emitir un token valido con rol 'terapeuta'. La app tiene que negarse
+    # a arrancar antes que funcionar con un secreto publico.
+    SECRETOS_REQUERIDOS = ('SECRET_KEY', 'JWT_SECRET_KEY')
+
+    @classmethod
+    def validar(cls):
+        """Corta el arranque si falta un secreto. Se llama en create_app()."""
+        faltantes = [
+            nombre for nombre in cls.SECRETOS_REQUERIDOS
+            if not (getattr(cls, nombre, None) or '').strip()
+        ]
+
+        if not faltantes:
+            return
+
+        raise ConfigInvalida(
+            'Falta configuracion obligatoria en backend/.env: '
+            + ', '.join(faltantes)
+            + '\n\nLa aplicacion no arranca sin estos valores: firman los JWT '
+            'y un valor por defecto seria un secreto conocido.\n'
+            'Generar uno distinto para cada uno con:\n'
+            f'  {COMANDO_GENERAR_SECRETO}\n\n'
+            'Si todavia no existe el archivo, copiar backend/.env.example '
+            'como backend/.env y completarlo.'
+        )
