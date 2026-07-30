@@ -4,6 +4,7 @@
 
 import datetime as dt
 import logging
+import secrets
 from functools import wraps
 
 import bcrypt
@@ -25,9 +26,21 @@ CODIGO_USUARIO_INACTIVO = 'usuario_inactivo'
 
 # --- Contrasenas ---------------------------------------------------------
 
+# bcrypt ignora todo lo que pase de 72 bytes, y en bcrypt 4.x una entrada
+# mas larga levanta ValueError. Se trunca explicitamente: si no, una
+# contrasena larguisima saldria por la rama de excepcion sin llegar a
+# ejecutar el hash, y responderia mucho mas rapido. Eso seria un canal de
+# temporizacion nuevo, justo el que se esta cerrando mas abajo.
+LIMITE_BCRYPT_BYTES = 72
+
+
+def _preparar(contrasena):
+    return (contrasena or '').encode('utf-8')[:LIMITE_BCRYPT_BYTES]
+
+
 def hashear_contrasena(contrasena):
     """Hash bcrypt. El salt se genera solo y queda dentro del hash."""
-    return bcrypt.hashpw(contrasena.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    return bcrypt.hashpw(_preparar(contrasena), bcrypt.gensalt()).decode('utf-8')
 
 
 def verificar_contrasena(contrasena, hash_almacenado):
@@ -41,12 +54,43 @@ def verificar_contrasena(contrasena, hash_almacenado):
     if not contrasena or not hash_almacenado:
         return False
     try:
-        return bcrypt.checkpw(
-            contrasena.encode('utf-8'), hash_almacenado.encode('utf-8')
-        )
+        return bcrypt.checkpw(_preparar(contrasena), hash_almacenado.encode('utf-8'))
     except (ValueError, TypeError):
         logger.warning('Hash de contrasena con formato invalido en la base')
         return False
+
+
+# Hash dummy para igualar tiempos cuando el email no existe.
+#
+# Se genera una sola vez al importar el modulo, con hashear_contrasena, de
+# modo que siempre lleva el MISMO cost factor que los hashes reales: si
+# manana se sube el costo, esta rama sube sola y no queda desfasada.
+#
+# Se genera al importar y no en la primera llamada a proposito: hacerlo
+# perezoso dejaria el primer login post-arranque pagando el costo de
+# generar el hash, que es un pico visible desde afuera.
+#
+# El valor hasheado es aleatorio y no se guarda: no hay ninguna contrasena
+# real que pueda coincidir con el.
+_HASH_DUMMY = hashear_contrasena(secrets.token_urlsafe(32))
+
+
+def consumir_tiempo_de_verificacion(contrasena):
+    """
+    Ejecuta un bcrypt real contra un hash descartable y devuelve False.
+
+    Se llama cuando el email no existe, para que esa rama tarde lo mismo
+    que la que si encuentra usuario. Sin esto, el login responde en ~2 ms
+    cuando el email no esta registrado y en ~214 ms cuando si lo esta: una
+    diferencia de dos ordenes de magnitud que permite enumerar que
+    direcciones tienen cuenta, aunque el mensaje sea identico.
+
+    Es trabajo real de CPU, no un sleep. Un retardo fijo se distingue igual
+    de facil (varianza casi nula frente a la de bcrypt) y no acompana los
+    cambios de cost factor.
+    """
+    bcrypt.checkpw(_preparar(contrasena), _HASH_DUMMY.encode('utf-8'))
+    return False
 
 
 # --- JWT -----------------------------------------------------------------

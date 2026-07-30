@@ -470,11 +470,24 @@ DELIMITER $$
 --      padre ya garantiza que solo una transaccion este en la seccion
 --      critica a la vez.
 --
+-- Hay dos formas de tomar el lock, y cual corresponde depende de si la
+-- tabla que se lee es la del propio trigger:
+--
+--   * Se lee OTRA tabla  -> FOR SHARE (o FOR UPDATE) directo sobre la fila.
+--     Es el caso de los triggers de evoluciones, que validan contra
+--     sesiones y objetivos_terapeuticos.
+--   * Se lee la PROPIA tabla del trigger -> FOR UPDATE esta prohibido
+--     (ERROR 1442). Ahi va lock de fila padre + FOR SHARE en el conteo.
+--     Es el caso de los triggers de objetivos_terapeuticos y sesiones.
+--
 -- Orden de adquisicion de locks, respetado en triggers y procedimientos:
 --      pacientes   -> objetivos_terapeuticos -> evoluciones
 --      terapeutas  -> sesiones               -> evoluciones
--- Mantener este orden. Invertirlo entre dos rutas de escritura introduce
--- deadlocks donde hoy no hay.
+--      sesiones    -> objetivos_terapeuticos   (triggers de evoluciones)
+--
+-- Ese grafo no tiene ciclos: nada bloquea objetivos_terapeuticos y despues
+-- sesiones. Mantener el orden. Invertirlo entre dos rutas de escritura
+-- introduce deadlocks donde hoy no hay.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -722,15 +735,37 @@ BEGIN
   DECLARE v_paciente_objetivo INT UNSIGNED DEFAULT NULL;
   DECLARE v_objetivo_activo   BOOLEAN      DEFAULT NULL;
 
+  -- Los dos SELECT llevan FOR SHARE, y no es decorativo. Ver NOTA DE
+  -- CONCURRENCIA: sin lock, estas serian lecturas consistentes de MVCC y
+  -- no verian que otra transaccion, todavia sin confirmar, ya archivo el
+  -- objetivo, lo movio de paciente o marco la sesion como ausencia. El
+  -- INSERT pasaba las tres validaciones contra datos viejos.
+  --
+  -- Aca alcanza con FOR SHARE y no hace falta el rodeo del lock de fila
+  -- padre que usan los triggers de objetivos y sesiones: esas dos tablas
+  -- NO son la tabla del trigger (que es evoluciones), asi que el ERROR
+  -- 1442 no aplica y se puede bloquear la fila leida directamente.
+  --
+  -- FOR SHARE y no FOR UPDATE porque alcanza: conflictua con el lock
+  -- exclusivo de quien este modificando esa fila (que es de lo que hay que
+  -- protegerse) y hace lectura actual, pero deja que dos evoluciones sobre
+  -- el mismo objetivo entren en paralelo, que no se pisan entre si. Aca no
+  -- se actualiza ninguna de las dos filas, asi que no hay ascenso de S a X
+  -- ni el deadlock que eso traeria.
+  --
+  -- ORDEN: sesiones primero, objetivos_terapeuticos despues. Igual en los
+  -- dos triggers de evoluciones. Invertirlo en uno solo crea un deadlock.
   SELECT estado, id_paciente
     INTO v_estado_sesion, v_paciente_sesion
     FROM sesiones
-   WHERE id = NEW.id_sesion;
+   WHERE id = NEW.id_sesion
+   FOR SHARE;
 
   SELECT id_paciente, activo
     INTO v_paciente_objetivo, v_objetivo_activo
     FROM objetivos_terapeuticos
-   WHERE id = NEW.id_objetivo;
+   WHERE id = NEW.id_objetivo
+   FOR SHARE;
 
   -- Guardas de existencia: la FK tambien lo cubre, pero asi el mensaje
   -- es legible en vez de un error de constraint.
@@ -794,15 +829,37 @@ BEGIN
   DECLARE v_paciente_objetivo INT UNSIGNED DEFAULT NULL;
   DECLARE v_objetivo_activo   BOOLEAN      DEFAULT NULL;
 
+  -- Los dos SELECT llevan FOR SHARE, y no es decorativo. Ver NOTA DE
+  -- CONCURRENCIA: sin lock, estas serian lecturas consistentes de MVCC y
+  -- no verian que otra transaccion, todavia sin confirmar, ya archivo el
+  -- objetivo, lo movio de paciente o marco la sesion como ausencia. El
+  -- INSERT pasaba las tres validaciones contra datos viejos.
+  --
+  -- Aca alcanza con FOR SHARE y no hace falta el rodeo del lock de fila
+  -- padre que usan los triggers de objetivos y sesiones: esas dos tablas
+  -- NO son la tabla del trigger (que es evoluciones), asi que el ERROR
+  -- 1442 no aplica y se puede bloquear la fila leida directamente.
+  --
+  -- FOR SHARE y no FOR UPDATE porque alcanza: conflictua con el lock
+  -- exclusivo de quien este modificando esa fila (que es de lo que hay que
+  -- protegerse) y hace lectura actual, pero deja que dos evoluciones sobre
+  -- el mismo objetivo entren en paralelo, que no se pisan entre si. Aca no
+  -- se actualiza ninguna de las dos filas, asi que no hay ascenso de S a X
+  -- ni el deadlock que eso traeria.
+  --
+  -- ORDEN: sesiones primero, objetivos_terapeuticos despues. Igual en los
+  -- dos triggers de evoluciones. Invertirlo en uno solo crea un deadlock.
   SELECT estado, id_paciente
     INTO v_estado_sesion, v_paciente_sesion
     FROM sesiones
-   WHERE id = NEW.id_sesion;
+   WHERE id = NEW.id_sesion
+   FOR SHARE;
 
   SELECT id_paciente, activo
     INTO v_paciente_objetivo, v_objetivo_activo
     FROM objetivos_terapeuticos
-   WHERE id = NEW.id_objetivo;
+   WHERE id = NEW.id_objetivo
+   FOR SHARE;
 
   IF v_paciente_sesion IS NULL THEN
     SIGNAL SQLSTATE '45000'
