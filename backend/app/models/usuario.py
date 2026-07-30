@@ -40,7 +40,11 @@ class Usuario(db.Model):
     token_recuperacion = db.Column(db.String(255), nullable=True)
     token_expira = db.Column(db.DateTime, nullable=True)
 
-    fecha_creacion = db.Column(db.DateTime, nullable=False)
+    # El valor lo pone la base (DEFAULT CURRENT_TIMESTAMP). Ver el comentario
+    # equivalente en app/models/objetivo.py.
+    fecha_creacion = db.Column(
+        db.DateTime, nullable=False, server_default=db.FetchedValue()
+    )
 
     @property
     def nombre_completo(self):

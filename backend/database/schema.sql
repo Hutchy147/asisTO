@@ -480,14 +480,19 @@ DELIMITER $$
 --     (ERROR 1442). Ahi va lock de fila padre + FOR SHARE en el conteo.
 --     Es el caso de los triggers de objetivos_terapeuticos y sesiones.
 --
--- Orden de adquisicion de locks, respetado en triggers y procedimientos:
---      pacientes   -> objetivos_terapeuticos -> evoluciones
---      terapeutas  -> sesiones               -> evoluciones
+-- ORDEN DE ADQUISICION DE LOCKS (el canonico esta en CLAUDE.md):
+--
+--      pacientes -> terapeutas -> sesiones -> objetivos_terapeuticos
+--                -> evoluciones
+--
+-- Todo lo de este schema lo respeta:
+--      pacientes   -> objetivos_terapeuticos   (triggers de objetivos)
+--      terapeutas  -> sesiones                 (triggers de sesiones)
 --      sesiones    -> objetivos_terapeuticos   (triggers de evoluciones)
 --
--- Ese grafo no tiene ciclos: nada bloquea objetivos_terapeuticos y despues
--- sesiones. Mantener el orden. Invertirlo entre dos rutas de escritura
--- introduce deadlocks donde hoy no hay.
+-- Invertirlo introduce deadlocks. No es teorico: una transaccion que toma
+-- objetivos_terapeuticos y despues sesiones, contra un INSERT de evolucion
+-- concurrente, termina en ERROR 1213. Esta reproducido.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------

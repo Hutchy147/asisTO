@@ -32,7 +32,11 @@ class Paciente(db.Model):
     diagnostico = db.Column(db.Text, nullable=True)
     nro_historia = db.Column(db.String(30), nullable=False, unique=True)
     activo = db.Column(db.Boolean, nullable=False, default=True)
-    fecha_alta = db.Column(db.Date, nullable=False)
+    # El valor lo pone la base (DEFAULT CURRENT_DATE). Ver el comentario
+    # equivalente en app/models/objetivo.py.
+    fecha_alta = db.Column(
+        db.Date, nullable=False, server_default=db.FetchedValue()
+    )
     fecha_baja = db.Column(db.Date, nullable=True)
 
     usuario = db.relationship('Usuario', backref=db.backref('paciente', uselist=False))
@@ -47,6 +51,13 @@ class Paciente(db.Model):
         return self.id_usuario is not None
 
     def to_dict(self):
+        """
+        Representacion SIN contenido clinico.
+
+        No incluye diagnostico a proposito: este es el metodo por defecto y
+        el default tiene que ser el seguro. Para las pantallas del terapeuta
+        esta to_dict_clinico(), que hay que pedir explicitamente.
+        """
         return {
             'id': self.id,
             'nombre': self.nombre,
@@ -57,6 +68,18 @@ class Paciente(db.Model):
             'activo': bool(self.activo),
             'tiene_login': self.tiene_login,
         }
+
+    def to_dict_clinico(self):
+        """
+        Agrega el diagnostico. Solo para endpoints del rol terapeuta.
+
+        El nombre es explicito para que un uso indebido salte a la vista en
+        una revision: RRHH no puede ver contenido clinico (limite duro del
+        CLAUDE.md) y este metodo no debe aparecer en su modulo.
+        """
+        datos = self.to_dict()
+        datos['diagnostico'] = self.diagnostico
+        return datos
 
     def __repr__(self):
         return f'<Paciente {self.id} {self.nro_historia}>'

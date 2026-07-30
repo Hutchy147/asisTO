@@ -104,12 +104,16 @@ def register_blueprints(app):
     """Registra los blueprints de cada modulo bajo el prefijo /api."""
     from app.routes.auth import auth_bp
     from app.routes.health import health_bp
+    from app.routes.objetivos import objetivos_bp
+    from app.routes.pacientes import pacientes_bp
 
     app.register_blueprint(health_bp, url_prefix='/api')
     app.register_blueprint(auth_bp, url_prefix='/api')
+    app.register_blueprint(pacientes_bp, url_prefix='/api')
+    app.register_blueprint(objetivos_bp, url_prefix='/api')
 
-    # Entrega 1: pacientes_bp, objetivos_bp, sesiones_bp y evoluciones_bp
-    # se registran aca a medida que se implementen.
+    # Entrega 1: sesiones_bp y evoluciones_bp se registran aca a medida que
+    # se implementen.
     #
     # El modulo de RRHH va en su PROPIO blueprint aislado, que solo puede
     # llamar a p_reporte_sesiones_periodo y v_resumen_sesiones. Es la
