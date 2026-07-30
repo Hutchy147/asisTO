@@ -156,6 +156,16 @@ function Get-ScalarValue {
 }
 
 function Write-ResultsTable {
+    # Bug encontrado en esta misma ronda: antes escribia la tabla formateada
+    # con una expresion suelta al final de la funcion, y PowerShell la
+    # emitia por el stream de salida (no solo la imprimia). Cuando el
+    # llamador hace "$todos += & $modulo.ps1", esa cadena de texto se cuela
+    # como UN OBJETO MAS en $todos -- no tiene propiedad Resultado, asi que
+    # no se cuenta como PASS/FAIL/INFO, pero SI infla $todos.Count. Con 7
+    # modulos que llaman a esta funcion, el TOTAL quedaba inflado en 7
+    # (39 tests reales -> 46). Write-Host escribe directo a la consola, no
+    # al stream de salida, asi que no puede volver a colarse en un return.
     param([Parameter(Mandatory)] $Resultados)
-    $Resultados | Format-Table -AutoSize -Property Modulo, Test, Resultado, Detalle | Out-String -Width 200
+    $texto = $Resultados | Format-Table -AutoSize -Property Modulo, Test, Resultado, Detalle | Out-String -Width 200
+    Write-Host $texto
 }
