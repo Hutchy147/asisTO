@@ -1,0 +1,130 @@
+// frontend/src/components/pacientes/ModalAltaPaciente.jsx
+// Alta de paciente. Es el más simple de los cuatro modales y el que fija
+// el patrón: ver useFormularioModal y ModalFormulario.
+
+import CampoTexto from '../forms/CampoTexto.jsx';
+import ModalFormulario from '../modal/ModalFormulario.jsx';
+import { useFormularioModal } from '../../hooks/useFormularioModal.js';
+import { crearPaciente } from '../../services/pacientesService.js';
+
+const INICIAL = {
+  nombre: '',
+  apellido: '',
+  fecha_nacimiento: '',
+  nro_historia: '',
+  diagnostico: '',
+};
+
+// El diagnóstico es el único opcional: se puede completar después desde la
+// ficha, y exigirlo en el alta obligaría a inventar algo.
+const OBLIGATORIOS = ['nombre', 'apellido', 'fecha_nacimiento', 'nro_historia'];
+
+/**
+ * Qué campo marcar cuando el servidor rechaza.
+ *
+ * Es PRESENTACIÓN, no validación: el mensaje completo ya se muestra arriba
+ * del formulario tal como vino. Esto solo decide dónde poner el borde rojo.
+ * Se mira el texto porque la respuesta no trae el campo, así que si el
+ * mensaje cambia lo peor que pasa es que no se marque ninguno — el aviso
+ * sigue diciendo todo.
+ */
+function campoDelRechazo(error) {
+  const mensaje = (error?.message ?? '').toLowerCase();
+  if (mensaje.includes('historia')) return 'nro_historia';
+  return null;
+}
+
+export default function ModalAltaPaciente({ abierto, onCerrar, onCreado }) {
+  const formulario = useFormularioModal({
+    inicial: INICIAL,
+    obligatorios: OBLIGATORIOS,
+    campoDelRechazo,
+    onEnviar: (valores) =>
+      crearPaciente({
+        nombre: valores.nombre.trim(),
+        apellido: valores.apellido.trim(),
+        fecha_nacimiento: valores.fecha_nacimiento,
+        nro_historia: valores.nro_historia.trim(),
+        diagnostico: valores.diagnostico.trim() || null,
+        id_usuario: null, // el alta no crea cuenta: es un registro clínico
+      }),
+    onExito: (respuesta) => {
+      onCerrar?.();
+      onCreado?.(respuesta);
+    },
+    onCerrar,
+  });
+
+  const { valores, setCampo, errorDe, guardando } = formulario;
+
+  return (
+    <ModalFormulario
+      abierto={abierto}
+      titulo="Nuevo paciente"
+      subtitulo="Se da de alta como registro clínico. La cuenta de acceso es aparte y opcional."
+      guardando={guardando}
+      errorServidor={formulario.errorServidor}
+      tituloRechazo="No se pudo dar de alta el paciente"
+      confirmandoDescarte={formulario.confirmandoDescarte}
+      onPedirCierre={formulario.pedirCierre}
+      onSeguirEditando={formulario.seguirEditando}
+      onDescartar={formulario.descartar}
+      onEnviar={formulario.enviar}
+      etiquetaEnviar="Dar de alta"
+      etiquetaGuardando="Dando de alta…"
+    >
+      <CampoTexto
+        id="paciente-nombre"
+        etiqueta="Nombre"
+        obligatorio
+        valor={valores.nombre}
+        onChange={setCampo('nombre')}
+        error={errorDe('nombre')}
+        deshabilitado={guardando}
+        autoFocus
+      />
+      <CampoTexto
+        id="paciente-apellido"
+        etiqueta="Apellido"
+        obligatorio
+        valor={valores.apellido}
+        onChange={setCampo('apellido')}
+        error={errorDe('apellido')}
+        deshabilitado={guardando}
+      />
+      <CampoTexto
+        id="paciente-nacimiento"
+        etiqueta="Fecha de nacimiento"
+        tipo="date"
+        tabular
+        obligatorio
+        valor={valores.fecha_nacimiento}
+        onChange={setCampo('fecha_nacimiento')}
+        error={errorDe('fecha_nacimiento')}
+        deshabilitado={guardando}
+      />
+      <CampoTexto
+        id="paciente-historia"
+        etiqueta="N° de historia"
+        tabular
+        obligatorio
+        placeholder="HC-0017"
+        ayuda="Único en el centro."
+        valor={valores.nro_historia}
+        onChange={setCampo('nro_historia')}
+        error={errorDe('nro_historia')}
+        deshabilitado={guardando}
+      />
+      <CampoTexto
+        id="paciente-diagnostico"
+        etiqueta="Diagnóstico"
+        multilinea
+        filas={3}
+        ayuda="Opcional. Se puede completar más adelante desde la ficha."
+        valor={valores.diagnostico}
+        onChange={setCampo('diagnostico')}
+        deshabilitado={guardando}
+      />
+    </ModalFormulario>
+  );
+}

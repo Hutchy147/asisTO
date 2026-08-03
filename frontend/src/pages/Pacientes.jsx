@@ -8,11 +8,15 @@ import InputAdornment from '@mui/material/InputAdornment';
 import TextField from '@mui/material/TextField';
 import { useNavigate } from 'react-router-dom';
 
+import Snackbar from '@mui/material/Snackbar';
+import Alert from '@mui/material/Alert';
+
 import AccountFlag from '../components/data/AccountFlag.jsx';
 import DataTable from '../components/data/DataTable.jsx';
 import GoalMeter from '../components/data/GoalMeter.jsx';
 import PersonCell from '../components/data/PersonCell.jsx';
 import AppLayout from '../components/layout/AppLayout.jsx';
+import ModalAltaPaciente from '../components/pacientes/ModalAltaPaciente.jsx';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { listarPacientes } from '../services/pacientesService.js';
@@ -47,6 +51,17 @@ export default function Pacientes() {
   const navigate = useNavigate();
   const { datos, cargando, error, recargar } = usePeticion(listarPacientes, []);
   const [busqueda, setBusqueda] = useState('');
+  const [modalAbierto, setModalAbierto] = useState(false);
+  const [aviso, setAviso] = useState('');
+
+  // El listado se refresca contra el servidor en vez de insertar la fila a
+  // mano: la lista es del servidor y así no hay dos versiones que puedan
+  // divergir. No recarga la página, solo vuelve a pedir los datos.
+  const alCrear = (respuesta) => {
+    setBusqueda('');
+    recargar();
+    setAviso(respuesta?.mensaje ?? 'Paciente dado de alta correctamente');
+  };
 
   const pacientes = useMemo(
     () => (datos?.pacientes ?? []).map((p) => ({ ...p, edad: textoEdad(p.fecha_nacimiento) })),
@@ -115,8 +130,7 @@ export default function Pacientes() {
       subtitulo={subtitulo}
       contadores={{ pacientes: total || undefined }}
       acciones={
-        // TODO: abre el modal de alta cuando se implemente (fase siguiente)
-        <Button variant="contained" disabled>
+        <Button variant="contained" onClick={() => setModalAbierto(true)}>
           Agregar paciente
         </Button>
       }
@@ -153,7 +167,7 @@ export default function Pacientes() {
               titulo="Todavía no hay pacientes cargados"
               descripcion="Cuando des de alta al primer paciente del centro va a aparecer acá, con su edad, su N° de historia y sus objetivos activos."
               acciones={
-                <Button variant="contained" disabled>
+                <Button variant="contained" onClick={() => setModalAbierto(true)}>
                   Agregar paciente
                 </Button>
               }
@@ -178,6 +192,24 @@ export default function Pacientes() {
           )}
         </>
       )}
+
+      <ModalAltaPaciente
+        abierto={modalAbierto}
+        onCerrar={() => setModalAbierto(false)}
+        onCreado={alCrear}
+      />
+
+      <Snackbar
+        open={Boolean(aviso)}
+        autoHideDuration={5000}
+        onClose={() => setAviso('')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        {/* El texto es el p_mensaje del procedimiento, sin reescribir */}
+        <Alert severity="success" onClose={() => setAviso('')} variant="filled">
+          {aviso}
+        </Alert>
+      </Snackbar>
     </AppLayout>
   );
 }
