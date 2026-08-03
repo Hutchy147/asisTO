@@ -49,16 +49,27 @@ def escapar(texto):
     return texto.replace("\\", "\\\\").replace("'", "\\'")
 
 
-def generar_sentencias(contrasena):
+def generar_sentencias(contrasena, emails=EMAILS_SEED):
     """Un hash distinto por usuario: cada uno con su propio salt."""
     sentencias = []
-    for email in EMAILS_SEED:
+    for email in emails:
         sentencias.append(
             "UPDATE usuarios SET contrasena_hash = '{}' WHERE email = '{}';".format(
                 escapar(hashear(contrasena)), escapar(email)
             )
         )
     return sentencias
+
+
+def emails_de_la_base():
+    """Todos los emails cargados en usuarios. Para seeds con otros usuarios."""
+    from app import create_app, db
+    from sqlalchemy import text
+
+    app = create_app()
+    with app.app_context():
+        filas = db.session.execute(text('SELECT email FROM usuarios ORDER BY id')).all()
+    return [fila[0] for fila in filas]
 
 
 def aplicar(sentencias):
@@ -92,9 +103,20 @@ def main():
         '--aplicar', action='store_true',
         help='Aplica los UPDATE a la base en vez de solo imprimirlos.',
     )
+    parser.add_argument(
+        '--todos', action='store_true',
+        help='Toma los emails de la base en vez de la lista de seed.sql. '
+             'Necesario despues de cargar seed_demo.sql, que trae otros '
+             'usuarios. Requiere conexion.',
+    )
     args = parser.parse_args()
 
-    sentencias = generar_sentencias(args.contrasena)
+    emails = emails_de_la_base() if args.todos else EMAILS_SEED
+    if not emails:
+        print('-- No hay usuarios cargados en la base. Corré primero un seed.')
+        return
+
+    sentencias = generar_sentencias(args.contrasena, emails)
 
     print('-- Hashes bcrypt para los usuarios del seed')
     print(f'-- Contrasena: {args.contrasena}')

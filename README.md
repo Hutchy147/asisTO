@@ -85,8 +85,30 @@ mysql --login-path=asisto asisto -e "SELECT * FROM v_resumen_sesiones;"
 ```
 
 > Las contraseñas del seed son **placeholders**, no hashes bcrypt válidos:
-> ningún login va a funcionar con esos datos. Se reemplazan cuando exista
-> el módulo de autenticación.
+> ningún login va a funcionar con esos datos. Ver el paso 4.
+
+### Dos seeds, se corre uno u otro
+
+| Archivo | Contenido | Para qué |
+|---|---|---|
+| `seed.sql` | 3 pacientes, 10 sesiones | **El que usan los tests.** Chico, estable, con id conocidos. |
+| `seed_demo.sql` | 16 pacientes, ~630 sesiones en 7 semanas | Ver la interfaz con volumen real y hacer pruebas con personas. |
+
+Para cargar los datos de demostración:
+
+```powershell
+mysql --login-path=asisto -e "source backend/database/schema.sql"
+mysql --login-path=asisto -e "source backend/database/seed_demo.sql"
+```
+
+Trae 3 terapeutas, agenda de lunes a viernes con días de hasta 8 sesiones,
+mezcla de los tres estados, sesiones con evolución y sin, objetivos
+archivados con historia, pacientes con y sin cuenta, un paciente dado de
+baja y una cuenta deshabilitada.
+
+**Ningún test depende de este archivo:** los runners construyen sus propias
+bases con `schema.sql` + `seed.sql`. Volver al seed chico es correr
+`seed.sql` de nuevo.
 
 ---
 
@@ -168,7 +190,15 @@ python scripts/generar_hashes.py --aplicar
 
 Sin `--aplicar` solo imprime los `UPDATE` sin tocar la base.
 
-**Hay que volver a correrlo cada vez que se recargue `seed.sql`.**
+Si cargaste **`seed_demo.sql`**, que trae otros usuarios, hay que agregar
+`--todos` para que tome los emails de la base en vez de la lista fija:
+
+```powershell
+python scripts/generar_hashes.py --aplicar --todos
+```
+
+**Hay que volver a correrlo cada vez que se recargue cualquiera de los dos
+seeds.**
 
 ### Usuarios de prueba
 

@@ -17,7 +17,7 @@ const AuthContext = createContext(null);
 // Ruta inicial de cada rol. Es la unica fuente de verdad del mapeo:
 // la usan el login, la redireccion de "/" y el 403.
 export const RUTA_POR_ROL = {
-  terapeuta: '/terapeuta',
+  terapeuta: '/panel',
   rrhh: '/rrhh',
   familiar: '/familiar',
   paciente: '/paciente',

@@ -15,6 +15,50 @@ const CODIGOS_SESION_INVALIDA = [
   'usuario_inactivo',
 ];
 
+/**
+ * Error de la API.
+ *
+ * `message` es el texto que devolvio el servidor, y se muestra TAL CUAL.
+ * El backend redacta sus mensajes en castellano y para una persona —
+ * varios salen directamente de los triggers de la base ("El paciente ya
+ * tiene 4 objetivos activos...", "No se puede cargar evolucion: la sesion
+ * esta marcada como ausencia"). Reescribirlos en el frontend solo puede
+ * empeorarlos, y ademas los desincroniza cuando cambian en la base.
+ */
+export class ErrorApi extends Error {
+  constructor(mensaje, { codigo, status, datos } = {}) {
+    super(mensaje);
+    this.name = 'ErrorApi';
+    this.codigo = codigo ?? null;
+    this.status = status ?? null;
+    this.datos = datos ?? null;
+  }
+
+  // La sesion dejo de servir: el manejador global ya limpio el token
+  get esDeSesion() {
+    return CODIGOS_SESION_INVALIDA.includes(this.codigo);
+  }
+
+  // El rol no alcanza. NO se manda al login: la sesion es valida
+  get esDePermisos() {
+    return this.status === 403;
+  }
+
+  get esNoEncontrado() {
+    return this.status === 404;
+  }
+
+  // Datos rechazados o estado incompatible: se muestra junto al formulario
+  get esDeValidacion() {
+    return this.status === 400 || this.status === 409;
+  }
+
+  // No hubo respuesta del servidor (backend caido, proxy, red)
+  get esDeRed() {
+    return this.status === null;
+  }
+}
+
 // AuthContext se registra aca al montarse. Se guarda una sola funcion en
 // vez de importar el contexto: el modulo de red no debe depender de React.
 let alPerderSesion = null;
@@ -32,9 +76,21 @@ export function setToken(token) {
   else localStorage.removeItem(CLAVE_TOKEN);
 }
 
+/** Arma la query string ignorando los parametros vacios o nulos. */
+export function construirQuery(parametros = {}) {
+  const query = new URLSearchParams();
+  Object.entries(parametros).forEach(([clave, valor]) => {
+    if (valor !== undefined && valor !== null && valor !== '') {
+      query.append(clave, valor);
+    }
+  });
+  const texto = query.toString();
+  return texto ? `?${texto}` : '';
+}
+
 /**
  * Ejecuta una request contra la API y devuelve el JSON parseado.
- * Lanza Error con el mensaje del backend cuando la respuesta no es 2xx.
+ * Lanza ErrorApi cuando la respuesta no es 2xx.
  */
 export async function request(path, options = {}) {
   const { omitirAuth = false, ...resto } = options;
@@ -46,7 +102,16 @@ export async function request(path, options = {}) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${BASE_URL}${path}`, { ...resto, headers });
+  let response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, { ...resto, headers });
+  } catch (fallo) {
+    // fetch solo rechaza por fallo de red, no por status de error
+    throw new ErrorApi(
+      'No se pudo conectar con el servidor. Revisá que el backend esté levantado.',
+      { codigo: 'sin_conexion' }
+    );
+  }
 
   // Algunos errores (502, timeouts del proxy) no devuelven JSON valido
   let payload = null;
@@ -71,14 +136,22 @@ export async function request(path, options = {}) {
       if (alPerderSesion) alPerderSesion(codigo);
     }
 
-    const error = new Error(payload?.mensaje ?? `Error ${response.status}`);
-    error.codigo = codigo;
-    error.status = response.status;
-    throw error;
+    throw new ErrorApi(payload?.mensaje ?? `Error ${response.status}`, {
+      codigo,
+      status: response.status,
+      datos: payload,
+    });
   }
 
   return payload;
 }
+
+export const get = (path) => request(path);
+export const post = (path, cuerpo) =>
+  request(path, { method: 'POST', body: JSON.stringify(cuerpo ?? {}) });
+export const put = (path, cuerpo) =>
+  request(path, { method: 'PUT', body: JSON.stringify(cuerpo ?? {}) });
+export const del = (path) => request(path, { method: 'DELETE' });
 
 // Ping de vida del backend. Sirve para validar que el proxy esta OK.
 export function getHealth() {

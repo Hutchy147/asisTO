@@ -1,9 +1,9 @@
 // frontend/src/pages/Dashboard.jsx
-// Dashboard provisorio, uno por rol. Cada uno se identifica con el color
-// de su rol, tomado de theme.palette.roles: ningun hex hardcodeado.
+// Dashboard de los roles cuyo modulo todavia no se construyo: rrhh,
+// familiar y paciente. El del terapeuta es /panel.
 //
-// Es una pantalla de andamiaje: se reemplaza por el contenido real de cada
-// rol a medida que se construyan los modulos de la Entrega 1.
+// La pantalla existe para que una demostracion con esos roles no parezca
+// rota: el aviso deja claro que falta la pantalla, no el acceso.
 
 import AppBar from '@mui/material/AppBar';
 import Box from '@mui/material/Box';
@@ -15,20 +15,13 @@ import Stack from '@mui/material/Stack';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 
+import AvisoModuloPendiente from '../components/avisos/AvisoModuloPendiente.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 
 const TITULOS = {
-  terapeuta: 'Panel del terapeuta',
   rrhh: 'Panel de RRHH',
   familiar: 'Portal familiar',
   paciente: 'Mi seguimiento',
-};
-
-const DESCRIPCIONES = {
-  terapeuta: 'Pacientes, objetivos, sesiones, evoluciones e informes.',
-  rrhh: 'Verificacion de asistencias y observaciones tecnicas. Sin contenido clinico.',
-  familiar: 'Seguimiento del paciente vinculado e informes finales.',
-  paciente: 'Tus objetivos y tu progreso.',
 };
 
 export default function Dashboard({ rol }) {
@@ -39,7 +32,6 @@ export default function Dashboard({ rol }) {
       <AppBar
         position="static"
         elevation={0}
-        // El color identifica el rol en pantalla. Sale del theme.
         sx={(theme) => ({ backgroundColor: theme.palette.roles[rol] })}
       >
         <Toolbar>
@@ -49,14 +41,14 @@ export default function Dashboard({ rol }) {
           <Stack direction="row" spacing={2} alignItems="center">
             <Typography variant="body2">{usuario?.nombre_completo}</Typography>
             <Button color="inherit" variant="outlined" onClick={logout}>
-              Cerrar sesion
+              Cerrar sesión
             </Button>
           </Stack>
         </Toolbar>
       </AppBar>
 
       <Container maxWidth="md" sx={{ py: 5 }}>
-        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1 }}>
+        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 3 }}>
           <Typography variant="h4">{TITULOS[rol]}</Typography>
           <Chip
             label={rol}
@@ -67,13 +59,11 @@ export default function Dashboard({ rol }) {
           />
         </Stack>
 
-        <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-          {DESCRIPCIONES[rol]}
-        </Typography>
+        <AvisoModuloPendiente rol={rol} />
 
         <Paper elevation={1} sx={{ p: 3 }}>
           <Typography variant="h6" gutterBottom>
-            Sesion activa
+            Sesión activa
           </Typography>
           <Stack spacing={0.5}>
             <Typography variant="body2" color="text.secondary">
@@ -82,11 +72,6 @@ export default function Dashboard({ rol }) {
             <Typography variant="body2" color="text.secondary">
               Rol: {usuario?.rol}
             </Typography>
-            {perfil?.matricula && (
-              <Typography variant="body2" color="text.secondary">
-                Matricula: {perfil.matricula}
-              </Typography>
-            )}
             {perfil?.nro_legajo && (
               <Typography variant="body2" color="text.secondary">
                 Legajo: {perfil.nro_legajo}
@@ -99,7 +84,7 @@ export default function Dashboard({ rol }) {
             )}
             {perfil?.nro_historia && (
               <Typography variant="body2" color="text.secondary">
-                Historia clinica: {perfil.nro_historia}
+                Historia clínica: {perfil.nro_historia}
               </Typography>
             )}
           </Stack>
