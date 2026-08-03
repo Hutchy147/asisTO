@@ -47,6 +47,18 @@ export function obtenerPaciente(idPaciente) {
   return get(`/pacientes/${idPaciente}`);
 }
 
+/**
+ * Historial completo de sesiones del paciente.
+ * -> { paciente, sesiones: [...], total }
+ *
+ * Trae las de TODOS los terapeutas, no solo las del logueado: la lectura
+ * es abierta y lo restringido es cargar evolucion. Media historia clinica
+ * seria peor que la historia entera.
+ */
+export function listarSesionesDePaciente(idPaciente) {
+  return get(`/pacientes/${idPaciente}/sesiones`);
+}
+
 // Reservado para cuando el listado acepte filtros de servidor. Hoy el
 // backend no los recibe, asi que se filtra en el cliente.
 export function listarPacientesConFiltros(filtros = {}) {

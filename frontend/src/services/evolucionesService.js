@@ -6,14 +6,32 @@ import { get, post } from './api.js';
 export const VALOR_MINIMO = 1;
 export const VALOR_MAXIMO = 5;
 
-/** Escala de valoracion. Las etiquetas son provisorias, faltan del diseño. */
+/**
+ * Escala de logro del centro. ÚNICO lugar donde el número de la base se
+ * traduce a la palabra que usa el terapeuta.
+ *
+ * En la base la calificación es un TINYINT de 1 a 5 porque hay que poder
+ * ordenarla, promediarla y graficarla. En pantalla eso no se muestra: un
+ * objetivo está "En proceso", no "3 de 5". El número es representación
+ * interna; la palabra es el dato clínico.
+ *
+ * Si esta tabla se duplica en algún componente, las dos versiones se
+ * separan y la interfaz empieza a decir cosas distintas en cada pantalla.
+ * Importar `etiquetaDeValor` desde acá, siempre.
+ */
 export const ESCALA_VALORES = [
-  { valor: 1, etiqueta: 'Sin logro' },
-  { valor: 2, etiqueta: 'Logro inicial' },
-  { valor: 3, etiqueta: 'Logro parcial' },
-  { valor: 4, etiqueta: 'Logro avanzado' },
+  { valor: 1, etiqueta: 'No logrado' },
+  { valor: 2, etiqueta: 'Inicial' },
+  { valor: 3, etiqueta: 'En proceso' },
+  { valor: 4, etiqueta: 'Avanzado' },
   { valor: 5, etiqueta: 'Logrado' },
 ];
+
+/** Palabra de la escala. `null` cuando todavía no se calificó. */
+export function etiquetaDeValor(valor) {
+  if (valor === null || valor === undefined) return null;
+  return ESCALA_VALORES.find((paso) => paso.valor === Number(valor))?.etiqueta ?? null;
+}
 
 /**
  * Registra una evolucion.

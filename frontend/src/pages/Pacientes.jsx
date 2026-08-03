@@ -20,32 +20,7 @@ import ModalAltaPaciente from '../components/pacientes/ModalAltaPaciente.jsx';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { listarPacientes } from '../services/pacientesService.js';
-
-/** Edad en años a partir de la fecha de nacimiento en formato ISO. */
-export function edadDesde(iso) {
-  if (!iso) return null;
-  const [anio, mes, dia] = iso.split('-').map(Number);
-  const hoy = new Date();
-  let edad = hoy.getFullYear() - anio;
-  const mesActual = hoy.getMonth() + 1;
-  if (mesActual < mes || (mesActual === mes && hoy.getDate() < dia)) edad -= 1;
-  return edad;
-}
-
-/** "7 años" / "8 meses" para los pacientes de menos de un año. */
-function textoEdad(iso) {
-  const edad = edadDesde(iso);
-  if (edad === null) return '';
-  if (edad >= 1) return `${edad} ${edad === 1 ? 'año' : 'años'}`;
-
-  const nacimiento = new Date(iso);
-  const hoy = new Date();
-  const meses = Math.max(
-    0,
-    (hoy.getFullYear() - nacimiento.getFullYear()) * 12 + hoy.getMonth() - nacimiento.getMonth()
-  );
-  return `${meses} ${meses === 1 ? 'mes' : 'meses'}`;
-}
+import { textoEdad } from '../utils/fechas.js';
 
 export default function Pacientes() {
   const navigate = useNavigate();
