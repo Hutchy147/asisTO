@@ -544,6 +544,28 @@ BEGIN
   DECLARE v_evoluciones INT UNSIGNED DEFAULT 0;
   DECLARE v_lock        INT UNSIGNED DEFAULT NULL;
 
+  -- La descripcion de un objetivo ARCHIVADO es inmutable.
+  --
+  -- El motivo no es tecnico. Un objetivo archivado tiene evoluciones
+  -- colgando, y reescribir su texto dejaria calificaciones historicas
+  -- puntuando contra algo que hoy dice otra cosa. Estos registros
+  -- respaldan el tratamiento ante obras sociales e instituciones: el
+  -- pasado no se reescribe.
+  --
+  -- Vive en la base y no solo en el endpoint a proposito. Es la misma
+  -- leccion de los hallazgos C1/C3/A1: una regla que solo se aplica en un
+  -- camino de escritura se elude por cualquier otro (un UPDATE directo, un
+  -- script de migracion, un endpoint futuro).
+  --
+  -- Reactivar y reescribir en la MISMA sentencia tambien se rechaza: el
+  -- objetivo todavia estaba archivado cuando se pidio el cambio. Para
+  -- reescribirlo hay que reactivarlo primero y editarlo despues, ya activo.
+  IF OLD.activo = FALSE AND NEW.descripcion <> OLD.descripcion THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT =
+        'El objetivo esta archivado: su descripcion quedo fija y no se puede editar';
+  END IF;
+
   -- Mover un objetivo a otro paciente deja las evoluciones ya cargadas
   -- apuntando a un objetivo cuyo paciente no coincide con el de sus
   -- sesiones: viola la regla 3 retroactivamente. Se rechaza.

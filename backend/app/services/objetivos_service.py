@@ -117,7 +117,17 @@ def crear_objetivo(datos):
 
 @reintentar_en_deadlock()
 def editar_descripcion(id_objetivo, datos):
-    """Edita solo la descripcion. El estado activo/archivado no se toca aca."""
+    """
+    Edita solo la descripcion. El estado activo/archivado no se toca aca.
+
+    Un objetivo ARCHIVADO no se puede editar: su descripcion es inmutable
+    porque hay evoluciones historicas puntuando contra ese texto. Esa regla
+    NO esta reimplementada aca: la aplica el trigger
+    trg_objetivos_limite_activos_update y su mensaje se propaga tal cual al
+    cliente (errno 1644). Agregar el chequeo tambien en Python daria dos
+    versiones que pueden divergir, y la de la base es la que vale para
+    cualquier camino de escritura, no solo para este endpoint.
+    """
     descripcion = (datos.get('descripcion') or '').strip()
     if not descripcion:
         raise ErrorAplicacion('La descripcion del objetivo no puede estar vacia.')

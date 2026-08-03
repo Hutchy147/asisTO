@@ -345,8 +345,24 @@ Edita **solo la descripción**. No cambia el estado activo/archivado.
 | Descripción vacía | `400` | `La descripcion del objetivo no puede estar vacia.` |
 | Objetivo inexistente | `404` | `El objetivo indicado no existe.` |
 | La nueva descripción ya la usa otro objetivo **activo** | `409` | `Ya existe un objetivo activo con esa descripcion para este paciente.` |
+| **El objetivo está archivado** | `400` | `El objetivo esta archivado: su descripcion quedo fija y no se puede editar` |
 
 Mandar la misma descripción que ya tenía devuelve `200` sin escribir nada.
+
+### Un objetivo archivado no se puede editar
+
+Su descripción es **inmutable**. No es una limitación técnica: un objetivo
+archivado tiene evoluciones colgando, y reescribir su texto dejaría
+calificaciones históricas puntuando contra algo que hoy dice otra cosa.
+Estos registros respaldan el tratamiento ante obras sociales e
+instituciones, así que el pasado no se reescribe.
+
+Para la interfaz: en la lista de archivados, **no ofrecer la acción de
+editar**. El backend la rechaza igual, pero un botón que siempre falla es
+peor que no tenerlo.
+
+La regla vive en la base (trigger), no solo en el endpoint: cualquier
+camino de escritura la respeta.
 
 ---
 
@@ -405,6 +421,7 @@ Estados que las pantallas tienen que contemplar:
 2. **Cupo lleno** (`cupo.disponibles === 0`) — deshabilitar el alta y decir
    por qué.
 3. **Objetivos archivados** — hay que poder verlos; guardan la historia.
+   **No se pueden editar:** no ofrecer la acción sobre ellos.
 4. **Descripción repetida** — el error distingue activo de archivado, y la
    interfaz debería explicar que contra un archivado sí se puede.
 5. **401 vs 403** — el primero va al login, el segundo a la pantalla de 403.
