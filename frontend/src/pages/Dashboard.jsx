@@ -32,7 +32,11 @@ export default function Dashboard({ rol }) {
       <AppBar
         position="static"
         elevation={0}
-        sx={(theme) => ({ backgroundColor: theme.palette.roles[rol] })}
+        // Estas tres pantallas SÍ se pintan con el color del rol: son
+        // dashboards de módulos que todavía no existen y el color es la
+        // única señal de en cuál está parado el usuario. Las pantallas del
+        // terapeuta usan navy, como el resto de la app.
+        sx={(theme) => ({ backgroundColor: theme.palette.roles[rol].fg })}
       >
         <Toolbar>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
@@ -53,8 +57,8 @@ export default function Dashboard({ rol }) {
           <Chip
             label={rol}
             sx={(theme) => ({
-              backgroundColor: theme.palette.roles[rol],
-              color: theme.palette.primary.contrastText,
+              backgroundColor: theme.palette.roles[rol].bg,
+              color: theme.palette.roles[rol].fg,
             })}
           />
         </Stack>

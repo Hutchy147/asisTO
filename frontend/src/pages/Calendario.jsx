@@ -10,8 +10,8 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
-import SesionEstadoChip from '../components/SesionEstadoChip.jsx';
-import LayoutTerapeuta from '../components/LayoutTerapeuta.jsx';
+import SesionEstadoChip from '../components/data/SesionEstadoChip.jsx';
+import AppLayout from '../components/layout/AppLayout.jsx';
 import { Cargando, EstadoError } from '../components/estado/index.js';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { listarSesiones } from '../services/sesionesService.js';
@@ -70,7 +70,7 @@ export default function Calendario() {
   };
 
   return (
-    <LayoutTerapeuta titulo="Calendario">
+    <AppLayout titulo="Calendario">
       <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 3 }}>
         <Button variant="outlined" onClick={() => mover(-1)}>
           Semana anterior
@@ -132,7 +132,7 @@ export default function Calendario() {
                           sx={(theme) => ({
                             p: 1,
                             borderRadius: 1,
-                            borderLeft: `3px solid ${theme.palette.sesionEstado[sesion.estado]}`,
+                            borderLeft: `3px solid ${theme.palette.sesionEstado[sesion.estado].fg}`,
                             backgroundColor: theme.palette.background.default,
                           })}
                         >
@@ -158,6 +158,6 @@ export default function Calendario() {
           </Grid>
         </>
       )}
-    </LayoutTerapeuta>
+    </AppLayout>
   );
 }

@@ -13,7 +13,7 @@ import Typography from '@mui/material/Typography';
 import { useParams } from 'react-router-dom';
 
 import AvisoCupoCompleto from '../components/avisos/AvisoCupoCompleto.jsx';
-import LayoutTerapeuta from '../components/LayoutTerapeuta.jsx';
+import AppLayout from '../components/layout/AppLayout.jsx';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { listarObjetivosDePaciente } from '../services/objetivosService.js';
@@ -37,9 +37,9 @@ export default function PacienteFicha() {
 
   if (cargando) {
     return (
-      <LayoutTerapeuta titulo="Ficha del paciente">
+      <AppLayout titulo="Ficha del paciente">
         <Cargando texto="Cargando la ficha..." />
-      </LayoutTerapeuta>
+      </AppLayout>
     );
   }
 
@@ -47,16 +47,16 @@ export default function PacienteFicha() {
   // de baja". El mensaje distingue cual es, y viene del servidor.
   if (error) {
     return (
-      <LayoutTerapeuta titulo="Ficha del paciente">
+      <AppLayout titulo="Ficha del paciente">
         <EstadoError error={error} onReintentar={recargar} />
-      </LayoutTerapeuta>
+      </AppLayout>
     );
   }
 
   const { paciente, activos, archivados, cupo } = datos;
 
   return (
-    <LayoutTerapeuta titulo={paciente.nombre_completo}>
+    <AppLayout titulo={paciente.nombre_completo}>
       <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
         <Grid container spacing={3}>
           <Grid item xs={6} sm={3}>
@@ -92,7 +92,7 @@ export default function PacienteFicha() {
         </Typography>
         {activos.length === 0 ? (
           <EstadoVacio
-            minHeight={120}
+
             titulo="Sin objetivos activos"
             descripcion="Hay que crear al menos un objetivo para poder cargar evoluciones en las sesiones."
           />
@@ -122,7 +122,7 @@ export default function PacienteFicha() {
 
         {archivados.length === 0 ? (
           <EstadoVacio
-            minHeight={100}
+
             titulo="No hay objetivos archivados"
             descripcion="Cuando se archive un objetivo va a quedar acá, con su historia."
           />
@@ -139,6 +139,6 @@ export default function PacienteFicha() {
           </List>
         )}
       </Paper>
-    </LayoutTerapeuta>
+    </AppLayout>
   );
 }

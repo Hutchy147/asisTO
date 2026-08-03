@@ -1,7 +1,6 @@
 // frontend/src/components/estado/EstadoVacio.jsx
 
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 
 /**
@@ -10,38 +9,44 @@ import Typography from '@mui/material/Typography';
  * Siempre lleva un `titulo` que diga qué falta, y cuando corresponde una
  * acción para resolverlo. Una lista vacía sin explicación se lee como si
  * la pantalla estuviera rota.
+ *
+ * `plano` lo saca de su caja: se usa cuando ya está adentro de una tarjeta
+ * y una segunda caja punteada sobraría.
  */
-export default function EstadoVacio({
-  titulo,
-  descripcion,
-  textoAccion,
-  onAccion,
-  minHeight = 200,
-}) {
+export default function EstadoVacio({ titulo, descripcion, acciones, plano = false }) {
   return (
     <Box
-      sx={{
-        minHeight,
+      sx={(t) => ({
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'center',
         textAlign: 'center',
-        gap: 1,
-        p: 3,
-      }}
+        gap: 1.5,
+        px: 3,
+        py: plano ? 5 : 6,
+        fontFamily: t.typography.fontFamily,
+        ...(plano
+          ? { backgroundColor: 'transparent' }
+          : {
+              backgroundColor: t.palette.superficie.tarjeta,
+              border: `1px dashed ${t.palette.superficie.bordeFuerte}`,
+              borderRadius: `${t.formas.lg}px`,
+            }),
+      })}
     >
-      <Typography variant="h6">{titulo}</Typography>
+      <Typography variant="h3" component="p" sx={{ m: 0 }}>
+        {titulo}
+      </Typography>
       {descripcion && (
-        <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 460 }}>
+        <Typography
+          variant="body1"
+          color="text.secondary"
+          sx={{ maxWidth: '44ch', lineHeight: 1.65, m: 0 }}
+        >
           {descripcion}
         </Typography>
       )}
-      {textoAccion && onAccion && (
-        <Button variant="contained" onClick={onAccion} sx={{ mt: 2 }}>
-          {textoAccion}
-        </Button>
-      )}
+      {acciones && <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>{acciones}</Box>}
     </Box>
   );
 }

@@ -12,8 +12,8 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useNavigate } from 'react-router-dom';
 
-import SesionEstadoChip from '../components/SesionEstadoChip.jsx';
-import LayoutTerapeuta from '../components/LayoutTerapeuta.jsx';
+import SesionEstadoChip from '../components/data/SesionEstadoChip.jsx';
+import AppLayout from '../components/layout/AppLayout.jsx';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { usePeticion } from '../hooks/usePeticion.js';
 import {
@@ -52,7 +52,7 @@ export default function Panel() {
   const abrir = (idSesion) => navigate(`/calendario?sesion=${idSesion}`);
 
   return (
-    <LayoutTerapeuta titulo="Panel">
+    <AppLayout titulo="Panel">
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
           <Paper elevation={1} sx={{ p: 3, height: '100%' }}>
@@ -107,6 +107,6 @@ export default function Panel() {
           </Paper>
         </Grid>
       </Grid>
-    </LayoutTerapeuta>
+    </AppLayout>
   );
 }
