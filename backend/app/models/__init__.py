@@ -14,8 +14,10 @@ from app.models.usuario import Usuario
 from app.models.perfiles import Familiar, Rrhh, Terapeuta
 from app.models.paciente import Paciente
 from app.models.objetivo import ObjetivoTerapeutico
+from app.models.sesion import Sesion
+from app.models.evolucion import Evolucion
 
 __all__ = [
     'Usuario', 'Terapeuta', 'Rrhh', 'Familiar', 'Paciente',
-    'ObjetivoTerapeutico',
+    'ObjetivoTerapeutico', 'Sesion', 'Evolucion',
 ]
