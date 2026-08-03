@@ -19,26 +19,15 @@ const INICIAL = {
 // ficha, y exigirlo en el alta obligaría a inventar algo.
 const OBLIGATORIOS = ['nombre', 'apellido', 'fecha_nacimiento', 'nro_historia'];
 
-/**
- * Qué campo marcar cuando el servidor rechaza.
- *
- * Es PRESENTACIÓN, no validación: el mensaje completo ya se muestra arriba
- * del formulario tal como vino. Esto solo decide dónde poner el borde rojo.
- * Se mira el texto porque la respuesta no trae el campo, así que si el
- * mensaje cambia lo peor que pasa es que no se marque ninguno — el aviso
- * sigue diciendo todo.
- */
-function campoDelRechazo(error) {
-  const mensaje = (error?.message ?? '').toLowerCase();
-  if (mensaje.includes('historia')) return 'nro_historia';
-  return null;
-}
+// Qué campo marcar ante un rechazo lo dice el SERVIDOR, en el campo
+// `campo` de la respuesta de error. Acá no hay nada que decidir: antes
+// había una heurística que miraba el texto del mensaje y se rompía en
+// silencio si el mensaje de un trigger cambiaba.
 
 export default function ModalAltaPaciente({ abierto, onCerrar, onCreado }) {
   const formulario = useFormularioModal({
     inicial: INICIAL,
     obligatorios: OBLIGATORIOS,
-    campoDelRechazo,
     onEnviar: (valores) =>
       crearPaciente({
         nombre: valores.nombre.trim(),

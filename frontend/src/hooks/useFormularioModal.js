@@ -21,9 +21,6 @@ export function useFormularioModal({
   onEnviar,
   onExito,
   onCerrar,
-  // Decide qué campo marcar ante un rechazo del servidor. Ver el comentario
-  // en errorDe(): es presentación, no validación.
-  campoDelRechazo = () => null,
 }) {
   const [valores, setValores] = useState(inicial);
   const [sucio, setSucio] = useState(false);
@@ -60,7 +57,10 @@ export function useFormularioModal({
     [obligatorios, valores]
   );
 
-  const campoRechazado = errorServidor ? campoDelRechazo(errorServidor) : null;
+  // Lo dice el SERVIDOR, en el campo `campo` de la respuesta. El cliente ya
+  // no deduce nada leyendo el mensaje: si el texto de un trigger cambiaba,
+  // la deducción dejaba de marcar el input sin que nadie se enterara.
+  const campoRechazado = errorServidor?.campo ?? null;
 
   /**
    * Error a mostrar en un campo.

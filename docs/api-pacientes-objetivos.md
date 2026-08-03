@@ -34,9 +34,33 @@ Todos los errores tienen la misma forma, sin excepción:
 ```json
 {
   "codigo": "error_aplicacion",
-  "mensaje": "El paciente indicado no existe."
+  "mensaje": "Ya existe un paciente con el numero de historia HC-0001",
+  "campo": "nro_historia"
 }
 ```
+
+**`campo`** identifica el campo del formulario responsable, cuando el
+servidor lo puede determinar. Es **metadato al lado del mensaje**, no una
+reescritura: el texto viaja igual que antes.
+
+Sirve para marcar el input correcto sin que el cliente tenga que deducirlo
+leyendo el mensaje. Es `null` cuando el rechazo no es culpa de un campo en
+particular — el límite de 4 objetivos activos, por ejemplo:
+
+```json
+{
+  "codigo": "error_base_de_datos",
+  "mensaje": "El paciente ya tiene 4 objetivos activos. Archive uno antes de crear otro",
+  "campo": null
+}
+```
+
+Con `campo: null` la interfaz muestra solo el aviso general, que es lo que
+hacía antes de que este campo existiera.
+
+Valores que devuelve hoy: `nro_historia`, `descripcion`, `hora_inicio`,
+`hora_fin`, `id_paciente`, `id_terapeuta`, `id_usuario`, `id_sesion`,
+`id_objetivo`, `valor`.
 
 | `codigo` | Origen |
 |---|---|
@@ -72,6 +96,7 @@ pacientes dados de baja no aparecen.
       "nombre": "Tomas",
       "nombre_completo": "Tomas Aguirre",
       "nro_historia": "HC-0001",
+      "fecha_alta": "2026-03-02",
       "objetivos_activos": 3,
       "tiene_login": false
     },
@@ -84,6 +109,7 @@ pacientes dados de baja no aparecen.
       "nombre": "Camila",
       "nombre_completo": "Camila Rios",
       "nro_historia": "HC-0003",
+      "fecha_alta": "2026-04-06",
       "objetivos_activos": 1,
       "tiene_login": true
     }
@@ -95,6 +121,8 @@ pacientes dados de baja no aparecen.
 Notas para el diseño de la pantalla:
 
 - `objetivos_activos` va de **0 a 4**. El máximo es 4 (regla de negocio).
+- `fecha_alta` es desde cuándo está en tratamiento. Sirve para el
+  *"en tratamiento desde…"* de la ficha y para contar altas del mes.
 - `tiene_login` es `false` para los pacientes sin credenciales — típicamente
   menores. **No es un dato faltante ni un error a mostrar:** es un estado
   válido y frecuente. La ficha clínica está completa igual.
@@ -229,30 +257,59 @@ del cupo.
   "activos": [
     {
       "activo": true,
-      "descripcion": "Objetivo numero 2",
+      "descripcion": "Mejorar la precision en actividades de motricidad fina",
       "fecha_archivado": null,
-      "fecha_creacion": "2026-07-30T09:57:43",
-      "id": 11,
-      "id_paciente": 4
+      "fecha_creacion": "2026-05-04T00:15:00",
+      "id": 1,
+      "id_paciente": 1,
+      "seguimiento": {
+        "ultimo_valor": 5,
+        "fecha_ultima_evolucion": "2026-07-14",
+        "total_evoluciones": 14
+      }
     }
   ],
   "archivados": [
     {
       "activo": false,
-      "descripcion": "Sostener el lapiz con pinza tripode",
-      "fecha_archivado": "2026-07-30T09:57:43",
-      "fecha_creacion": "2026-07-30T09:57:43",
-      "id": 8,
-      "id_paciente": 4
+      "descripcion": "Realizar actividades de la vida diaria de forma autonoma",
+      "fecha_archivado": "2026-08-03T19:53:21",
+      "fecha_creacion": "2026-05-04T01:00:00",
+      "id": 12,
+      "id_paciente": 3,
+      "seguimiento": {
+        "ultimo_valor": 2,
+        "fecha_ultima_evolucion": "2026-07-16",
+        "total_evoluciones": 16
+      }
     }
   ],
   "cupo": {
-    "disponibles": 0,
+    "disponibles": 1,
     "maximo": 4,
-    "usados": 4
+    "usados": 3
   }
 }
 ```
+
+### `seguimiento` — última calificación y acumulado
+
+Lo trae **cada objetivo, activo o archivado**:
+
+| Campo | Qué es |
+|---|---|
+| `ultimo_valor` | Última calificación (1 a 5). `null` si nunca se calificó. |
+| `fecha_ultima_evolucion` | Fecha de la **sesión** de esa calificación. `null` si no hay. |
+| `total_evoluciones` | Cuántas veces se calificó en total. |
+
+**"Última" se ordena por fecha y hora de la sesión, no por cuándo se cargó
+la evolución.** Importa cuándo ocurrió la sesión, no cuándo el terapeuta se
+sentó a registrarla.
+
+Para la interfaz: `ultimo_valor: null` con `total_evoluciones: 0` es un
+objetivo recién creado, no un error. Un archivado con
+`total_evoluciones` alto es justamente el caso que hay que poder consultar
+—por eso archivar no borra—.
 
 `cupo` está pensado para la interfaz: permite deshabilitar el botón de
 "nuevo objetivo" **antes** de intentar el alta, y mostrar algo tipo "3 de 4".
@@ -410,6 +467,7 @@ clínicos no se borran.
 | GET | `/api/pacientes` | `200` |
 | POST | `/api/pacientes` | `201` |
 | GET | `/api/pacientes/<id>` | `200` |
+| GET | `/api/pacientes/<id>/sesiones` | `200` — ver el otro contrato |
 | GET | `/api/objetivos/paciente/<id>` | `200` |
 | POST | `/api/objetivos` | `201` |
 | PUT | `/api/objetivos/<id>` | `200` |

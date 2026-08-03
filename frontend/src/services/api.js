@@ -26,10 +26,15 @@ const CODIGOS_SESION_INVALIDA = [
  * empeorarlos, y ademas los desincroniza cuando cambian en la base.
  */
 export class ErrorApi extends Error {
-  constructor(mensaje, { codigo, status, datos } = {}) {
+  constructor(mensaje, { codigo, campo, status, datos } = {}) {
     super(mensaje);
     this.name = 'ErrorApi';
     this.codigo = codigo ?? null;
+    // Campo del formulario responsable, cuando el servidor lo pudo
+    // determinar. Es metadato al lado del mensaje: el cliente NO deduce
+    // nada mirando el texto, que es lo que hacía antes y se rompía si el
+    // mensaje de un trigger cambiaba.
+    this.campo = campo ?? null;
     this.status = status ?? null;
     this.datos = datos ?? null;
   }
@@ -138,6 +143,7 @@ export async function request(path, options = {}) {
 
     throw new ErrorApi(payload?.mensaje ?? `Error ${response.status}`, {
       codigo,
+      campo: payload?.campo,
       status: response.status,
       datos: payload,
     });

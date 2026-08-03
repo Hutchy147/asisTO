@@ -9,6 +9,7 @@
 
 import logging
 
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app import db
@@ -35,12 +36,77 @@ def _traducir_duplicado(error):
     puede afirmar "activo" sin consultar nada.
     """
     if obtener_errno(error) == ERRNO_DUPLICADO:
-        return ErrorAplicacion(MENSAJE_DESCRIPCION_DUPLICADA, http_status=409)
+        return ErrorAplicacion(
+            MENSAJE_DESCRIPCION_DUPLICADA, http_status=409, campo='descripcion'
+        )
     return None
 
 
+def _seguimiento_de_activos(id_paciente):
+    """
+    Ultima calificacion y total por objetivo ACTIVO, desde la vista.
+
+    Se usa v_objetivos_activos en vez de recalcularlo: la vista ya define
+    que "ultimo" se ordena por fecha y hora de la SESION y no por
+    fecha_registro de la evolucion — importa cuando ocurrio la sesion, no
+    cuando se cargo. Reescribir ese criterio en Python daria dos versiones
+    que pueden divergir.
+    """
+    filas = db.session.execute(
+        text(
+            'SELECT id_objetivo, ultimo_valor, fecha_ultima_evolucion, '
+            '       total_evoluciones '
+            '  FROM v_objetivos_activos WHERE id_paciente = :id'
+        ),
+        {'id': id_paciente},
+    ).all()
+
+    return {
+        fila[0]: {
+            'ultimo_valor': int(fila[1]) if fila[1] is not None else None,
+            'fecha_ultima_evolucion': fila[2].isoformat() if fila[2] else None,
+            'total_evoluciones': int(fila[3]),
+        }
+        for fila in filas
+    }
+
+
+def _seguimiento_de_archivados(id_paciente):
+    """
+    Lo mismo para los ARCHIVADOS.
+
+    La vista filtra por activo = TRUE, asi que no puede servirlos. Se
+    consulta aparte con el mismo criterio de "ultimo", que se mantiene
+    alineado a mano con la definicion de la vista en schema.sql.
+    """
+    filas = db.session.execute(
+        text(
+            'SELECT o.id, '
+            '  (SELECT e.valor FROM evoluciones e JOIN sesiones s ON s.id = e.id_sesion '
+            '    WHERE e.id_objetivo = o.id '
+            '    ORDER BY s.fecha DESC, s.hora_inicio DESC, e.id DESC LIMIT 1) AS ultimo_valor, '
+            '  (SELECT s.fecha FROM evoluciones e JOIN sesiones s ON s.id = e.id_sesion '
+            '    WHERE e.id_objetivo = o.id '
+            '    ORDER BY s.fecha DESC, s.hora_inicio DESC, e.id DESC LIMIT 1) AS fecha_ultima, '
+            '  (SELECT COUNT(*) FROM evoluciones e WHERE e.id_objetivo = o.id) AS total '
+            'FROM objetivos_terapeuticos o '
+            'WHERE o.id_paciente = :id AND o.activo = FALSE'
+        ),
+        {'id': id_paciente},
+    ).all()
+
+    return {
+        fila[0]: {
+            'ultimo_valor': int(fila[1]) if fila[1] is not None else None,
+            'fecha_ultima_evolucion': fila[2].isoformat() if fila[2] else None,
+            'total_evoluciones': int(fila[3]),
+        }
+        for fila in filas
+    }
+
+
 def listar_por_paciente(id_paciente):
-    """Objetivos separados en activos y archivados."""
+    """Objetivos separados en activos y archivados, con su seguimiento."""
     paciente = obtener_paciente(id_paciente)
 
     objetivos = (
@@ -50,8 +116,21 @@ def listar_por_paciente(id_paciente):
         .all()
     )
 
-    activos = [o.to_dict() for o in objetivos if o.activo]
-    archivados = [o.to_dict() for o in objetivos if not o.activo]
+    seguimiento = {
+        **_seguimiento_de_activos(paciente.id),
+        **_seguimiento_de_archivados(paciente.id),
+    }
+
+    def con_seguimiento(objetivo):
+        datos = objetivo.to_dict()
+        datos['seguimiento'] = seguimiento.get(
+            objetivo.id,
+            {'ultimo_valor': None, 'fecha_ultima_evolucion': None, 'total_evoluciones': 0},
+        )
+        return datos
+
+    activos = [con_seguimiento(o) for o in objetivos if o.activo]
+    archivados = [con_seguimiento(o) for o in objetivos if not o.activo]
 
     return {
         'paciente': paciente.to_dict_clinico(),

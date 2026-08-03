@@ -67,6 +67,9 @@ class Paciente(db.Model):
             'nro_historia': self.nro_historia,
             'activo': bool(self.activo),
             'tiene_login': self.tiene_login,
+            # Desde cuando esta en tratamiento. No es contenido clinico:
+            # es la fecha administrativa del alta.
+            'fecha_alta': self.fecha_alta.isoformat() if self.fecha_alta else None,
         }
 
     def to_dict_clinico(self):

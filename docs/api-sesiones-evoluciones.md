@@ -54,23 +54,28 @@ solo uno, el otro se completa con esa misma ventana.
   "total": 7,
   "sesiones": [
     {
-      "id": 1,
-      "id_terapeuta": 1,
+      "id": 623,
+      "id_terapeuta": 2,
       "id_paciente": 1,
-      "fecha": "2026-06-02",
-      "hora_inicio": "09:00:00",
-      "hora_fin": "10:00:00",
-      "estado": "completa",
-      "notas": "Buena disposicion. Trabajamos con masa y pinzas de ropa.",
-      "fecha_registro": "2026-08-02T22:20:06",
+      "fecha": "2026-07-17",
+      "hora_inicio": "11:00:00",
+      "hora_fin": "12:00:00",
+      "estado": "incompleta",
+      "notas": "Se trabajo parcialmente, la sesion se corto antes.",
+      "fecha_registro": "2026-08-03T19:53:20",
       "admite_evolucion": true,
       "tiene_evolucion": true,
+      "objetivos": { "calificados": 1, "total": 3 },
       "paciente": {
         "id": 1,
         "nombre": "Tomas",
         "apellido": "Aguirre",
         "nombre_completo": "Tomas Aguirre",
         "nro_historia": "HC-0001"
+      },
+      "terapeuta": {
+        "id": 2,
+        "nombre_completo": "Diego Moyano"
       }
     }
   ]
@@ -79,10 +84,13 @@ solo uno, el otro se completa con esa misma ventana.
 
 Campos calculados, pensados para el calendario:
 
-- **`estado`** — `completa`, `incompleta` o `ausencia`.
+- **`estado`** — `completa`, `incompleta` o `ausencia`. **Son los tres del
+  ENUM y no hay más.** No existe un estado "pendiente" ni "futura".
 - **`admite_evolucion`** — `false` cuando el estado es `ausencia`. Es la
   regla 2: sobre una ausencia no se puede cargar evolución.
 - **`tiene_evolucion`** — si ya tiene al menos una cargada.
+- **`objetivos`** — `{ calificados, total }`. Ver abajo.
+- **`terapeuta`** — quién atendió, con nombre para mostrar.
 
 La combinación de esos dos es lo que define el estado visual de cada sesión:
 
@@ -91,6 +99,28 @@ La combinación de esos dos es lo que define el estado visual de cada sesión:
 | `true` | `false` | Falta cargar evolución |
 | `true` | `true` | Completa |
 | `false` | `false` | Ausencia — no corresponde cargar |
+
+### `objetivos` — "3 de 4"
+
+Es el dato más repetido de la interfaz: cuántos objetivos se calificaron en
+esa sesión sobre cuántos había.
+
+**El denominador son los objetivos activos AL MOMENTO DE LA SESIÓN, no los
+activos hoy.** Para un historial es lo único que tiene sentido: una sesión
+de marzo donde se calificaron 3 de 3 no puede pasar a "3 de 1" porque desde
+entonces se archivaron dos objetivos. Con el denominador de hoy, el pasado
+cambiaría solo cada vez que alguien archiva algo.
+
+Se reconstruye con `fecha_creacion` y `fecha_archivado` del objetivo.
+
+> **Limitación conocida.** Si un objetivo se archivó, se reactivó y se
+> volvió a archivar, solo sobrevive la última `fecha_archivado`, así que el
+> total de las sesiones del primer tramo puede quedar corto. Es un caso raro
+> y resolverlo requeriría una tabla de historial de estados, que no se
+> justifica para esta entrega.
+
+En una **ausencia** el par viene igual (normalmente `0 de N`), pero no
+corresponde calificar nada: la pantalla lo muestra como `—`.
 
 **Errores**
 
@@ -167,6 +197,60 @@ es que no pueden tenerla.
 
 Es la lista de "trabajo pendiente" del terapeuta. `total` sirve directamente
 como número de aviso en el panel.
+
+---
+
+## `GET /api/pacientes/<id>/sesiones`
+
+Historial completo de sesiones del paciente, de la más reciente a la más
+vieja. Es lo que alimenta la pestaña **Sesiones** de la ficha.
+
+**Devuelve las sesiones de TODOS los terapeutas**, no solo las del logueado.
+Es coherente con la regla de autoría del módulo: la lectura es abierta y lo
+restringido es cargar evolución. Filtrar por terapeuta acá mostraría media
+historia clínica, que es peor que mostrarla entera.
+
+**200 OK** (recortado)
+
+```json
+{
+  "paciente": {
+    "id": 1,
+    "nombre_completo": "Tomas Aguirre",
+    "nro_historia": "HC-0001",
+    "fecha_alta": "2026-03-02",
+    "fecha_nacimiento": "2015-03-12",
+    "diagnostico": "Trastorno del procesamiento sensorial. Dificultades en motricidad fina.",
+    "activo": true,
+    "tiene_login": false
+  },
+  "total": 44,
+  "sesiones": [
+    {
+      "id": 623,
+      "fecha": "2026-07-17",
+      "hora_inicio": "11:00:00",
+      "hora_fin": "12:00:00",
+      "estado": "incompleta",
+      "admite_evolucion": true,
+      "tiene_evolucion": true,
+      "objetivos": { "calificados": 1, "total": 3 },
+      "terapeuta": { "id": 2, "nombre_completo": "Diego Moyano" },
+      "paciente": {
+        "id": 1,
+        "nombre_completo": "Tomas Aguirre",
+        "nro_historia": "HC-0001"
+      }
+    }
+  ]
+}
+```
+
+Cada sesión trae la misma forma que en los otros listados, así que la tabla
+del historial y la del calendario comparten el mismo componente de fila.
+
+**Errores:** los mismos 404 que `GET /api/pacientes/<id>` — "no existe" y
+"está dado de baja", con mensajes distintos.
 
 ---
 
@@ -402,6 +486,7 @@ conserva. La pantalla debería mostrarlo como histórico, no como error.
 | GET | `/api/sesiones?desde=&hasta=` | `200` |
 | GET | `/api/sesiones/hoy` | `200` |
 | GET | `/api/sesiones/pendientes-evolucion` | `200` |
+| GET | `/api/pacientes/<id>/sesiones` | `200` |
 | POST | `/api/sesiones` | `201` |
 | GET | `/api/sesiones/<id>` | `200` |
 | POST | `/api/evoluciones` | `201` |

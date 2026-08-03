@@ -52,12 +52,18 @@ class ErrorAplicacion(Exception):
 
     Lo que llegue aca se devuelve tal cual al cliente, asi que el mensaje
     tiene que estar escrito para una persona, no para un desarrollador.
+
+    `campo` identifica el campo del formulario responsable, cuando se puede
+    determinar. Es METADATO al lado del mensaje, no una reescritura: el
+    texto sigue viajando igual. Sirve para que el cliente marque el input
+    correcto sin tener que adivinar leyendo el mensaje.
     """
 
-    def __init__(self, mensaje, http_status=400):
+    def __init__(self, mensaje, http_status=400, campo=None):
         super().__init__(mensaje)
         self.mensaje = mensaje
         self.http_status = http_status
+        self.campo = campo
 
 
 def obtener_errno(error):
@@ -75,6 +81,55 @@ def obtener_texto_signal(error):
     argumentos = getattr(original, 'args', None)
     if argumentos and len(argumentos) > 1 and isinstance(argumentos[1], str):
         return argumentos[1]
+    return None
+
+
+# --- Campo responsable de un rechazo -------------------------------------
+#
+# Qué campo del formulario marcar cuando el servidor rechaza. Viaja como
+# metadato junto al mensaje, que NO se toca.
+#
+# El mapeo se hace por fragmento del mensaje, y eso tiene una condición:
+# **si se cambia el texto de un trigger o de un procedimiento, hay que
+# cambiar la entrada de esta tabla en el mismo commit.** Que viva acá y no
+# en el cliente es justamente lo que lo hace sostenible: el mensaje y su
+# mapeo están en el mismo repositorio y se editan juntos. El frontend no
+# tiene por qué conocer los textos de la base.
+#
+# Si un mensaje cambia y esta tabla queda vieja, degrada bien: no se marca
+# ningún campo y el aviso de arriba sigue diciendo todo.
+CAMPO_POR_FRAGMENTO = (
+    ('numero de historia', 'nro_historia'),
+    ('ya existe un paciente con ese numero', 'nro_historia'),
+    ('objetivo activo con esa descripcion', 'descripcion'),
+    ('se superponen con ese horario', 'hora_inicio'),
+    ('hora de fin debe ser posterior', 'hora_fin'),
+    ('el paciente indicado no existe', 'id_paciente'),
+    ('el terapeuta indicado no existe', 'id_terapeuta'),
+    ('el usuario indicado no existe', 'id_usuario'),
+    ('la sesion indicada no existe', 'id_sesion'),
+    ('el objetivo indicado no existe', 'id_objetivo'),
+    ('valor de la evolucion', 'valor'),
+    ('no pertenece al paciente de esta sesion', 'id_objetivo'),
+    ('objetivo archivado', 'id_objetivo'),
+    ('ya existe una evolucion para ese objetivo', 'id_objetivo'),
+)
+
+
+def campo_para_mensaje(mensaje):
+    """
+    Campo del formulario responsable, o None si no se puede determinar.
+
+    None es una respuesta válida y frecuente: el límite de 4 objetivos
+    activos, por ejemplo, no es culpa de ningún campo en particular.
+    """
+    if not mensaje:
+        return None
+
+    texto = mensaje.lower()
+    for fragmento, campo in CAMPO_POR_FRAGMENTO:
+        if fragmento in texto:
+            return campo
     return None
 
 

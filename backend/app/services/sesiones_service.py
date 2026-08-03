@@ -5,7 +5,7 @@ import datetime as dt
 import logging
 
 from flask import g
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from app import db
 from app.models import Evolucion, ObjetivoTerapeutico, Paciente, Sesion, Terapeuta, Usuario
@@ -84,40 +84,91 @@ def resolver_rango(desde, hasta):
     return fecha_desde, fecha_hasta
 
 
-def _ids_de_sesiones_con_evolucion(ids_sesion):
-    """Set de id_sesion que ya tienen al menos una evolucion cargada."""
+def _conteo_de_objetivos(ids_sesion):
+    """
+    Por sesion: cuantos objetivos se calificaron sobre cuantos habia.
+
+    EL DENOMINADOR ES "objetivos activos AL MOMENTO DE LA SESION", no los
+    activos hoy. Para un historial es lo unico que tiene sentido: una sesion
+    de marzo donde se calificaron 3 de 3 no pasa a ser "3 de 1" porque desde
+    entonces se archivaron dos objetivos. Con el denominador de hoy, el
+    pasado cambiaria solo.
+
+    Se reconstruye con fecha_creacion y fecha_archivado, que ya estan en la
+    tabla: un objetivo estaba activo en T si se creo antes de T y todavia no
+    estaba archivado en T.
+
+    LIMITACION CONOCIDA: si un objetivo se archivo, se reactivo y se volvio
+    a archivar, solo sobrevive la ultima fecha_archivado, asi que el conteo
+    de las sesiones del primer tramo puede quedar corto. Es un caso raro y
+    la alternativa —una tabla de historial de estados— no se justifica para
+    esta entrega.
+
+    Una sola consulta para todas las sesiones, no una por sesion.
+    """
     if not ids_sesion:
-        return set()
+        return {}
+
+    filas = db.session.execute(
+        text(
+            'SELECT s.id, '
+            '  (SELECT COUNT(*) FROM evoluciones e WHERE e.id_sesion = s.id) AS calificados, '
+            '  (SELECT COUNT(*) FROM objetivos_terapeuticos o '
+            '     WHERE o.id_paciente = s.id_paciente '
+            '       AND o.fecha_creacion <= TIMESTAMP(s.fecha, s.hora_inicio) '
+            '       AND (o.activo = TRUE '
+            '            OR o.fecha_archivado > TIMESTAMP(s.fecha, s.hora_inicio))) AS total '
+            'FROM sesiones s WHERE s.id IN :ids'
+        ).bindparams(bindparam('ids', expanding=True)),
+        {'ids': list(ids_sesion)},
+    ).all()
+
+    return {fila[0]: {'calificados': int(fila[1]), 'total': int(fila[2])} for fila in filas}
+
+
+def _nombres_de_terapeutas(ids_terapeuta):
+    """{id_terapeuta: nombre completo} en una sola consulta."""
+    if not ids_terapeuta:
+        return {}
     filas = (
-        db.session.query(Evolucion.id_sesion)
-        .filter(Evolucion.id_sesion.in_(ids_sesion))
-        .distinct()
+        db.session.query(Terapeuta.id, Usuario.nombre, Usuario.apellido)
+        .join(Usuario, Usuario.id == Terapeuta.id_usuario)
+        .filter(Terapeuta.id.in_(list(ids_terapeuta)))
         .all()
     )
-    return {fila[0] for fila in filas}
+    return {fila[0]: f'{fila[1]} {fila[2]}' for fila in filas}
 
 
 def _serializar_lista(sesiones):
-    """Sesiones + paciente + si ya tienen evolucion, sin N+1 consultas."""
+    """Sesiones + paciente + terapeuta + avance de calificacion.
+
+    Todo lo agregado se resuelve con tres consultas fijas, no con una por
+    sesion.
+    """
     ids = [s.id for s in sesiones]
-    con_evolucion = _ids_de_sesiones_con_evolucion(ids)
+    conteos = _conteo_de_objetivos(ids)
+    nombres = _nombres_de_terapeutas({s.id_terapeuta for s in sesiones})
 
     resultado = []
     for sesion in sesiones:
+        conteo = conteos.get(sesion.id, {'calificados': 0, 'total': 0})
         datos = sesion.to_dict()
-        datos['tiene_evolucion'] = sesion.id in con_evolucion
-        # Puede cargarse evolucion? Depende del estado y de que no la tenga
-        # ya para TODOS sus objetivos; aca se informa el caso simple, que es
-        # el que necesita el listado.
-        datos['admite_evolucion'] = (
-            sesion.estado in ESTADOS_CON_EVOLUCION
-        )
+        datos['tiene_evolucion'] = conteo['calificados'] > 0
+        datos['admite_evolucion'] = sesion.estado in ESTADOS_CON_EVOLUCION
+        # "3 de 4" — el dato mas repetido de la interfaz. En una ausencia no
+        # corresponde calificar nada, asi que se informa igual pero la
+        # pantalla lo muestra como "—".
+        datos['objetivos'] = conteo
         datos['paciente'] = {
             'id': sesion.paciente.id,
             'nombre': sesion.paciente.nombre,
             'apellido': sesion.paciente.apellido,
             'nombre_completo': sesion.paciente.nombre_completo,
             'nro_historia': sesion.paciente.nro_historia,
+        }
+        datos['terapeuta'] = {
+            'id': sesion.id_terapeuta,
+            'nombre_completo': nombres.get(sesion.id_terapeuta),
         }
         resultado.append(datos)
     return resultado
@@ -200,6 +251,36 @@ def listar_pendientes_de_evolucion():
     }
 
 
+def listar_por_paciente(id_paciente):
+    """
+    Historial completo de sesiones de un paciente, de la mas reciente a la
+    mas vieja.
+
+    Devuelve las de TODOS los terapeutas, no solo las del logueado. Es
+    coherente con la decision de autoria que ya rige el modulo: la lectura
+    es abierta a cualquier terapeuta y lo restringido es cargar evolucion.
+    Filtrar por terapeuta aca mostraria media historia clinica, que es peor
+    que mostrarla entera.
+    """
+    # Valida que exista y no este dado de baja, con el 404 correspondiente
+    from app.services.pacientes_service import obtener_paciente
+
+    paciente = obtener_paciente(id_paciente)
+
+    sesiones = (
+        Sesion.query
+        .filter(Sesion.id_paciente == paciente.id)
+        .order_by(Sesion.fecha.desc(), Sesion.hora_inicio.desc())
+        .all()
+    )
+
+    return {
+        'paciente': paciente.to_dict_clinico(),
+        'sesiones': _serializar_lista(sesiones),
+        'total': len(sesiones),
+    }
+
+
 def obtener_sesion(id_sesion):
     sesion = Sesion.query.get(id_sesion)
     if sesion is None:
@@ -241,10 +322,15 @@ def obtener_detalle(id_sesion):
         .first()
     )
 
+    conteo = _conteo_de_objetivos([sesion.id]).get(
+        sesion.id, {'calificados': 0, 'total': 0}
+    )
+
     datos = sesion.to_dict()
     datos['tiene_evolucion'] = len(evoluciones) > 0
     datos['admite_evolucion'] = sesion.estado in ESTADOS_CON_EVOLUCION
     datos['es_propia'] = sesion.id_terapeuta == terapeuta_actual().id
+    datos['objetivos'] = conteo
 
     return {
         'sesion': datos,

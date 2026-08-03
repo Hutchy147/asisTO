@@ -55,23 +55,30 @@ def registrar_manejadores_de_error(app):
     {"mensaje": "...", "codigo": "..."} — asi el frontend las maneja en un
     solo lugar en vez de adivinar el formato segun el endpoint.
     """
-    from app.utils.errors import ErrorAplicacion, traducir_error_db
+    from app.utils.errors import (
+        ErrorAplicacion, campo_para_mensaje, traducir_error_db,
+    )
 
     @app.errorhandler(ErrorAplicacion)
     def manejar_error_aplicacion(error):
-        # Mensaje de negocio: escrito para el usuario, se devuelve tal cual
+        # Mensaje de negocio: escrito para el usuario, se devuelve tal cual.
+        # `campo` es metadato al lado, para que el cliente marque el input
+        # correcto sin adivinar leyendo el texto.
         return jsonify({
             'mensaje': error.mensaje,
             'codigo': 'error_aplicacion',
+            'campo': error.campo or campo_para_mensaje(error.mensaje),
         }), error.http_status
 
     @app.errorhandler(SQLAlchemyError)
     def manejar_error_db(error):
         # El crudo se loguea dentro de traducir_error_db y NO sale de aca
         db.session.rollback()
+        mensaje = traducir_error_db(error)
         return jsonify({
-            'mensaje': traducir_error_db(error),
+            'mensaje': mensaje,
             'codigo': 'error_base_de_datos',
+            'campo': campo_para_mensaje(mensaje),
         }), 400
 
     @app.errorhandler(404)
