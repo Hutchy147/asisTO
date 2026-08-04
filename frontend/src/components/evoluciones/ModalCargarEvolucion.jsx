@@ -3,6 +3,7 @@
 // El modal más importante del sistema: acá ocurre el seguimiento
 // terapéutico. Tiene tres caminos y solo uno muestra el formulario.
 
+import { useMemo } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import FormControlLabel from '@mui/material/FormControlLabel';
@@ -17,6 +18,7 @@ import AvisoSesionSinEvolucion from '../avisos/AvisoSesionSinEvolucion.jsx';
 import AvisoSinObjetivosActivos from '../avisos/AvisoSinObjetivosActivos.jsx';
 import CampoTexto from '../forms/CampoTexto.jsx';
 import ModalFormulario from '../modal/ModalFormulario.jsx';
+import Aviso from '../estado/Aviso.jsx';
 import { Cargando, EstadoError } from '../estado/index.js';
 import { useFormularioModal } from '../../hooks/useFormularioModal.js';
 import { usePeticion } from '../../hooks/usePeticion.js';
@@ -42,6 +44,21 @@ export default function ModalCargarEvolucion({ abierto, idSesion, onCerrar, onCa
   const sesion = datos?.sesion;
   const objetivos = datos?.objetivos_activos ?? [];
 
+  // Qué objetivos ya se calificaron EN ESTA SESIÓN. El dato viene embebido
+  // en el detalle, no hace falta pedirlo aparte.
+  //
+  // Sin esto el modal ofrecía elegir un objetivo ya calificado y el
+  // servidor lo rechazaba con "Ya existe una evolucion para ese objetivo
+  // en esa sesion". Un camino que siempre falla, visible en la interfaz:
+  // exactamente lo que este proyecto viene evitando.
+  const yaCalificados = useMemo(() => {
+    const mapa = new Map();
+    (datos?.evoluciones ?? []).forEach((e) => mapa.set(e.id_objetivo, e));
+    return mapa;
+  }, [datos]);
+
+  const disponibles = objetivos.filter((o) => !yaCalificados.has(o.id));
+
   const formulario = useFormularioModal({
     inicial: { id_objetivo: '', valor: '', observaciones: '' },
     obligatorios: ['id_objetivo', 'valor'],
@@ -65,8 +82,12 @@ export default function ModalCargarEvolucion({ abierto, idSesion, onCerrar, onCa
   const esDeOtro = sesion?.es_propia === false;
   const noAdmite = sesion && !sesion.admite_evolucion;
   const sinObjetivos = sesion && !esDeOtro && !noAdmite && objetivos.length === 0;
-  // Ninguno de los tres se resuelve desde este modal
-  const soloCerrar = Boolean(esDeOtro || noAdmite || sinObjetivos);
+  // Todos los objetivos activos ya tienen su evolución en esta sesión: no
+  // queda nada para elegir, y no es un error sino trabajo terminado.
+  const todosCalificados =
+    sesion && !esDeOtro && !noAdmite && objetivos.length > 0 && disponibles.length === 0;
+  // Ninguno de los cuatro se resuelve desde este modal
+  const soloCerrar = Boolean(esDeOtro || noAdmite || sinObjetivos || todosCalificados);
 
   const subtitulo = datos
     ? `${datos.paciente.nombre_completo} · ${formatearFecha(sesion.fecha)} · ${sesion.hora_inicio?.slice(0, 5)}`
@@ -101,6 +122,14 @@ export default function ModalCargarEvolucion({ abierto, idSesion, onCerrar, onCa
           )}
           {noAdmite && <AvisoSesionSinEvolucion sesion={sesion} />}
           {sinObjetivos && <AvisoSinObjetivosActivos objetivosActivos={objetivos} />}
+          {todosCalificados && (
+            <Aviso severidad="success" titulo="Esta sesión ya está completa">
+              {objetivos.length === 1
+                ? `El único objetivo activo de ${datos.paciente.nombre} ya tiene su evolución cargada en esta sesión.`
+                : `Los ${objetivos.length} objetivos activos de ${datos.paciente.nombre} ya tienen su evolución cargada en esta sesión.`}{' '}
+              No queda nada por calificar.
+            </Aviso>
+          )}
 
           {sinObjetivos && (
             <Box sx={{ display: 'flex', justifyContent: 'center', pb: 1 }}>
@@ -126,25 +155,33 @@ export default function ModalCargarEvolucion({ abierto, idSesion, onCerrar, onCa
                   value={valores.id_objetivo}
                   onChange={(evento) => setValor('id_objetivo', evento.target.value)}
                 >
-                  {objetivos.map((objetivo) => (
-                    <FormControlLabel
-                      key={objetivo.id}
-                      value={String(objetivo.id)}
-                      disabled={guardando}
-                      control={<Radio size="small" />}
-                      sx={{ alignItems: 'flex-start', mb: 0.5 }}
-                      label={
-                        <Box sx={{ py: 0.25 }}>
-                          <Box component="span" sx={{ fontSize: 14, lineHeight: 1.4 }}>
-                            {objetivo.descripcion}
+                  {objetivos.map((objetivo) => {
+                    const yaCargada = yaCalificados.get(objetivo.id);
+                    return (
+                      <FormControlLabel
+                        key={objetivo.id}
+                        value={String(objetivo.id)}
+                        // Un objetivo ya calificado en esta sesión no se
+                        // puede volver a calificar: la UNIQUE lo rechaza.
+                        // Se deja visible, para que se vea qué se trabajó.
+                        disabled={guardando || Boolean(yaCargada)}
+                        control={<Radio size="small" />}
+                        sx={{ alignItems: 'flex-start', mb: 0.5 }}
+                        label={
+                          <Box sx={{ py: 0.25 }}>
+                            <Box component="span" sx={{ fontSize: 14, lineHeight: 1.4 }}>
+                              {objetivo.descripcion}
+                            </Box>
+                            <Typography variant="caption" sx={{ display: 'block' }}>
+                              {yaCargada
+                                ? `Ya calificado en esta sesión: ${etiquetaDeValor(yaCargada.valor)}`
+                                : textoUltima(objetivo.seguimiento)}
+                            </Typography>
                           </Box>
-                          <Typography variant="caption" sx={{ display: 'block' }}>
-                            {textoUltima(objetivo.seguimiento)}
-                          </Typography>
-                        </Box>
-                      }
-                    />
-                  ))}
+                        }
+                      />
+                    );
+                  })}
                 </RadioGroup>
                 {validado && !valores.id_objetivo && (
                   <Typography variant="caption" color="error">

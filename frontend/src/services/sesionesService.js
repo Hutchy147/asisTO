@@ -7,12 +7,16 @@ export const ESTADO_COMPLETA = 'completa';
 export const ESTADO_INCOMPLETA = 'incompleta';
 export const ESTADO_AUSENCIA = 'ausencia';
 
-export const ESTADOS_SESION = [ESTADO_COMPLETA, ESTADO_INCOMPLETA, ESTADO_AUSENCIA];
-
-// Tope que aplica el servidor. Se replica aca solo para avisar antes de
-// mandar una request que ya se sabe que va a fallar; la validacion real es
-// del backend.
-export const MAXIMO_DIAS_RANGO = 366;
+// Se borraron de aca:
+//
+//   ESTADOS_SESION
+//     El array de los tres estados. Lo que se usa en la practica es
+//     ETIQUETA_ESTADO (mas abajo), que ademas trae el texto para mostrar.
+//
+//   MAXIMO_DIAS_RANGO
+//     Copiaba el tope de 366 dias del servidor para avisar antes de mandar
+//     una request condenada. Ninguna pantalla arma un rango tan amplio: el
+//     calendario pide de a una semana. El tope real lo aplica el backend.
 
 /**
  * Sesiones del terapeuta logueado en el rango.
@@ -81,16 +85,20 @@ export function obtenerSesion(idSesion) {
   return get(`/sesiones/${idSesion}`);
 }
 
-/** Estado visual de una sesion, segun la tabla del contrato. */
-export function estadoDeCarga(sesion) {
-  if (!sesion.admite_evolucion) return 'no_corresponde';
-  return sesion.tiene_evolucion ? 'completa' : 'pendiente';
-}
-
-/** true si el terapeuta logueado puede cargarle evolucion a esta sesion. */
-export function puedeCargarEvolucion(sesion) {
-  return Boolean(sesion?.admite_evolucion) && sesion?.es_propia !== false;
-}
+// Se borraron de aca, y el segundo importa:
+//
+//   estadoDeCarga(sesion)
+//     Categorizacion de tres vias, superada por el booleano faltaEvolucion.
+//
+//   puedeCargarEvolucion(sesion)
+//     NO era solo codigo sin usar: estaba MAL. Devolvia true para una
+//     sesion cuyo paciente no tiene ningun objetivo activo, cuando en los
+//     hechos no se puede cargar nada ahi. La pregunta "puedo cargar
+//     evolucion aca?" tiene una sola respuesta valida y vive en
+//     ModalCargarEvolucion, que ademas necesita saber CUAL de los tres
+//     motivos aplica para mostrar el aviso correcto — un booleano no
+//     alcanza. Dejar la version equivocada disponible era esperar a que
+//     alguien la reusara en una pantalla nueva.
 
 /**
  * Sesion ocurrida, con estado que admite evolucion, y sin ninguna cargada:

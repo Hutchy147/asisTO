@@ -98,21 +98,49 @@ def obtener_texto_signal(error):
 #
 # Si un mensaje cambia y esta tabla queda vieja, degrada bien: no se marca
 # ningún campo y el aviso de arriba sigue diciendo todo.
+#
+# EL ORDEN IMPORTA: gana el primer fragmento que aparezca en el mensaje.
+# Los mas especificos van arriba.
+#
+# La tabla se contrasto contra los 51 mensajes que el sistema puede emitir
+# —los SIGNAL de los triggers, los p_mensaje de los procedimientos y los
+# ErrorAplicacion de los servicios— y no al reves. Revisar solo los
+# fragmentos deja pasar el caso que importa: un mensaje real que deberia
+# marcar un campo y no lo hace, que es como se encontro que
+# "El objetivo esta archivado..." no matcheaba con 'objetivo archivado'.
 CAMPO_POR_FRAGMENTO = (
+    # --- Objetivos ---
+    ('esta archivado: su descripcion quedo fija', 'descripcion'),
+    ('objetivo activo con esa descripcion', 'descripcion'),
+    ('descripcion del objetivo no puede estar vacia', 'descripcion'),
+    ('ya existe una evolucion para ese objetivo', 'id_objetivo'),
+    ('no pertenece al paciente de esta sesion', 'id_objetivo'),
+    ('sobre un objetivo archivado', 'id_objetivo'),
+    ('el objetivo indicado no existe', 'id_objetivo'),
+    ('ya tiene evoluciones registradas', 'id_paciente'),
+
+    # --- Pacientes ---
     ('numero de historia', 'nro_historia'),
     ('ya existe un paciente con ese numero', 'nro_historia'),
-    ('objetivo activo con esa descripcion', 'descripcion'),
+    ('el paciente indicado no existe', 'id_paciente'),
+    ('esta dado de baja', 'id_paciente'),
+    ('falta indicar el paciente', 'id_paciente'),
+
+    # --- Sesiones ---
     ('se superponen con ese horario', 'hora_inicio'),
     ('hora de fin debe ser posterior', 'hora_fin'),
-    ('el paciente indicado no existe', 'id_paciente'),
+    ('el estado tiene que ser uno de', 'estado'),
+    ('ya tiene evoluciones cargadas', 'estado'),
+    ('la sesion indicada no existe', 'id_sesion'),
+
+    # --- Rangos de fecha ---
+    ('rango de fechas esta invertido', 'desde'),
+    ('el rango pedido es de', 'hasta'),
+
+    # --- Otros ---
     ('el terapeuta indicado no existe', 'id_terapeuta'),
     ('el usuario indicado no existe', 'id_usuario'),
-    ('la sesion indicada no existe', 'id_sesion'),
-    ('el objetivo indicado no existe', 'id_objetivo'),
     ('valor de la evolucion', 'valor'),
-    ('no pertenece al paciente de esta sesion', 'id_objetivo'),
-    ('objetivo archivado', 'id_objetivo'),
-    ('ya existe una evolucion para ese objetivo', 'id_objetivo'),
 )
 
 

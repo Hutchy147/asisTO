@@ -1,10 +1,7 @@
 // frontend/src/services/evolucionesService.js
 // Contrato: docs/api-sesiones-evoluciones.md
 
-import { get, post } from './api.js';
-
-export const VALOR_MINIMO = 1;
-export const VALOR_MAXIMO = 5;
+import { post } from './api.js';
 
 /**
  * Escala de logro del centro. ÚNICO lugar donde el número de la base se
@@ -59,19 +56,17 @@ export function registrarEvolucion({
   });
 }
 
-/**
- * Evoluciones de una sesion, con la descripcion del objetivo incluida.
- * -> { id_sesion, evoluciones: [...], total }
- *
- * objetivo.activo puede ser false: se archivo DESPUES de cargar la
- * evolucion. Es historico, no un error.
- */
-export function listarEvolucionesDeSesion(idSesion) {
-  return get(`/evoluciones/sesion/${idSesion}`);
-}
-
-/** Valida el rango antes de mandar. El servidor tambien lo valida. */
-export function valorEsValido(valor) {
-  const numero = Number(valor);
-  return Number.isInteger(numero) && numero >= VALOR_MINIMO && numero <= VALOR_MAXIMO;
-}
+// Se borraron de aca:
+//
+//   listarEvolucionesDeSesion(idSesion)
+//     Envolvia GET /api/evoluciones/sesion/<id>, que existe y funciona.
+//     Pero obtenerSesion() ya trae las evoluciones embebidas, asi que el
+//     cliente tenia dos formas de pedir lo mismo. El endpoint sigue
+//     documentado en docs/ para quien lo necesite desde afuera.
+//
+//   valorEsValido(valor), VALOR_MINIMO, VALOR_MAXIMO
+//     Validaban que la calificacion estuviera entre 1 y 5. La escala es de
+//     botones: no puede producir un valor fuera de rango. Y el rango real
+//     lo aplican el CHECK de la base y el procedimiento, que son la
+//     autoridad. Mantener una tercera copia del limite era pedir que se
+//     desincronizara.

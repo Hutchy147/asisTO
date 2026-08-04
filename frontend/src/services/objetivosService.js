@@ -49,7 +49,7 @@ export function archivarObjetivo(idObjetivo) {
   return del(`/objetivos/${idObjetivo}`);
 }
 
-/** true si el paciente llego al tope y no puede recibir mas objetivos. */
-export function cupoCompleto(cupo) {
-  return Boolean(cupo) && cupo.disponibles <= 0;
-}
+// Habia un helper `cupoCompleto(cupo)` aca. Se borro: la ficha y el modal
+// leen `cupo.disponibles <= 0` directo, que es la misma pregunta escrita
+// una sola vez y en el lugar donde se usa. Tener las dos versiones era
+// justamente el riesgo de duplicar en vez de traducir.

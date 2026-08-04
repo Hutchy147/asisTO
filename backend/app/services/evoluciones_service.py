@@ -108,16 +108,22 @@ def registrar_evolucion(datos):
             http_status=409,
         )
 
+    # El terapeuta viaja como parametro: el procedimiento revalida la
+    # autoria por su cuenta. La comprobacion de arriba se conserva porque
+    # da un 403 con mensaje propio antes de tocar la base; esta es la
+    # segunda linea, no un reemplazo. Ver el comentario de autoria en
+    # p_registrar_evolucion (schema.sql).
     db.session.execute(
         text(
             'CALL p_registrar_evolucion(:id_sesion, :id_objetivo, :valor, '
-            ':observaciones, @p_id_evolucion, @p_mensaje)'
+            ':observaciones, :id_terapeuta, @p_id_evolucion, @p_mensaje)'
         ),
         {
             'id_sesion': sesion.id,
             'id_objetivo': id_objetivo,
             'valor': valor,
             'observaciones': observaciones,
+            'id_terapeuta': terapeuta.id,
         },
     )
 

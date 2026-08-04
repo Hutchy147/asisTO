@@ -1159,11 +1159,13 @@ CREATE PROCEDURE p_registrar_evolucion (
   IN  p_id_objetivo    INT UNSIGNED,
   IN  p_valor          TINYINT UNSIGNED,
   IN  p_observaciones  TEXT,
+  IN  p_id_terapeuta   INT UNSIGNED,
   OUT p_id_evolucion   INT UNSIGNED,
   OUT p_mensaje        VARCHAR(255)
 )
 BEGIN
-  DECLARE v_error VARCHAR(255) DEFAULT '';
+  DECLARE v_error         VARCHAR(255) DEFAULT '';
+  DECLARE v_ter_sesion    INT UNSIGNED DEFAULT NULL;
 
   -- Los SIGNAL de los triggers: ya vienen en castellano y acotados
   DECLARE EXIT HANDLER FOR SQLSTATE '45000'
@@ -1193,9 +1195,42 @@ BEGIN
 
   SET p_id_evolucion = NULL;
 
+  -- --- Autoria de la evolucion ---
+  --
+  -- Una evolucion es la valoracion clinica de quien atendio la sesion.
+  -- Cargarla en nombre de otro falsea la autoria de la historia clinica de
+  -- forma irreversible, y estos registros respaldan el tratamiento ante
+  -- obras sociales e instituciones.
+  --
+  -- HASTA DONDE LLEGA ESTA VALIDACION, Y HASTA DONDE NO:
+  --
+  -- No cierra el agujero del todo. La base NO sabe quien esta logueado, asi
+  -- que un INSERT directo contra evoluciones sigue sin ningun control de
+  -- autoria. No hay forma de resolver eso desde aca sin una sesion de base
+  -- por usuario, que este proyecto no tiene.
+  --
+  -- Lo que si logra: que cualquier camino que use este procedimiento tenga
+  -- que DECLARAR quien registra, en vez de asumirlo. Un script de carga
+  -- masiva, una migracion o un endpoint nuevo no pueden llamarlo "de
+  -- pasada" sin decidir a nombre de quien escriben. La validacion del
+  -- backend deja de ser la unica.
+  --
+  -- ENTREGA 4 — DUPLAS TERAPEUTICAS: este parametro es el lugar donde la
+  -- condicion se amplia de "quien atendio" a "quien atendio O SU DUPLA
+  -- ASIGNADA para ese paciente". El cambio es agregar aca un OR EXISTS
+  -- contra duplas_terapeuticas (id_paciente de la sesion, activa = TRUE).
+  -- La tabla ya existe con todo lo necesario.
+  --
+  -- p_id_terapeuta NULL se rechaza a proposito: obliga a declararlo.
+  SELECT id_terapeuta INTO v_ter_sesion FROM sesiones WHERE id = p_id_sesion;
+
+  IF v_ter_sesion IS NOT NULL
+     AND (p_id_terapeuta IS NULL OR p_id_terapeuta <> v_ter_sesion) THEN
+    SET p_mensaje =
+      'Solo el terapeuta que atendio la sesion puede cargarle evolucion';
   -- Se valida antes del INSERT para dar un mensaje claro en vez del
   -- error crudo del CHECK constraint
-  IF p_valor IS NULL OR p_valor < 1 OR p_valor > 5 THEN
+  ELSEIF p_valor IS NULL OR p_valor < 1 OR p_valor > 5 THEN
     SET p_mensaje = 'El valor de la evolucion debe estar entre 1 y 5';
   ELSE
     START TRANSACTION;
