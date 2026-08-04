@@ -174,7 +174,24 @@ BEGIN
   DECLARE v_off        INT;
   DECLARE v_id_obj     INT;
 
+  -- La agenda termina HOY y arranca siete semanas antes.
+  --
+  -- Antes eran fechas fijas y el panel del dia quedaba vacio apenas
+  -- pasaba la ventana: la pantalla en la que cae el terapeuta al entrar
+  -- no mostraba nada. Con fechas relativas siempre hay algo que ver.
+  --
+  -- Sigue siendo deterministico PARA UNA MISMA FECHA DE CORRIDA: dos
+  -- maquinas que carguen el seed el mismo dia obtienen exactamente los
+  -- mismos datos. Lo que cambia entre dias es la ventana, no el contenido.
+  --
+  -- Nunca pasa de hoy: en la Entrega 1 no hay agenda a futuro, las
+  -- sesiones se registran cuando ocurren o despues.
+  SET v_fin = CURDATE();
+  SET v_dia = DATE_SUB(v_fin, INTERVAL 48 DAY);
+
   -- --- Objetivos: entre 2 y 4 activos por paciente ---
+  -- Creados un mes antes de la primera sesion, para que toda la agenda
+  -- los cuente en el denominador de "objetivos calificados".
   WHILE v_pac <= 15 DO
     SET v_cant = 2 + (v_pac MOD 3);
     SET v_num = 1;
@@ -189,17 +206,14 @@ BEGIN
           ELSE        'Realizar actividades de la vida diaria de forma autonoma'
         END,
         TRUE,
-        TIMESTAMP('2026-05-04', SEC_TO_TIME(v_num * 900))
+        TIMESTAMP(DATE_SUB(v_dia, INTERVAL 30 DAY), SEC_TO_TIME(v_num * 900))
       );
       SET v_num = v_num + 1;
     END WHILE;
     SET v_pac = v_pac + 1;
   END WHILE;
 
-  -- --- Agenda: 7 semanas, lunes a viernes, 3 terapeutas ---
-  SET v_dia = '2026-06-01';
-  SET v_fin = '2026-07-17';
-
+  -- --- Agenda: 7 semanas hasta hoy, lunes a viernes, 3 terapeutas ---
   WHILE v_dia <= v_fin DO
     SET v_dow = DAYOFWEEK(v_dia);   -- 1 = domingo, 7 = sabado
 
@@ -243,7 +257,14 @@ BEGIN
 
           -- Evolucion. Se saltea una de cada cinco a proposito: son las
           -- que la interfaz tiene que mostrar como pendientes.
-          IF v_estado <> 'ausencia' AND (v_contador MOD 5) <> 0 THEN
+          --
+          -- Y se saltea SIEMPRE la segunda sesion de hoy de cada terapeuta:
+          -- asi el panel del dia —que es la pantalla de entrada— muestra
+          -- siempre el marcador de "falta la evolucion". Sin esto, que se
+          -- vea o no dependia de donde caia el contador ese dia.
+          IF v_estado <> 'ausencia'
+             AND (v_contador MOD 5) <> 0
+             AND NOT (v_dia = v_fin AND v_slot = 1) THEN
             SELECT COUNT(*) INTO v_n_obj
               FROM objetivos_terapeuticos
              WHERE id_paciente = v_id_pac AND activo = TRUE;

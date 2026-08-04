@@ -14,7 +14,7 @@ import ModalRegistrarSesion from '../components/sesiones/ModalRegistrarSesion.js
 import { Cargando, EstadoError } from '../components/estado/index.js';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { listarPacientes } from '../services/pacientesService.js';
-import { listarSesiones } from '../services/sesionesService.js';
+import { ETIQUETA_ESTADO, faltaEvolucion, listarSesiones } from '../services/sesionesService.js';
 import { formatearFecha } from '../utils/fechas.js';
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
@@ -50,9 +50,9 @@ function BloqueSesion({ sesion, onAbrir }) {
   const inicio = aDecimal(sesion.hora_inicio) ?? HORA_INICIO;
   const fin = aDecimal(sesion.hora_fin) ?? inicio + 1;
   const duracion = Math.max(0.5, fin - inicio);
-  // Sesión ocurrida, con estado que admite evolución, y sin ninguna
-  // cargada. Es el trabajo que el terapeuta resuelve antes de cerrar el día.
-  const falta = sesion.admite_evolucion && !sesion.tiene_evolucion;
+  // La definición vive en sesionesService para que el panel y el
+  // calendario no la calculen cada uno por su lado.
+  const falta = faltaEvolucion(sesion);
 
   return (
     <Box
@@ -110,7 +110,7 @@ function BloqueSesion({ sesion, onAbrir }) {
       >
         {/* El color y la regla izquierda ya dicen el estado; el texto se
             usa para lo accionable cuando hay algo que hacer. */}
-        {falta ? 'Falta la evolución' : { completa: 'Completa', incompleta: 'Incompleta', ausencia: 'Ausencia' }[sesion.estado]}
+        {falta ? 'Falta la evolución' : ETIQUETA_ESTADO[sesion.estado]}
       </Box>
     </Box>
   );
@@ -183,7 +183,7 @@ export default function Calendario() {
   }, [sesiones.datos]);
 
   const pendientes = useMemo(
-    () => (sesiones.datos?.sesiones ?? []).filter((s) => s.admite_evolucion && !s.tiene_evolucion),
+    () => (sesiones.datos?.sesiones ?? []).filter(faltaEvolucion),
     [sesiones.datos]
   );
 

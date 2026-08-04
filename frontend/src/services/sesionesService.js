@@ -91,3 +91,22 @@ export function estadoDeCarga(sesion) {
 export function puedeCargarEvolucion(sesion) {
   return Boolean(sesion?.admite_evolucion) && sesion?.es_propia !== false;
 }
+
+/**
+ * Sesion ocurrida, con estado que admite evolucion, y sin ninguna cargada:
+ * es trabajo pendiente.
+ *
+ * Vive acá y no en cada pantalla para que el calendario y el panel usen la
+ * MISMA definicion. Si una de las dos la calcula por su cuenta, en algun
+ * momento van a mostrar cosas distintas sobre la misma sesion.
+ */
+export function faltaEvolucion(sesion) {
+  return Boolean(sesion?.admite_evolucion) && !sesion?.tiene_evolucion;
+}
+
+/** Etiqueta de un estado de sesion. */
+export const ETIQUETA_ESTADO = {
+  [ESTADO_COMPLETA]: 'Completa',
+  [ESTADO_INCOMPLETA]: 'Incompleta',
+  [ESTADO_AUSENCIA]: 'Ausencia',
+};
