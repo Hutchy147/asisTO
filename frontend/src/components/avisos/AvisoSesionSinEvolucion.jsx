@@ -3,14 +3,34 @@
 import Aviso from '../estado/Aviso.jsx';
 
 /**
- * La sesion no admite evolucion porque esta marcada como ausencia
- * (regla 2). No es que falte cargarla: no puede tenerla.
+ * La sesión está (o va a quedar) marcada como ausencia, así que no admite
+ * evolución. Es la regla 2.
  *
- * Se muestra en lugar del formulario. Dejar el formulario visible con un
- * boton que siempre falla es peor que no mostrarlo.
+ * Dos modos, porque el momento cambia el tiempo verbal y lo que sirve
+ * ofrecer:
+ *
+ *  - `registro`: se está eligiendo el estado en el alta. Todavía se puede
+ *    cambiar de opinión, así que se ofrece la salida de "incompleta".
+ *  - `consulta`: la sesión ya existe. No hay nada que ofrecer, solo
+ *    explicar por qué no aparece el formulario.
+ *
+ * El tono es informativo y no de advertencia en los dos casos: una
+ * ausencia es un dato clínico normal, no un problema que alguien tenga
+ * que resolver.
  */
-export default function AvisoSesionSinEvolucion({ sesion }) {
-  if (!sesion || sesion.admite_evolucion) return null;
+export default function AvisoSesionSinEvolucion({ sesion, modo = 'consulta' }) {
+  // En modo registro lo decide el estado elegido, no una sesión guardada
+  if (modo === 'consulta' && (!sesion || sesion.admite_evolucion)) return null;
+
+  if (modo === 'registro') {
+    return (
+      <Aviso severidad="info" titulo="Esta sesión no va a poder tener evolución">
+        El paciente no asistió, así que no hay nada que calificar: los
+        objetivos no se puntúan en una ausencia. Si en realidad asistió y la
+        sesión se cortó, elegí <strong>Incompleta</strong>.
+      </Aviso>
+    );
+  }
 
   return (
     <Aviso severidad="info" titulo="Esta sesión no lleva evolución">

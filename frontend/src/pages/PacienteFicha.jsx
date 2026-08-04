@@ -17,6 +17,7 @@ import AccountFlag from '../components/data/AccountFlag.jsx';
 import DataTable from '../components/data/DataTable.jsx';
 import GoalMeter from '../components/data/GoalMeter.jsx';
 import SesionEstadoChip from '../components/data/SesionEstadoChip.jsx';
+import ModalCargarEvolucion from '../components/evoluciones/ModalCargarEvolucion.jsx';
 import AppLayout from '../components/layout/AppLayout.jsx';
 import DialogoConfirmacion from '../components/modal/DialogoConfirmacion.jsx';
 import { ObjetivoActivo, ObjetivoArchivado } from '../components/objetivos/FilaObjetivo.jsx';
@@ -85,6 +86,7 @@ export default function PacienteFicha() {
   const [modalObjetivo, setModalObjetivo] = useState(null); // null | { objetivo? }
   const [aArchivar, setAArchivar] = useState(null);
   const [archivando, setArchivando] = useState(false);
+  const [idEvolucion, setIdEvolucion] = useState(null);
   const [aviso, setAviso] = useState('');
 
   if (objetivos.cargando) {
@@ -316,7 +318,15 @@ export default function PacienteFicha() {
                   descripcion={`Cuando se registre la primera sesión de ${paciente.nombre} va a aparecer acá, con su estado y los objetivos que se calificaron.`}
                 />
               ) : (
-                <DataTable columnas={columnasSesiones} filas={sesiones.datos.sesiones} />
+                // Las filas se abren. Es el único camino por el que se
+                // llega a una sesión de OTRO terapeuta: el calendario solo
+                // muestra las propias, y esta pestaña trae las de todos.
+                <DataTable
+                  columnas={columnasSesiones}
+                  filas={sesiones.datos.sesiones}
+                  onAbrirFila={(s) => setIdEvolucion(s.id)}
+                  etiquetaFila={(s) => `Abrir la sesión del ${formatearFecha(s.fecha)}`}
+                />
               )}
             </Seccion>
           )}
@@ -335,6 +345,18 @@ export default function PacienteFicha() {
         onGuardado={(respuesta) => {
           objetivos.recargar();
           setAviso(respuesta?.mensaje ?? 'Objetivo guardado.');
+        }}
+      />
+
+      <ModalCargarEvolucion
+        key={idEvolucion ?? 'sin-sesion'}
+        abierto={Boolean(idEvolucion)}
+        idSesion={idEvolucion}
+        onCerrar={() => setIdEvolucion(null)}
+        onCargada={(respuesta) => {
+          sesiones.recargar();
+          objetivos.recargar();
+          setAviso(respuesta?.mensaje ?? 'Evolución registrada correctamente');
         }}
       />
 

@@ -40,11 +40,14 @@ export default function CampoTexto({
       minRows={multilinea ? filas : undefined}
       fullWidth
       size="small"
-      // Las fechas y los números de historia se leen mejor con cifras de
-      // ancho fijo.
-      inputProps={{ className: tabular ? 'tabular' : undefined, ...(resto.inputProps ?? {}) }}
-      InputLabelProps={tipo === 'date' ? { shrink: true } : undefined}
       {...resto}
+      // Después del spread a propósito: si `resto` trae su propio
+      // inputProps, se combinan en vez de pisarse. Al revés, pasar
+      // inputProps desde afuera borraba la clase tabular sin aviso.
+      inputProps={{ className: tabular ? 'tabular' : undefined, ...(resto.inputProps ?? {}) }}
+      InputLabelProps={
+        tipo === 'date' || tipo === 'time' ? { shrink: true } : resto.InputLabelProps
+      }
     />
   );
 }

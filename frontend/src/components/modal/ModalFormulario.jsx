@@ -31,6 +31,11 @@ export default function ModalFormulario({
   etiquetaEnviar,
   etiquetaGuardando,
   enviarDeshabilitado = false,
+  // El modal no puede guardar nada: el pie se reduce a cerrar. Se usa
+  // cuando lo que falta no se resuelve desde acá (un paciente sin
+  // objetivos activos, una sesión de otro terapeuta). Ofrecer "Guardar"
+  // sería ofrecer algo imposible.
+  soloCerrar = false,
   children,
 }) {
   return (
@@ -97,7 +102,11 @@ export default function ModalFormulario({
           borderTop: `1px solid ${t.palette.superficie.borde}`,
         })}
       >
-        {confirmandoDescarte ? (
+        {soloCerrar ? (
+          <Button variant="outlined" onClick={onPedirCierre}>
+            Cerrar
+          </Button>
+        ) : confirmandoDescarte ? (
           <>
             <Typography
               variant="body2"
