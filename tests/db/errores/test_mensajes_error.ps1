@@ -95,8 +95,14 @@ $res3 = Get-ResultadoProcedimiento $Database `
 $resultados += Test-MensajeSanoYSinFuga $modulo "alta_paciente_historia_duplicada_camino_normal" $res3
 
 # --- Regresion: p_registrar_evolucion con sesion inexistente (ya OK) ---
+# p_registrar_evolucion tiene 7 parametros desde que se cerro M1 (se
+# agrego p_id_terapeuta, ver tests/db/autorizacion/). La sesion no
+# existe, asi que v_ter_sesion queda NULL y el chequeo de autoria ni
+# corre (esta condicionado a "IF v_ter_sesion IS NOT NULL"): el valor de
+# p_id_terapeuta que se mande aca no cambia lo que se esta probando, que
+# es el mensaje de sesion inexistente.
 $res4 = Get-ResultadoProcedimiento $Database `
-    "CALL p_registrar_evolucion(999999, 1, 3, NULL, @id, @msg); SELECT @msg;"
+    "CALL p_registrar_evolucion(999999, 1, 3, NULL, 1, @id, @msg); SELECT @msg;"
 $resultados += Test-MensajeSanoYSinFuga $modulo "registrar_evolucion_sesion_inexistente" $res4
 
 Write-ResultsTable $resultados

@@ -4,12 +4,21 @@
 # se importan desde otro archivo, y funciones exportadas de un servicio
 # que nunca se llaman fuera de su propio archivo.
 #
-# Es el pedido explicito de esta ronda de auditoria: "la Terminal 1
-# encontro que un componente de aviso quedaba inalcanzable... quiero
-# saber si hay mas de esa clase". El barrido de mas abajo encontro diez:
-# un componente y nueve funciones de servicio, todas de una iteracion de
-# diseño anterior, superadas por logica en linea mas simple. Ver
-# AUDITORIA.md (hallazgo B3) para el detalle de cada una.
+# Nacio de un pedido puntual de auditoria ("la Terminal 1 encontro que un
+# componente de aviso quedaba inalcanzable... quiero saber si hay mas de
+# esa clase"). El barrido encontro diez: un componente y nueve funciones
+# de servicio. Terminal 1 cerro el hallazgo (B3 de AUDITORIA.md): nueve
+# eran codigo muerto de una iteracion de diseño anterior y se borraron;
+# el decimo (listarEvolucionesDeSesion) resulto ser un camino de usuario
+# FALTANTE, no sobrante -- el modal de evolucion no miraba las
+# evoluciones ya embebidas y ofrecia elegir un objetivo ya calificado,
+# que el servidor siempre rechazaba. Se conecto ese dato en vez de
+# conectar el wrapper, que se borro igual.
+#
+# El test queda como REGRESION, no como hallazgo abierto: vuelve a
+# escanear src/ cada vez que se corre, asi que si aparece codigo nuevo
+# sin camino (o si alguien reintroduce alguno de los diez), lo va a
+# marcar FAIL de nuevo sin que haga falta tocar este archivo.
 #
 # LIMITE CONOCIDO: el barrido de componentes busca por nombre de archivo
 # (asume que el default export se llama igual que el archivo, que es la
