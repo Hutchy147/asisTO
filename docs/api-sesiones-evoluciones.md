@@ -22,11 +22,10 @@ Decisión de este módulo, importante para el diseño:
 | **Cargar** evolución sobre una sesión | Solo el terapeuta que la atendió |
 | Listar sesiones (`GET /api/sesiones`, `/hoy`, `/pendientes-evolucion`) | Solo las propias |
 
-En esta entrega todos los terapeutas ven todos los pacientes, y el schema
-contempla **duplas terapéuticas** (dos terapeutas sobre el mismo paciente),
-así que restringir la lectura contradiría las dos cosas. Pero una evolución
-es la valoración clínica de quien atendió: cargarla en nombre de otro
-falsearía la autoría de la historia clínica.
+En esta entrega todos los terapeutas ven todos los pacientes, así que
+restringir la lectura no aportaría control real. Pero una evolución es la
+valoración clínica de quien atendió: cargarla en nombre de otro falsearía
+la autoría de la historia clínica.
 
 El detalle de sesión trae **`es_propia`** para que la interfaz sepa si
 mostrar el formulario de evolución o solo la vista de lectura.
