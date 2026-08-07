@@ -57,7 +57,10 @@ export function ObjetivoActivo({ objetivo, numero, onEditar, onArchivar }) {
       </Box>
 
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography variant="body1" sx={{ lineHeight: 1.4 }}>
+        {/* texto-libre: la descripción la escribe una persona y puede traer
+            una secuencia sin espacios, que sin esto se pinta fuera de la
+            tarjeta. Ver theme.js. */}
+        <Typography variant="body1" className="texto-libre" sx={{ lineHeight: 1.4 }}>
           {objetivo.descripcion}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
@@ -103,7 +106,12 @@ export function ObjetivoArchivado({ objetivo }) {
       })}
     >
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.4 }}>
+        <Typography
+          variant="body1"
+          color="text.secondary"
+          className="texto-libre"
+          sx={{ lineHeight: 1.4 }}
+        >
           {objetivo.descripcion}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>

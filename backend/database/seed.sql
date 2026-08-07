@@ -20,7 +20,6 @@ USE asisto;
 SET FOREIGN_KEY_CHECKS = 0;
 TRUNCATE TABLE auditoria_accesos;
 TRUNCATE TABLE plantillas_objetivos;
-TRUNCATE TABLE duplas_terapeuticas;
 TRUNCATE TABLE informes;
 TRUNCATE TABLE sesiones_etiquetas;
 TRUNCATE TABLE etiquetas;
@@ -31,6 +30,7 @@ TRUNCATE TABLE observaciones_rrhh;
 TRUNCATE TABLE evoluciones;
 TRUNCATE TABLE sesiones;
 TRUNCATE TABLE objetivos_terapeuticos;
+TRUNCATE TABLE asignaciones;
 TRUNCATE TABLE pacientes;
 TRUNCATE TABLE familiares;
 TRUNCATE TABLE rrhh;
@@ -255,11 +255,24 @@ INSERT INTO informes
 
 
 -- =====================================================================
--- DUPLAS TERAPEUTICAS
+-- ASIGNACIONES
+--
+-- Reemplaza al bloque de duplas_terapeuticas, que sembraba dos terapeutas
+-- sobre un paciente: el caso interdisciplinario, fuera del alcance.
+--
+-- id_terapeuta apunta a terapeutas(id), igual que sesiones. Son las dos
+-- terapeutas del seed chico: terapeuta 1 (Laura) y terapeuta 2 (Diego).
+--
+-- La segunda fila esta CERRADA (fecha_hasta no nula) a proposito: deja el
+-- caso "el paciente 1 paso de una terapeuta a otra" sin violar la regla de
+-- una sola asignacion vigente por par.
 -- =====================================================================
-INSERT INTO duplas_terapeuticas
-  (id, id_terapeuta_1, id_terapeuta_2, id_paciente, fecha_asignacion, activa) VALUES
-  (1, 1, 2, 1, '2026-05-04', TRUE);
+INSERT INTO asignaciones
+  (id, id_terapeuta, id_paciente, fecha_desde, fecha_hasta) VALUES
+  (1, 1, 1, '2026-03-02', NULL),
+  (2, 2, 1, '2026-03-02', '2026-05-04'),
+  (3, 2, 2, '2026-03-16', NULL),
+  (4, 1, 3, '2026-04-06', NULL);
 
 
 -- =====================================================================

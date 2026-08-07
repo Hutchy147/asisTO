@@ -34,13 +34,16 @@ export default function EstadoVacio({ titulo, descripcion, acciones, plano = fal
             }),
       })}
     >
-      <Typography variant="h3" component="p" sx={{ m: 0 }}>
+      {/* texto-libre en los dos: varias descripciones interpolan el nombre
+          del paciente o el texto que se escribió en el buscador. */}
+      <Typography variant="h3" component="p" className="texto-libre" sx={{ m: 0 }}>
         {titulo}
       </Typography>
       {descripcion && (
         <Typography
           variant="body1"
           color="text.secondary"
+          className="texto-libre"
           sx={{ maxWidth: '44ch', lineHeight: 1.65, m: 0 }}
         >
           {descripcion}

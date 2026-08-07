@@ -14,7 +14,9 @@ from sqlalchemy.exc import IntegrityError
 
 from app import db
 from app.models import ObjetivoTerapeutico
-from app.models.objetivo import MAXIMO_OBJETIVOS_ACTIVOS
+from app.models.objetivo import (
+    MAXIMO_CARACTERES_DESCRIPCION, MAXIMO_OBJETIVOS_ACTIVOS,
+)
 from app.services.pacientes_service import obtener_paciente
 from app.utils.db import reintentar_en_deadlock
 from app.utils.errors import ERRNO_DUPLICADO, ErrorAplicacion, obtener_errno
@@ -24,6 +26,42 @@ logger = logging.getLogger(__name__)
 MENSAJE_DESCRIPCION_DUPLICADA = (
     'Ya existe un objetivo activo con esa descripcion para este paciente.'
 )
+
+MENSAJE_DESCRIPCION_VACIA = 'La descripcion del objetivo no puede estar vacia.'
+
+MENSAJE_DESCRIPCION_MUY_LARGA = (
+    f'La descripcion del objetivo no puede superar los '
+    f'{MAXIMO_CARACTERES_DESCRIPCION} caracteres.'
+)
+
+
+def _descripcion_valida(datos):
+    """
+    Normaliza y valida la descripcion. Devuelve el texto listo para escribir.
+
+    Por que el largo SI se valida aca, cuando el criterio del modulo es
+    traducir y no duplicar: la base rechaza un texto de mas de 700 con errno
+    1406, un error crudo cuyo mensaje traducido no puede decir cuantos
+    caracteres sobran ni de que campo se trata. Validarlo antes es la misma
+    idea que aplican los procedimientos con las FK —chequear primero para dar
+    un mensaje util— y no reimplementa ninguna decision: el numero sale de
+    MAXIMO_CARACTERES_DESCRIPCION, que acompania al VARCHAR del schema.
+
+    El 1406 igual quedo mapeado en errors.py como red, por si algun camino
+    futuro esquiva esta funcion.
+    """
+    descripcion = (datos.get('descripcion') or '').strip()
+
+    if not descripcion:
+        raise ErrorAplicacion(MENSAJE_DESCRIPCION_VACIA, campo='descripcion')
+
+    # Se mide DESPUES del strip: los espacios de los extremos no se guardan,
+    # asi que no tiene sentido que consuman cupo y hagan fallar un texto que
+    # en realidad entra.
+    if len(descripcion) > MAXIMO_CARACTERES_DESCRIPCION:
+        raise ErrorAplicacion(MENSAJE_DESCRIPCION_MUY_LARGA, campo='descripcion')
+
+    return descripcion
 
 
 def _traducir_duplicado(error):
@@ -163,12 +201,11 @@ def crear_objetivo(datos):
     rechaza la UNIQUE (errno 1062) y se traduce aca.
     """
     id_paciente = datos.get('id_paciente')
-    descripcion = (datos.get('descripcion') or '').strip()
 
     if not id_paciente:
         raise ErrorAplicacion('Falta indicar el paciente.')
-    if not descripcion:
-        raise ErrorAplicacion('La descripcion del objetivo no puede estar vacia.')
+
+    descripcion = _descripcion_valida(datos)
 
     # Cortesia: un 404 claro en vez del error de FK. No es una regla de
     # negocio duplicada, es resolver a que paciente se refiere el pedido.
@@ -207,9 +244,7 @@ def editar_descripcion(id_objetivo, datos):
     versiones que pueden divergir, y la de la base es la que vale para
     cualquier camino de escritura, no solo para este endpoint.
     """
-    descripcion = (datos.get('descripcion') or '').strip()
-    if not descripcion:
-        raise ErrorAplicacion('La descripcion del objetivo no puede estar vacia.')
+    descripcion = _descripcion_valida(datos)
 
     objetivo = obtener_objetivo(id_objetivo)
 

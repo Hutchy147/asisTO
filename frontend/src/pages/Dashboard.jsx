@@ -69,7 +69,9 @@ export default function Dashboard({ rol }) {
           <Typography variant="h6" gutterBottom>
             Sesión activa
           </Typography>
-          <Stack spacing={0.5}>
+          {/* texto-libre en el Stack: todo lo de abajo sale de la base y el
+              email es por definición un token sin espacios. */}
+          <Stack spacing={0.5} className="texto-libre">
             <Typography variant="body2" color="text.secondary">
               Email: {usuario?.email}
             </Typography>

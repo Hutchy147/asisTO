@@ -70,7 +70,11 @@ function Dato({ etiqueta, children }) {
       <Typography variant="overline" component="div" color="text.secondary" sx={{ mb: 0.5 }}>
         {etiqueta}
       </Typography>
-      <Box sx={{ fontSize: 14 }}>{children ?? '—'}</Box>
+      {/* texto-libre acá y no en cada llamador: el valor de un Dato es casi
+          siempre un campo de la base —diagnóstico, n° de historia, obra
+          social cuando se conecte— y así lo hereda también el que se agregue
+          después. */}
+      <Box className="texto-libre" sx={{ fontSize: 14 }}>{children ?? '—'}</Box>
     </Box>
   );
 }

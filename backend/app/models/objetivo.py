@@ -7,6 +7,19 @@ from app import db
 # constante solo sirve para informar el cupo en las respuestas.
 MAXIMO_OBJETIVOS_ACTIVOS = 4
 
+# Largo maximo de la descripcion. Tiene que ser EXACTAMENTE el mismo numero
+# que VARCHAR(700) en schema.sql y que MAXIMO_CARACTERES_DESCRIPCION en
+# frontend/src/services/objetivosService.js. Si los tres se separan vuelve el
+# defecto que encontro el diagnostico del 2026-08-06: tres limites distintos
+# —180 en el textarea, ninguno en el servicio, 500 en la base— y el unico que
+# se aplicaba de verdad era un atributo HTML.
+#
+# Esto NO es duplicar una regla de negocio: es el mismo dato escrito donde
+# cada capa lo necesita. La diferencia con el limite de 4 activos es que ese
+# requiere una consulta para evaluarse —y por eso vive solo en el trigger—,
+# mientras que este se evalua con len() sin preguntarle nada a la base.
+MAXIMO_CARACTERES_DESCRIPCION = 700
+
 
 class ObjetivoTerapeutico(db.Model):
     """
@@ -30,7 +43,9 @@ class ObjetivoTerapeutico(db.Model):
     id_paciente = db.Column(
         db.Integer, db.ForeignKey('pacientes.id'), nullable=False
     )
-    descripcion = db.Column(db.String(500), nullable=False)
+    descripcion = db.Column(
+        db.String(MAXIMO_CARACTERES_DESCRIPCION), nullable=False
+    )
     activo = db.Column(db.Boolean, nullable=False, default=True)
     # FetchedValue: el valor lo pone la base (DEFAULT CURRENT_TIMESTAMP).
     # Sin esto SQLAlchemy incluye la columna en el INSERT con NULL explicito

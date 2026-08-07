@@ -294,10 +294,15 @@ def obtener_detalle(id_sesion):
     paciente (que es contra lo que se puede calificar).
 
     LECTURA ABIERTA A CUALQUIER TERAPEUTA. En esta entrega todos los
-    terapeutas ven todos los pacientes, y el schema ya contempla duplas
-    terapeuticas (dos terapeutas sobre el mismo paciente): restringir la
-    lectura al duenio de la sesion contradiria las dos cosas. La ESCRITURA
-    de evolucion si esta restringida — ver evoluciones_service.
+    terapeutas ven todos los pacientes, y la continuidad del tratamiento
+    exige poder leer que hizo el colega que atendio antes. La ESCRITURA de
+    evolucion si esta restringida — ver evoluciones_service.
+
+    Hasta el 2026-08-07 esta nota daba como segundo motivo que el schema
+    contemplaba "duplas terapeuticas (dos terapeutas sobre el mismo
+    paciente)". Era falso: eso es trabajo interdisciplinario y quedo fuera
+    del alcance. Una dupla es UNA terapeuta con DOS ninios, y no toca la
+    lectura del detalle de sesion. El primer motivo se sostiene solo.
     """
     sesion = obtener_sesion(id_sesion)
 

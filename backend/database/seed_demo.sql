@@ -27,7 +27,6 @@ USE asisto;
 SET FOREIGN_KEY_CHECKS = 0;
 TRUNCATE TABLE auditoria_accesos;
 TRUNCATE TABLE plantillas_objetivos;
-TRUNCATE TABLE duplas_terapeuticas;
 TRUNCATE TABLE informes;
 TRUNCATE TABLE sesiones_etiquetas;
 TRUNCATE TABLE etiquetas;
@@ -38,6 +37,7 @@ TRUNCATE TABLE observaciones_rrhh;
 TRUNCATE TABLE evoluciones;
 TRUNCATE TABLE sesiones;
 TRUNCATE TABLE objetivos_terapeuticos;
+TRUNCATE TABLE asignaciones;
 TRUNCATE TABLE pacientes;
 TRUNCATE TABLE familiares;
 TRUNCATE TABLE rrhh;
@@ -213,6 +213,38 @@ BEGIN
     SET v_pac = v_pac + 1;
   END WHILE;
 
+  -- --- Un objetivo en el FORMATO REAL de la practica ---
+  --
+  -- Los cuatro de arriba son frases cortas de 46 a 56 caracteres, y con eso
+  -- se valido toda la Entrega 1. El formato que usan las terapeutas de
+  -- verdad es "Que [paciente] [verbo de logro] [conducta observable], [nivel
+  -- de apoyo], [criterio de medicion], [contexto], [plazo]", y ronda los 400
+  -- caracteres. Este objetivo existe para que las pantallas se prueben contra
+  -- el largo que van a tener y no contra el que era comodo.
+  --
+  -- DATOS SINTETICOS: la conducta, el criterio y el plazo son inventados para
+  -- el seed. No salen de ningun caso real. Tomas Aguirre es un paciente
+  -- ficticio de este mismo archivo.
+  --
+  -- Va al paciente 1, que queda con 3 objetivos de la vuelta anterior (v_cant
+  -- = 2 + (1 MOD 3) = 3) y tiene cupo para un cuarto. Se crea con la misma
+  -- fecha que los otros para que toda la agenda lo cuente en el denominador
+  -- de "objetivos calificados".
+  --
+  -- Los demas objetivos del seed NO se reescriben: es una tarea aparte.
+  INSERT INTO objetivos_terapeuticos (id_paciente, descripcion, activo, fecha_creacion)
+  VALUES (
+    1,
+    'Que Tomas logre sostener el trazo dentro del renglon al copiar palabras '
+    'de cinco letras en letra cursiva, con apoyo verbal intermitente y sin '
+    'sujecion fisica de la mano, alcanzando cuatro de cada cinco intentos '
+    'correctos en dos evaluaciones consecutivas realizadas en semanas '
+    'distintas, en el consultorio y en el cuaderno de tareas de la escuela, '
+    'dos veces por semana durante el segundo semestre del 2026.',
+    TRUE,
+    TIMESTAMP(DATE_SUB(v_dia, INTERVAL 30 DAY), SEC_TO_TIME(4 * 900))
+  );
+
   -- --- Agenda: 7 semanas hasta hoy, lunes a viernes, 3 terapeutas ---
   WHILE v_dia <= v_fin DO
     SET v_dow = DAYOFWEEK(v_dia);   -- 1 = domingo, 7 = sabado
@@ -369,10 +401,32 @@ INSERT INTO informes
    'Progreso en lenguaje y coordinacion durante el periodo.',
    'borrador', '2026-07-02 10:15:00', NULL);
 
-INSERT INTO duplas_terapeuticas (id_terapeuta_1, id_terapeuta_2, id_paciente, fecha_asignacion, activa) VALUES
-  (1, 2, 1,  '2026-05-04', TRUE),
-  (2, 3, 6,  '2026-05-11', TRUE),
-  (1, 3, 11, '2026-05-18', TRUE);
+-- ASIGNACIONES — reemplaza al bloque de duplas_terapeuticas.
+--
+-- id_terapeuta apunta a terapeutas(id), igual que sesiones. Las tres
+-- terapeutas del seed de demostracion son las terapeutas 1, 2 y 3.
+--
+-- Una vigente por paciente para los 15, repartidas en round-robin, mas dos
+-- CERRADAS que dejan el caso "cambio de terapeuta" representado sin violar
+-- la regla de una sola vigente por par.
+INSERT INTO asignaciones (id_terapeuta, id_paciente, fecha_desde, fecha_hasta) VALUES
+  (1,  1, '2026-03-02', NULL),
+  (2,  2, '2026-03-16', NULL),
+  (3,  3, '2026-04-06', NULL),
+  (1,  4, '2026-03-09', NULL),
+  (2,  5, '2026-03-23', NULL),
+  (3,  6, '2026-04-13', NULL),
+  (1,  7, '2026-04-20', NULL),
+  (2,  8, '2026-03-30', NULL),
+  (3,  9, '2026-04-27', NULL),
+  (1, 10, '2026-05-04', NULL),
+  (2, 11, '2026-05-11', NULL),
+  (3, 12, '2026-05-18', NULL),
+  (1, 13, '2026-05-25', NULL),
+  (2, 14, '2026-06-01', NULL),
+  (3, 15, '2026-06-08', NULL),
+  (2,  1, '2026-03-02', '2026-05-04'),
+  (1, 11, '2026-04-06', '2026-05-11');
 
 INSERT INTO plantillas_objetivos (area, descripcion) VALUES
   ('Motricidad fina',       'Mejorar la pinza fina para la escritura'),

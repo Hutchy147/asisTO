@@ -26,8 +26,24 @@ ERRNO_SIGNAL_TRIGGER = 1644   # SIGNAL SQLSTATE '45000' de nuestros triggers
 ERRNO_DEADLOCK = 1213         # Deadlock found when trying to get lock
 ERRNO_LOCK_TIMEOUT = 1205     # Lock wait timeout exceeded
 ERRNO_DUPLICADO = 1062        # Duplicate entry para una UNIQUE
-ERRNO_FK = 1452               # Cannot add or update a child row
+ERRNO_FK = 1452               # Cannot add or update a child row (detallado)
+# Misma situacion que 1452 pero en su variante GENERICA. Cual de las dos
+# llega DEPENDE DEL USUARIO QUE CONECTA, no de la version del servidor:
+# medido el 2026-08-07 con la misma sentencia contra `informes`,
+#
+#   root         -> 1452, con el nombre de la constraint y de las tablas
+#   asisto_app   -> 1216, sin ningun detalle
+#
+# MySQL le oculta la estructura al usuario sin privilegios sobre la tabla
+# padre, que es exactamente lo que este modulo hace a mano. La APP conecta
+# como asisto_app, asi que en produccion el errno real es 1216 y con solo
+# 1452 mapeado la traduccion no se disparaba nunca.
+#
+# Van los dos: los tests corren como root y ven 1452, la app ve 1216, y la
+# traduccion tiene que ser la misma en los dos casos.
+ERRNO_FK_GENERICO = 1216      # Cannot add or update a child row (generico)
 ERRNO_FK_BORRADO = 1451       # Cannot delete or update a parent row
+ERRNO_DATO_MUY_LARGO = 1406   # Data too long for column
 ERRNO_CHECK = 3819            # Check constraint is violated
 
 MENSAJE_GENERICO = 'No se pudo completar la operacion. Intente nuevamente.'
@@ -41,7 +57,14 @@ MENSAJES_POR_ERRNO = {
                         'datos. Intente nuevamente.',
     ERRNO_DUPLICADO: 'Ya existe un registro con esos datos.',
     ERRNO_FK: 'Alguno de los datos referenciados no existe.',
+    ERRNO_FK_GENERICO: 'Alguno de los datos referenciados no existe.',
     ERRNO_FK_BORRADO: 'No se puede eliminar: hay registros que dependen de este.',
+    # Red de seguridad, no la validacion. El largo se rechaza antes, en
+    # objetivos_service._descripcion_valida, que si puede decir cuantos
+    # caracteres se permiten. Si este mensaje llega a verse, es que algun
+    # camino de escritura esquivo esa validacion: vale investigarlo.
+    ERRNO_DATO_MUY_LARGO: 'El texto ingresado es mas largo que el maximo '
+                          'permitido para ese campo.',
     ERRNO_CHECK: 'Alguno de los valores esta fuera del rango permitido.',
 }
 
@@ -113,6 +136,17 @@ CAMPO_POR_FRAGMENTO = (
     ('esta archivado: su descripcion quedo fija', 'descripcion'),
     ('objetivo activo con esa descripcion', 'descripcion'),
     ('descripcion del objetivo no puede estar vacia', 'descripcion'),
+    ('descripcion del objetivo no puede superar', 'descripcion'),
+    # Del errno 1406. Apunta a `descripcion` porque hoy es el unico campo de
+    # texto libre largo que un formulario puede desbordar, y llegar acá ya
+    # significa que la validacion del servicio se esquivo.
+    #
+    # LIMITE CONOCIDO: el mapeo es por fragmento y 1406 lo puede disparar
+    # cualquier columna. Cuando `pacientes.obra_social` —VARCHAR(120)— se
+    # conecte a un formulario, este fragmento va a marcar el campo equivocado.
+    # En ese momento hay que darle mensaje propio a cada caso desde el
+    # servicio, como hace `descripcion`, en vez de afinar este fragmento.
+    ('mas largo que el maximo permitido', 'descripcion'),
     ('ya existe una evolucion para ese objetivo', 'id_objetivo'),
     ('no pertenece al paciente de esta sesion', 'id_objetivo'),
     ('sobre un objetivo archivado', 'id_objetivo'),

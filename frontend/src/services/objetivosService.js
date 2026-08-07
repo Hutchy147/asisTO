@@ -6,6 +6,23 @@ import { del, get, post, put } from './api.js';
 export const MAXIMO_OBJETIVOS_ACTIVOS = 4;
 
 /**
+ * Largo maximo de la descripcion de un objetivo.
+ *
+ * Tiene que ser EXACTAMENTE el mismo numero que VARCHAR(700) en schema.sql y
+ * que MAXIMO_CARACTERES_DESCRIPCION en backend/app/models/objetivo.py. Las
+ * tres capas validan el mismo largo a proposito: el navegador para que no se
+ * pueda escribir de mas, el servicio para que ningun otro cliente lo esquive,
+ * y la base como ultimo limite.
+ *
+ * Estuvo en 180 hasta el 2026-08-07 mientras la base aceptaba 500 y el
+ * servicio no validaba nada. El resultado fue que un objetivo en el formato
+ * real de la practica —398 caracteres— se cortaba en silencio a mitad de
+ * frase, y uno ya cargado no se podia editar. Si estos numeros se separan
+ * otra vez, ese es el defecto que vuelve.
+ */
+export const MAXIMO_CARACTERES_DESCRIPCION = 700;
+
+/**
  * Objetivos del paciente separados en activos y archivados, con el cupo.
  * -> { paciente, activos: [...], archivados: [...], cupo: {maximo, usados, disponibles} }
  */

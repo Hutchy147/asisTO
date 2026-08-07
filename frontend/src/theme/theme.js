@@ -209,6 +209,27 @@ const theme = createTheme({
         // Cifras alineadas en tablas, horarios y calificaciones. Reemplaza
         // a la familia monoespaciada, que el sistema no tiene.
         '.tabular': { fontVariantNumeric: 'tabular-nums lining-nums' },
+
+        // TEXTO LIBRE QUE VIENE DE LA BASE. Va en todo lugar donde se
+        // renderice algo que escribió una persona: descripción de objetivo,
+        // diagnóstico, nombres, observaciones.
+        //
+        // El problema que resuelve: un texto largo SIN espacios no envuelve.
+        // El navegador solo corta renglón en oportunidades de salto —espacios,
+        // guiones— así que una secuencia continua es un token irrompible que
+        // se pinta FUERA de su caja. Reproducido con un objetivo de 700
+        // caracteres terminado en "holaaaa…": 1312 px de texto saliendo de la
+        // tarjeta hacia la derecha.
+        //
+        // Por qué `anywhere` y no `break-word`: los dos parten la palabra al
+        // llegar al borde, pero solo `anywhere` reduce además el ancho
+        // min-content del elemento. Sin eso, dentro de un flex el token sigue
+        // exigiendo su ancho completo y el contenedor se estira igual.
+        //
+        // Es UNA regla en UN lugar a propósito. Estaba repetida cero veces y
+        // faltaba en seis; pegarla a mano en cada componente garantiza que el
+        // próximo componente nuevo se olvide.
+        '.texto-libre': { overflowWrap: 'anywhere' },
       },
     },
     MuiChip: {

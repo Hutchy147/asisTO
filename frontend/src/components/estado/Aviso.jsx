@@ -11,7 +11,11 @@ import AlertTitle from '@mui/material/AlertTitle';
  */
 export default function Aviso({ severidad = 'info', titulo, children, accion }) {
   return (
-    <Alert severity={severidad} action={accion} sx={{ mb: 2 }}>
+    // texto-libre en el cuerpo: varios avisos interpolan un nombre de la base
+    // ("Esta sesión la atendió <b>X</b>", "Los N objetivos activos de X"), y un
+    // nombre sin espacios se sale del Alert. Se pone acá una sola vez y lo
+    // heredan los cuatro componentes de components/avisos/.
+    <Alert severity={severidad} action={accion} className="texto-libre" sx={{ mb: 2 }}>
       {titulo && <AlertTitle>{titulo}</AlertTitle>}
       {children}
     </Alert>

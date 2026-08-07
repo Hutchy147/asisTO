@@ -117,6 +117,10 @@ CREATE TABLE pacientes (
   apellido          VARCHAR(100) NOT NULL,
   fecha_nacimiento  DATE         NOT NULL,
   diagnostico       TEXT         NULL DEFAULT NULL,
+  -- Nullable a proposito: un paciente particular no tiene obra social, y no
+  -- siempre se conoce al dar el alta. NO es contenido clinico — es dato
+  -- administrativo, asi que puede viajar en to_dict() cuando se exponga.
+  obra_social       VARCHAR(120) NULL DEFAULT NULL,
   nro_historia      VARCHAR(30)  NOT NULL,
   activo            BOOLEAN      NOT NULL DEFAULT TRUE,
   fecha_alta        DATE         NOT NULL DEFAULT (CURRENT_DATE),
@@ -130,6 +134,50 @@ CREATE TABLE pacientes (
   CONSTRAINT fk_pacientes_usuario
     FOREIGN KEY (id_usuario) REFERENCES usuarios (id)
     ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+
+-- ---------------------------------------------------------------------
+-- ASIGNACIONES — que terapeuta atiende a que paciente, y desde cuando
+--
+-- Es el insumo de la decision abierta de la Entrega 2: la HDU 1 pide
+-- "listado de pacientes asignados" y hoy todos los terapeutas ven todos los
+-- pacientes. Esta tabla es el vinculo explicito; el filtro en si todavia no
+-- esta construido.
+--
+-- fecha_hasta NULL significa VIGENTE. Un terapeuta no puede tener dos
+-- asignaciones vigentes con el mismo paciente: lo rechazan los triggers de
+-- mas abajo, en las dos rutas de escritura.
+--
+-- LO QUE ESTA TABLA NO DECIDE, A PROPOSITO: si un paciente puede tener
+-- varios terapeutas a la vez. No hay ninguna restriccion sobre eso porque
+-- todavia no esta decidido, y una constraint puesta "por las dudas" es mas
+-- cara de sacar que de agregar. Si se decide que no puede, el lugar es un
+-- trigger nuevo, no tocar los de abajo.
+--
+-- id_terapeuta apunta a terapeutas(id), igual que sesiones e informes. Es
+-- contra eso que se van a escribir los JOIN, y ademas la asignacion es una
+-- relacion CLINICA: un usuario que no sea terapeuta no tiene por que poder
+-- quedar asignado a un paciente, y la FK contra terapeutas lo impide sola.
+-- (Durante la migracion del 2026-08-07 apunto un rato a usuarios(id); se
+-- corrigio el mismo dia, antes de que existiera ningun dato real.)
+-- ---------------------------------------------------------------------
+CREATE TABLE asignaciones (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  id_terapeuta  INT UNSIGNED NOT NULL,
+  id_paciente   INT UNSIGNED NOT NULL,
+  fecha_desde   DATE         NOT NULL,
+  fecha_hasta   DATE         NULL DEFAULT NULL,
+
+  PRIMARY KEY (id),
+  KEY idx_asignaciones_terapeuta (id_terapeuta, fecha_hasta),
+  KEY idx_asignaciones_paciente (id_paciente, fecha_hasta),
+  CONSTRAINT fk_asignaciones_terapeuta
+    FOREIGN KEY (id_terapeuta) REFERENCES terapeutas (id)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_asignaciones_paciente
+    FOREIGN KEY (id_paciente) REFERENCES pacientes (id)
+    ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
 
@@ -155,16 +203,38 @@ CREATE TABLE pacientes (
 --
 -- El limite de 4 NO se puede expresar con una constraint declarativa:
 -- se aplica por trigger, mas abajo.
+--
+-- TAMANO DE descripcion: 700, y el numero no es arbitrario.
+--
+-- Se valido la Entrega 1 con terapeutas ocupacionales y el formato real de
+-- un objetivo es "Que [paciente] [verbo] [conducta observable], [nivel de
+-- apoyo], [criterio de medicion], [contexto], [plazo]". Uno de los ejemplos
+-- que dieron mide 398 caracteres. El schema estaba en 500, que entraba por
+-- poco, y el formulario cortaba en 180: no se podia cargar un objetivo real.
+--
+-- El techo duro es 767 y esta MEDIDO, no deducido: la UNIQUE de abajo es
+-- (id_paciente, descripcion_activa), o sea INT UNSIGNED + VARCHAR(N) en
+-- utf8mb4, y 767*4 + 4 = 3072 bytes, que es exactamente el limite de clave
+-- de InnoDB. Con VARCHAR(768) el CREATE TABLE falla con ERROR 1071
+-- ("Specified key was too long"). 700 deja margen para que un cambio futuro
+-- en ese indice no reviente el ALTER.
+--
+-- Y por eso NO es TEXT: una columna TEXT no se puede indexar sin prefijo, y
+-- una UNIQUE por prefijo cambiaria el significado de la regla — dos
+-- objetivos que compartan el arranque y difieran solo en el plazo o en el
+-- criterio (la forma exacta del formato real) chocarian entre si.
 -- ---------------------------------------------------------------------
 CREATE TABLE objetivos_terapeuticos (
   id                  INT UNSIGNED NOT NULL AUTO_INCREMENT,
   id_paciente         INT UNSIGNED NOT NULL,
-  descripcion         VARCHAR(500) NOT NULL,
+  descripcion         VARCHAR(700) NOT NULL,
   activo              BOOLEAN      NOT NULL DEFAULT TRUE,
   fecha_creacion      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   fecha_archivado     DATETIME     NULL DEFAULT NULL,
 
-  descripcion_activa  VARCHAR(500)
+  -- Se redefine junto con descripcion, no solo se ensancha: es una columna
+  -- generada y su tipo tiene que seguir al de la columna de origen.
+  descripcion_activa  VARCHAR(700)
     GENERATED ALWAYS AS (IF(activo, descripcion, NULL)) STORED,
 
   PRIMARY KEY (id),
@@ -197,12 +267,41 @@ CREATE TABLE sesiones (
   estado          ENUM('completa','incompleta','ausencia')
                     NOT NULL DEFAULT 'incompleta',
   notas           TEXT         NULL DEFAULT NULL,
+  -- DUPLA TERAPEUTICA — preparacion de la Entrega 4, hoy sin uso.
+  --
+  -- Una dupla es UNA terapeuta atendiendo a DOS NINIOS en el mismo horario,
+  -- cada uno con sus propios objetivos y su propia evolucion. NO son dos
+  -- terapeutas sobre un paciente: eso es trabajo INTERDISCIPLINARIO y queda
+  -- fuera del alcance de AsisTO por decision de producto.
+  --
+  -- Dos sesiones que comparten id_dupla SON una dupla. No hay tabla de
+  -- parejas de pacientes a proposito: la dupla se arma al agendar, buscando
+  -- edades o diagnosticos parecidos, y no es un vinculo permanente entre dos
+  -- ninios. Ademas asi el trigger de solape compara un campo de la fila que
+  -- YA lee, sin sumar una tabla al orden de locks.
+  --
+  -- QUE FALTA (Entrega 4): hoy la columna no tiene trigger ni validacion, y
+  -- NADA la escribe. La regla 6 sigue rechazando dos sesiones
+  -- solapadas del mismo terapeuta aunque compartan id_dupla — que es
+  -- justamente el caso que la Entrega 4 tiene que abrir, en los dos triggers
+  -- de solape Y en el conteo propio de p_registrar_sesion. Sin sentido
+  -- todavia: mientras nadie la escriba, id_dupla es NULL en todas las filas.
+  --
+  -- Lo que NO cambia por este motivo: la AUTORIA de la evolucion. Hay una
+  -- sola terapeuta y carga las dos evoluciones a su nombre.
+  id_dupla        INT UNSIGNED NULL DEFAULT NULL,
   fecha_registro  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
   PRIMARY KEY (id),
   UNIQUE KEY uq_sesiones_paciente_fecha_hora (id_paciente, fecha, hora_inicio),
   KEY idx_sesiones_terapeuta_fecha (id_terapeuta, fecha),
   KEY idx_sesiones_paciente_fecha (id_paciente, fecha),
+  -- COMUN, no UNIQUE: una dupla son DOS filas con el mismo valor, asi que
+  -- una UNIQUE haria imposible justamente el caso que la columna modela.
+  -- Lo usa la Entrega 4 para encontrar la sesion hermana con
+  -- WHERE id_dupla = ?. Se crea ahora porque esta es la ultima apertura
+  -- planificada del schema, aunque todavia nada lo consulte.
+  KEY idx_sesiones_dupla (id_dupla),
   CONSTRAINT fk_sesiones_terapeuta
     FOREIGN KEY (id_terapeuta) REFERENCES terapeutas (id)
     ON DELETE RESTRICT ON UPDATE CASCADE,
@@ -349,7 +448,7 @@ CREATE TABLE sesiones_etiquetas (
 
 
 -- =====================================================================
--- 6. INFORMES, DUPLAS, PLANTILLAS Y AUDITORIA (Entrega 4)
+-- 6. INFORMES, PLANTILLAS Y AUDITORIA (Entrega 4)
 -- =====================================================================
 
 -- contenido_original guarda el texto tal como lo genero la IA;
@@ -378,40 +477,28 @@ CREATE TABLE informes (
 ) ENGINE=InnoDB;
 
 
-CREATE TABLE duplas_terapeuticas (
-  id                INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  id_terapeuta_1    INT UNSIGNED NOT NULL,
-  id_terapeuta_2    INT UNSIGNED NOT NULL,
-  id_paciente       INT UNSIGNED NOT NULL,
-  fecha_asignacion  DATE         NOT NULL DEFAULT (CURRENT_DATE),
-  activa            BOOLEAN      NOT NULL DEFAULT TRUE,
-
-  PRIMARY KEY (id),
-  KEY idx_duplas_paciente (id_paciente),
-  KEY idx_duplas_terapeuta_2 (id_terapeuta_2),
-  CONSTRAINT chk_duplas_terapeutas_distintos
-    CHECK (id_terapeuta_1 <> id_terapeuta_2),
-  -- ON UPDATE RESTRICT y no CASCADE, a diferencia del resto del schema:
-  -- MySQL 8.0 (error 3823) prohibe que una columna con accion referencial
-  -- participe de un CHECK. terapeutas.id es un surrogate AUTO_INCREMENT
-  -- que nunca se actualiza, asi que el CASCADE no aportaba nada y el
-  -- CHECK de "los dos terapeutas distintos" si importa.
-  CONSTRAINT fk_duplas_terapeuta_1
-    FOREIGN KEY (id_terapeuta_1) REFERENCES terapeutas (id)
-    ON DELETE RESTRICT ON UPDATE RESTRICT,
-  CONSTRAINT fk_duplas_terapeuta_2
-    FOREIGN KEY (id_terapeuta_2) REFERENCES terapeutas (id)
-    ON DELETE RESTRICT ON UPDATE RESTRICT,
-  CONSTRAINT fk_duplas_paciente
-    FOREIGN KEY (id_paciente) REFERENCES pacientes (id)
-    ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB;
+-- ---------------------------------------------------------------------
+-- duplas_terapeuticas: ELIMINADA (2026-08-07)
+--
+-- Tenia dos FK a terapeutas y una a pacientes: modelaba DOS PROFESIONALES
+-- SOBRE UN PACIENTE con el nombre del caso dupla. Eso es trabajo
+-- INTERDISCIPLINARIO, que queda fuera del alcance de AsisTO por decision de
+-- producto. La dupla real —UNA terapeuta, DOS ninios— se modela ahora con
+-- sesiones.id_dupla; ver el comentario de esa columna.
+--
+-- No se reemplaza por nada aca: no hay tabla de duplas. Si aparece la
+-- tentacion de volver a crear una tabla con dos FK a terapeutas, releer
+-- esto primero.
+-- ---------------------------------------------------------------------
 
 
+-- descripcion acompania a objetivos_terapeuticos.descripcion: es la misma
+-- clase de texto y una plantilla que no pueda contener un objetivo real no
+-- sirve para nada. Si una de las dos cambia de tamano, cambian las dos.
 CREATE TABLE plantillas_objetivos (
   id           INT UNSIGNED NOT NULL AUTO_INCREMENT,
   area         VARCHAR(120) NOT NULL,
-  descripcion  VARCHAR(500) NOT NULL,
+  descripcion  VARCHAR(700) NOT NULL,
 
   PRIMARY KEY (id),
   KEY idx_plantillas_area (area)
@@ -926,6 +1013,103 @@ BEGIN
 END$$
 
 
+-- ---------------------------------------------------------------------
+-- ASIGNACIONES — una sola asignacion vigente por terapeuta y paciente
+--
+-- Los dos triggers son deliberadamente iguales y sus dos mensajes son
+-- IDENTICOS palabra por palabra. El par INSERT/UPDATE es duplicacion
+-- explicita, igual que los otros tres pares del schema: el riesgo conocido
+-- es que uno quede desactualizado respecto del otro. Si se toca uno, se
+-- toca el otro en el mismo commit.
+--
+-- Vigente = fecha_hasta IS NULL. NO se valida solapamiento entre rangos
+-- cerrados: dos asignaciones terminadas que se pisan en el tiempo se
+-- aceptan. Es a proposito y es el limite conocido de esta version.
+--
+-- Locks: mismo patron que los triggers de objetivos. Lock de la fila padre
+-- en pacientes con FOR UPDATE —primero en el orden canonico— y el conteo
+-- sobre la PROPIA tabla con FOR SHARE, porque FOR UPDATE sobre la tabla del
+-- trigger da ERROR 1442. Ver NOTA DE CONCURRENCIA arriba.
+-- ---------------------------------------------------------------------
+CREATE TRIGGER trg_asignaciones_vigente_insert
+BEFORE INSERT ON asignaciones
+FOR EACH ROW
+BEGIN
+  DECLARE v_vigentes INT UNSIGNED DEFAULT 0;
+  DECLARE v_lock     INT UNSIGNED DEFAULT NULL;
+
+  IF NEW.fecha_hasta IS NOT NULL AND NEW.fecha_hasta < NEW.fecha_desde THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT =
+        'La fecha de fin de la asignacion no puede ser anterior a la de inicio';
+  END IF;
+
+  -- Una asignacion que nace cerrada no compite por la vigencia
+  IF NEW.fecha_hasta IS NULL THEN
+    -- Ver NOTA DE CONCURRENCIA
+    SELECT id INTO v_lock
+      FROM pacientes
+     WHERE id = NEW.id_paciente
+     FOR UPDATE;
+
+    SELECT COUNT(*) INTO v_vigentes
+      FROM asignaciones
+     WHERE id_terapeuta = NEW.id_terapeuta
+       AND id_paciente = NEW.id_paciente
+       AND fecha_hasta IS NULL
+     FOR SHARE;
+
+    IF v_vigentes > 0 THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+          'Ese terapeuta ya tiene una asignacion vigente con ese paciente';
+    END IF;
+  END IF;
+END$$
+
+
+-- Sin este trigger la regla se saltea con un UPDATE: reabrir una asignacion
+-- cerrada (fecha_hasta a NULL) o mover una vigente a otro paciente o a otro
+-- terapeuta llega al mismo estado que el INSERT rechaza.
+CREATE TRIGGER trg_asignaciones_vigente_update
+BEFORE UPDATE ON asignaciones
+FOR EACH ROW
+BEGIN
+  DECLARE v_vigentes INT UNSIGNED DEFAULT 0;
+  DECLARE v_lock     INT UNSIGNED DEFAULT NULL;
+
+  IF NEW.fecha_hasta IS NOT NULL AND NEW.fecha_hasta < NEW.fecha_desde THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT =
+        'La fecha de fin de la asignacion no puede ser anterior a la de inicio';
+  END IF;
+
+  IF NEW.fecha_hasta IS NULL THEN
+    -- Ver NOTA DE CONCURRENCIA
+    SELECT id INTO v_lock
+      FROM pacientes
+     WHERE id = NEW.id_paciente
+     FOR UPDATE;
+
+    -- id <> OLD.id: la propia fila no cuenta como conflicto consigo misma.
+    -- Sin esto, guardar una asignacion vigente sin cambiarle nada fallaria.
+    SELECT COUNT(*) INTO v_vigentes
+      FROM asignaciones
+     WHERE id_terapeuta = NEW.id_terapeuta
+       AND id_paciente = NEW.id_paciente
+       AND fecha_hasta IS NULL
+       AND id <> OLD.id
+     FOR SHARE;
+
+    IF v_vigentes > 0 THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+          'Ese terapeuta ya tiene una asignacion vigente con ese paciente';
+    END IF;
+  END IF;
+END$$
+
+
 -- =====================================================================
 -- 8. PROCEDIMIENTOS ALMACENADOS
 -- =====================================================================
@@ -1215,11 +1399,23 @@ BEGIN
   -- pasada" sin decidir a nombre de quien escriben. La validacion del
   -- backend deja de ser la unica.
   --
-  -- ENTREGA 4 — DUPLAS TERAPEUTICAS: este parametro es el lugar donde la
-  -- condicion se amplia de "quien atendio" a "quien atendio O SU DUPLA
-  -- ASIGNADA para ese paciente". El cambio es agregar aca un OR EXISTS
-  -- contra duplas_terapeuticas (id_paciente de la sesion, activa = TRUE).
-  -- La tabla ya existe con todo lo necesario.
+  -- ENTREGA 4 — DUPLAS TERAPEUTICAS: ESTA VALIDACION NO SE AFLOJA.
+  --
+  -- Hasta el 2026-08-07 esta nota decia lo contrario: que en la Entrega 4 la
+  -- condicion se ampliaba de "quien atendio" a "quien atendio O SU DUPLA",
+  -- con un OR EXISTS contra duplas_terapeuticas. Era falso, y salia de
+  -- confundir dos conceptos distintos.
+  --
+  -- Una dupla es UNA terapeuta con DOS NINIOS. Hay una sola profesional y
+  -- carga las dos evoluciones a su nombre, asi que la autoria nunca entra en
+  -- conflicto: p_registrar_evolucion NO cambia por este motivo. Lo que la
+  -- Entrega 4 abre es el SOLAPE de sesiones que comparten sesiones.id_dupla
+  -- —regla 6, en los dos triggers de solape y en el conteo propio de
+  -- p_registrar_sesion—, que es otra regla y esta en otro lado.
+  --
+  -- "Quien atendio O su dupla" describia el caso INTERDISCIPLINARIO (dos
+  -- profesionales, un paciente), que queda fuera del alcance de AsisTO. La
+  -- tabla duplas_terapeuticas, que modelaba ese caso, fue eliminada.
   --
   -- p_id_terapeuta NULL se rechaza a proposito: obliga a declararlo.
   SELECT id_terapeuta INTO v_ter_sesion FROM sesiones WHERE id = p_id_sesion;

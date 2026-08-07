@@ -10,9 +10,9 @@ import CampoTexto from '../forms/CampoTexto.jsx';
 import ModalFormulario from '../modal/ModalFormulario.jsx';
 import Aviso from '../estado/Aviso.jsx';
 import { useFormularioModal } from '../../hooks/useFormularioModal.js';
-import { crearObjetivo, editarObjetivo } from '../../services/objetivosService.js';
-
-const MAXIMO_CARACTERES = 180;
+import {
+  MAXIMO_CARACTERES_DESCRIPCION, crearObjetivo, editarObjetivo,
+} from '../../services/objetivosService.js';
 
 export default function ModalObjetivo({
   abierto,
@@ -83,13 +83,18 @@ export default function ModalObjetivo({
         etiqueta="Descripción del objetivo"
         obligatorio
         multilinea
-        filas={3}
+        // 5 filas y no 3: el formato real de un objetivo —conducta, nivel de
+        // apoyo, criterio, contexto y plazo— ocupa unas cinco líneas. Con
+        // tres, escribirlo era mirar el texto por una ranura.
+        filas={5}
         autoFocus
-        inputProps={{ maxLength: MAXIMO_CARACTERES }}
+        // El tope y el contador salen de este único prop. El número es el
+        // mismo que el del servicio y el de la columna.
+        maximoCaracteres={MAXIMO_CARACTERES_DESCRIPCION}
         ayuda={
           esEdicion
-            ? `Una frase que describe qué se busca lograr. Máximo ${MAXIMO_CARACTERES} caracteres.`
-            : `Una frase que describe qué se busca lograr, en positivo y observable. Máximo ${MAXIMO_CARACTERES} caracteres.`
+            ? 'Qué se busca lograr, con su criterio y su plazo.'
+            : 'Qué se busca lograr, en positivo y observable, con su criterio y su plazo.'
         }
         valor={valores.descripcion}
         onChange={setCampo('descripcion')}
