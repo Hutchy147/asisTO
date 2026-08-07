@@ -93,10 +93,46 @@ export default function ModalCargarEvolucion({ abierto, idSesion, onCerrar, onCa
     ? `${datos.paciente.nombre_completo} · ${formatearFecha(sesion.fecha)} · ${sesion.hora_inicio?.slice(0, 5)}`
     : undefined;
 
+  /**
+   * La escala y las observaciones van al panel lateral: son el único campo
+   * OBLIGATORIO que no es la lista, y con objetivos en formato real la lista
+   * puede medir cualquier cosa. Si comparten el scroll con ella, se van con
+   * ella — medido: 807 px de contenido contra 423 visibles en 1366x768, con la
+   * escala 16 px abajo del pliegue.
+   *
+   * En una sola columna ModalFormulario los apila acá abajo, en este mismo
+   * orden, que es el que tenía el modal antes de los dos paneles.
+   */
+  const panelLateral = !soloCerrar && datos ? (
+    <>
+      <EscalaLogro
+        valor={valores.valor}
+        onChange={(valor) => setValor('valor', valor)}
+        deshabilitado={guardando}
+        error={validado && !valores.valor ? 'Elegí cómo evolucionó el objetivo.' : undefined}
+      />
+
+      <CampoTexto
+        id="evolucion-observaciones"
+        etiqueta="Observaciones"
+        multilinea
+        filas={3}
+        ayuda="Opcional. Lo que quieras que lea quien retome el tratamiento."
+        valor={valores.observaciones}
+        onChange={setCampo('observaciones')}
+        error={errorDe('observaciones')}
+        deshabilitado={guardando}
+      />
+    </>
+  ) : undefined;
+
   return (
     <ModalFormulario
       abierto={abierto}
+      // 640 es el ancho de UNA columna. Con dos paneles ModalFormulario usa
+      // ANCHO_DOS_PANELES y este valor no se aplica.
       ancho={640}
+      panelLateral={panelLateral}
       titulo="Cargar evolución"
       subtitulo={subtitulo}
       guardando={guardando}
@@ -159,6 +195,7 @@ export default function ModalCargarEvolucion({ abierto, idSesion, onCerrar, onCa
                 >
                   {objetivos.map((objetivo) => {
                     const yaCargada = yaCalificados.get(objetivo.id);
+                    const esElegido = valores.id_objetivo === String(objetivo.id);
                     return (
                       <FormControlLabel
                         key={objetivo.id}
@@ -174,7 +211,31 @@ export default function ModalCargarEvolucion({ abierto, idSesion, onCerrar, onCa
                             <Box
                               component="span"
                               className="texto-libre"
-                              sx={{ display: 'block', fontSize: 14, lineHeight: 1.4 }}
+                              sx={{
+                                display: 'block',
+                                fontSize: 14,
+                                lineHeight: 1.4,
+                                // El objetivo ELEGIDO se muestra completo; los
+                                // demás en dos líneas.
+                                //
+                                // No es por espacio: es que las dos tareas
+                                // necesitan cantidades distintas de texto.
+                                // Para ELEGIR alcanzan dos líneas —los cuatro
+                                // objetivos comparten solo 16 caracteres de
+                                // arranque, así que se distinguen enseguida—.
+                                // Para CALIFICAR hace falta el criterio de
+                                // medición, que en formato real arranca en la
+                                // línea 3 y es la rúbrica de la calificación.
+                                // Colapsar el elegido escondería justo eso.
+                                ...(esElegido
+                                  ? {}
+                                  : {
+                                      display: '-webkit-box',
+                                      WebkitLineClamp: 2,
+                                      WebkitBoxOrient: 'vertical',
+                                      overflow: 'hidden',
+                                    }),
+                              }}
                             >
                               {objetivo.descripcion}
                             </Box>
@@ -195,27 +256,6 @@ export default function ModalCargarEvolucion({ abierto, idSesion, onCerrar, onCa
                   </Typography>
                 )}
               </Box>
-
-              <EscalaLogro
-                valor={valores.valor}
-                onChange={(valor) => setValor('valor', valor)}
-                deshabilitado={guardando}
-                error={
-                  validado && !valores.valor ? 'Elegí cómo evolucionó el objetivo.' : undefined
-                }
-              />
-
-              <CampoTexto
-                id="evolucion-observaciones"
-                etiqueta="Observaciones"
-                multilinea
-                filas={3}
-                ayuda="Opcional. Lo que quieras que lea quien retome el tratamiento."
-                valor={valores.observaciones}
-                onChange={setCampo('observaciones')}
-                error={errorDe('observaciones')}
-                deshabilitado={guardando}
-              />
             </>
           )}
         </>
