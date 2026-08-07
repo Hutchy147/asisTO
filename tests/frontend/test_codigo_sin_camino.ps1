@@ -135,9 +135,15 @@ foreach ($archivo in $servicios) {
 
 $resultados | Format-Table -AutoSize -Property Modulo, Test, Resultado, Detalle | Out-String -Width 220 | Write-Host
 
-$pass = ($resultados | Where-Object { $_.Resultado -eq "PASS" }).Count
-$fail = ($resultados | Where-Object { $_.Resultado -eq "FAIL" }).Count
-$info = ($resultados | Where-Object { $_.Resultado -eq "INFO" }).Count
-Write-Output "PASS: $pass   FAIL: $fail   INFO: $info   TOTAL: $($resultados.Count)"
+$pass = @($resultados | Where-Object { $_.Resultado -eq "PASS" }).Count
+$fail = @($resultados | Where-Object { $_.Resultado -eq "FAIL" }).Count
+$info = @($resultados | Where-Object { $_.Resultado -eq "INFO" }).Count
+
+# Write-Host y no Write-Output: con Write-Output esta linea se cuela en el
+# stream de salida y un llamador que junte el return se la lleva como un
+# objeto mas, inflando el TOTAL. Es el mismo defecto que ya documenta
+# TestHelpers.ps1 (39 tests que se contaban como 46). Hoy nadie agrega
+# este archivo, pero el dia que exista un run_all de frontend lo haria.
+Write-Host "PASS: $pass   FAIL: $fail   INFO: $info   TOTAL: $($resultados.Count)"
 
 return $resultados
