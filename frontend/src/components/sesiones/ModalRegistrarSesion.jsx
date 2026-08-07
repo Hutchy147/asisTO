@@ -104,7 +104,13 @@ export default function ModalRegistrarSesion({
         deshabilitado={guardando}
       >
         {pacientes.map((paciente) => (
-          <MenuItem key={paciente.id} value={paciente.id}>
+          // texto-libre: nombre_completo y nro_historia salen de la base.
+          // MUI le pone white-space: nowrap a MenuItem de fábrica, así que
+          // "no se rompe el layout" venía de un default de terceros, no de una
+          // decisión nuestra. La 14 bis no tiene excepción para eso: si MUI
+          // cambia ese default, el bug aparece sin que nadie toque este
+          // archivo. La clase lo deja explícito acá.
+          <MenuItem key={paciente.id} value={paciente.id} className="texto-libre">
             {paciente.nombre_completo} · {paciente.nro_historia}
           </MenuItem>
         ))}
