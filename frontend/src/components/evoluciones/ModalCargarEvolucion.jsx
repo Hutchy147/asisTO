@@ -147,7 +147,9 @@ export default function ModalCargarEvolucion({ abierto, idSesion, onCerrar, onCa
 
           {!soloCerrar && (
             <>
-              <Box>
+              {/* data-campo-invalido: igual que EscalaLogro, el grupo dibuja
+                  su propio error y MUI no lo marca. Ver ModalFormulario. */}
+              <Box {...(validado && !valores.id_objetivo ? { 'data-campo-invalido': '' } : {})}>
                 <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
                   Objetivo trabajado <Box component="span" sx={{ color: 'error.main' }}>*</Box>
                 </Typography>
@@ -168,8 +170,12 @@ export default function ModalCargarEvolucion({ abierto, idSesion, onCerrar, onCa
                         control={<Radio size="small" />}
                         sx={{ alignItems: 'flex-start', mb: 0.5 }}
                         label={
-                          <Box sx={{ py: 0.25 }}>
-                            <Box component="span" sx={{ fontSize: 14, lineHeight: 1.4 }}>
+                          <Box sx={{ py: 0.25, minWidth: 0 }}>
+                            <Box
+                              component="span"
+                              className="texto-libre"
+                              sx={{ display: 'block', fontSize: 14, lineHeight: 1.4 }}
+                            >
                               {objetivo.descripcion}
                             </Box>
                             <Typography variant="caption" sx={{ display: 'block' }}>

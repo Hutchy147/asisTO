@@ -18,7 +18,11 @@ import { ESCALA_VALORES } from '../../services/evolucionesService.js';
  */
 export default function EscalaLogro({ valor, onChange, deshabilitado = false, error }) {
   return (
-    <Box>
+    // data-campo-invalido: este control dibuja su propio error y MUI no le
+    // pone .Mui-error, así que sin la marca el scroll al primer campo
+    // inválido de ModalFormulario no lo encuentra. Es el caso que MÁS lo
+    // necesita: es el campo obligatorio que queda bajo el pliegue.
+    <Box {...(error ? { 'data-campo-invalido': '' } : {})}>
       <Typography
         component="label"
         variant="body2"
