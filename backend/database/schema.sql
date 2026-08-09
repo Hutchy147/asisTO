@@ -1206,8 +1206,25 @@ BEGIN
   -- deadlock no es un error para mostrarle a nadie: es una condicion
   -- transitoria que se resuelve reintentando, y traducirla a texto es
   -- convertir algo recuperable en un fracaso.
+  --
+  -- SON DOS ERRORES, NO UNO. @reintentar_en_deadlock reintenta 1213 Y 1205
+  -- (lock wait timeout), asi que con solo el 40001 la mitad de la proteccion
+  -- seguia sin poder dispararse. El 1205 no se puede atajar por SQLSTATE
+  -- porque el suyo es 'HY000', el generico de casi todos los errores del
+  -- servidor: filtrarlo asi se tragaria todo lo demas. Se ataja POR NUMERO,
+  -- que MySQL admite, y el handler por numero es mas especifico que el de
+  -- SQLSTATE y que el de SQLEXCEPTION.
+  --
+  -- Los dos handlers van en los TRES procedimientos de escritura o en
+  -- ninguno: media proteccion es peor que ninguna, porque parece que esta.
   -- =====================================================================
   DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
   BEGIN
     ROLLBACK;
     RESIGNAL;
@@ -1299,10 +1316,17 @@ BEGIN
     SET p_mensaje = v_error;
   END;
 
-  -- El deadlock se propaga tal cual, ANTES del generico. El desarrollo
-  -- completo del porque esta en p_alta_paciente; los tres procedimientos de
-  -- escritura llevan el mismo handler y se tocan juntos o no se toca ninguno.
+  -- Deadlock (40001) y lock wait timeout (1205) se propagan tal cual, ANTES
+  -- del generico. El desarrollo completo del porque esta en p_alta_paciente;
+  -- los tres procedimientos de escritura llevan los mismos dos handlers y se
+  -- tocan juntos o no se toca ninguno.
   DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
   BEGIN
     ROLLBACK;
     RESIGNAL;
@@ -1410,7 +1434,8 @@ BEGIN
       'Ya existe una evolucion para ese objetivo en esa sesion';
   END;
 
-  -- El deadlock se propaga tal cual, ANTES del generico. Ver p_alta_paciente.
+  -- Deadlock (40001) y lock wait timeout (1205) se propagan tal cual, ANTES
+  -- del generico. Ver p_alta_paciente.
   --
   -- Este es EL caso que encontro la auditoria, y no es casual que sea este:
   -- es el escenario de la decision 12 —sesiones y objetivos_terapeuticos via
@@ -1418,6 +1443,12 @@ BEGIN
   -- proyecto tiene documentado. El decorador estaba puesto justo donde no
   -- llegaba.
   DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
   BEGIN
     ROLLBACK;
     RESIGNAL;
