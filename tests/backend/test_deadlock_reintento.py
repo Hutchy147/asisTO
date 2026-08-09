@@ -1,55 +1,74 @@
 """
 tests/backend/test_deadlock_reintento.py
 
-La deuda mas vieja del proyecto: el test automatizado de
-@reintentar_en_deadlock (decision 12 de ESTADO.md / HISTORIAL.md).
+Cierre de la decision 12: @reintentar_en_deadlock probado contra errores
+reintentables REALES, en los cuatro caminos de escritura decorados.
 
-POR QUE ESTE TEST ES DELICADO. Ya hubo dos versiones que pasaron en verde
-sin haber probado nada: el atacante tomaba un lock compartido por la FK y
-respetaba el orden canonico sin querer, y cuando eso se arreglo, InnoDB
-elegia como victima al propio atacante por ser la transaccion mas liviana.
-En los dos casos la operacion terminaba bien y el test daba PASS sin que
-hubiera existido ningun deadlock.
+HISTORIA CORTA DE POR QUE ESTO COSTO TANTO. Hubo dos versiones que pasaron
+en verde sin haber probado nada (el atacante respetaba el orden de locks
+sin querer; y despues InnoDB lo elegia victima a el por ser mas liviano).
+Y cuando por fin el ataque funciono, aparecio que los tres procedimientos
+de escritura se TRAGABAN el error: su EXIT HANDLER FOR SQLEXCEPTION
+capturaba el 1213 y devolvia "error interno" con el CALL en exito, asi que
+Python nunca veia nada que reintentar. Terminal 1 lo cerro agregando, en
+los tres, un handler para SQLSTATE '40001' y otro para el errno 1205, los
+dos con ROLLBACK + RESIGNAL (commit ff65741 y el cambio del 1205).
 
-Por eso aca NO alcanza con afirmar que la operacion termino bien. Cada
-corrida verifica las TRES cosas juntas:
+Este archivo verifica ese arreglo por cuenta propia y prueba el reintento
+en los cuatro caminos.
 
-  1. que hubo un deadlock NUEVO   -> el contador lock_deadlocks de InnoDB
-                                     subio durante la ventana del ataque
-  2. que el decorador REINTENTO   -> su propio logger emitio el WARNING
-                                     'Deadlock en <funcion> (intento N...)'
-  3. que la operacion se completo -> y dejo EXACTAMENTE una fila, no dos
+QUE SE AFIRMA, Y POR QUE NO ALCANZA CON MENOS. En cada caso decorado se
+verifican TRES cosas juntas; si falta cualquiera, el resto no significa
+nada:
 
-Si el punto 1 falla, el ataque no reprodujo nada y el resto no significa
-nada. Si el 2 falla, la operacion anduvo por otro motivo y el decorador no
-tuvo nada que ver.
+  1. hubo un error reintentable REAL   -> capa 1: el mismo escenario contra
+                                          el procedimiento pelado devuelve
+                                          errno 1213 / 1205 al cliente
+  2. el decorador REINTENTO            -> su propio logger emitio el WARNING
+  3. la operacion se completo          -> y dejo UNA fila, no dos
 
-LAS DOS CONDICIONES DEL ATAQUE, que tienen que cumplirse juntas:
+Afirmar solo el punto 3 es lo que tienta escribir y es exactamente lo que
+pasa en verde sin probar nada.
 
-  a) Orden invertido con lectura CON LOCK. El atacante toma
-     objetivos_terapeuticos ANTES que pacientes, al reves del orden
-     canonico (pacientes -> terapeutas -> sesiones -> objetivos ->
-     evoluciones). Y usa SELECT ... FOR UPDATE, no UPDATE: un UPDATE toma
-     de paso un lock compartido sobre la fila padre por la FK y termina
-     respetando el orden sin querer, que es como una de las dos versiones
-     falsas pasaba en verde.
-  b) El atacante tiene que ser MAS PESADO que la victima. InnoDB elige
-     como victima a la transaccion con menos trabajo hecho. La victima
-     llega con cero filas modificadas (el trigger corre BEFORE INSERT),
-     asi que el atacante se carga con FILAS_DE_LASTRE filas modificadas
-     antes de pedir el primer lock. Sin ese lastre, InnoDB mata al
-     atacante y la victima nunca reintenta.
+LAS DOS CONDICIONES DEL ATAQUE DE DEADLOCK, que van juntas:
+  a) Orden invertido y lectura CON LOCK. El atacante toma los recursos al
+     reves del orden canonico (pacientes -> terapeutas -> sesiones ->
+     objetivos -> evoluciones) con SELECT ... FOR UPDATE. Con un UPDATE no
+     sirve: toma de paso un lock compartido en la fila padre por la FK y
+     termina respetando el orden sin querer.
+  b) El atacante es MAS PESADO. InnoDB mata a la transaccion con menos
+     trabajo hecho. La victima llega con cero filas modificadas, asi que el
+     atacante se carga con FILAS_DE_LASTRE filas antes de pedir su primer
+     lock. Sin el lastre, InnoDB mata al atacante y no hay reintento.
 
-EL ATACANTE VA POR EL CLIENTE mysql CON --login-path=asisto, no por la
-conexion de la app: el usuario de la app (asisto_app) no tiene privilegio
-PROCESS, y sin PROCESS no se puede leer information_schema.INNODB_METRICS
--- medido: da 1227. El contador de deadlocks, que es la evidencia del
-punto 1, solo se puede leer con el login privilegiado.
+EL LOCK WAIT TIMEOUT (1205) NO SE DEDUCE, SE PROVOCA. El atacante retiene
+el recurso y la victima corre con innodb_lock_wait_timeout = 1.
 
-SINCRONIZACION SIN DORMIR A CIEGAS. El test no asume cuanto tarda el
-atacante en tomar su primer lock: lo comprueba con un SELECT ... FOR
-UPDATE NOWAIT desde la conexion de la app, que falla con 3572 mientras el
-atacante lo tenga. Recien cuando eso falla se dispara la victima.
+Bajar ese valor cuesta mas de lo que parece, y las dos formas que usa este
+archivo son necesarias, no redundantes:
+  - Para la capa 2, que entra por HTTP, no hay manera de tocar la conexion
+    que el pool le da al request: se pone un listener de 'connect' en el
+    engine + dispose() del pool, para que TODA conexion nueva nazca con el
+    timeout corto. Un SET SESSION suelto desde el test se aplicaria a la
+    conexion del test, que no es la del request.
+  - Para la capa 1 eso NO alcanzo. El listener solo cubre las conexiones
+    que nacen despues del dispose(), y a esos contextos el pool les
+    entregaba a veces una anterior: dos casos esperaban los 50 s por
+    defecto, no expiraban nunca y el test pasaba en verde sin haber
+    provocado ningun 1205. Como ahi la conexion del CALL SI es alcanzable,
+    se le fija el timeout en la misma sesion, justo antes.
+Los dos casos se detectaron corriendo el test, no leyendolo.
+
+ESTRUCTURA. Dos capas por cada camino:
+  capa 1 (verificacion del arreglo de Terminal 1): con el atacante puesto,
+          se llama al PROCEDIMIENTO directo y se afirma el errno que llega.
+          No participa el decorador. Es la medicion propia del "despues".
+  capa 2 (el reintento): el mismo escenario por el servicio decorado.
+
+EL ATACANTE VA POR EL CLIENTE mysql CON --login-path=asisto: el usuario de
+la app no tiene privilegio PROCESS y sin PROCESS no se puede leer
+information_schema.INNODB_METRICS -- medido, da 1227. El contador de
+deadlocks es la evidencia dura del punto 1 en los casos de 1213.
 
 Uso: se corre con el resto de tests/backend.
     .\\run_backend_tests.ps1
@@ -67,29 +86,28 @@ import unittest
 import _entorno as e
 from app import db
 from app.services.objetivos_service import crear_objetivo
-from app.utils.errors import ERRNO_DEADLOCK, obtener_errno
-from sqlalchemy import text
+from app.services.pacientes_service import alta_paciente
+from app.utils.errors import ERRNO_DEADLOCK, ERRNO_LOCK_TIMEOUT, obtener_errno
+from sqlalchemy import event, text
 from sqlalchemy.exc import DBAPIError, OperationalError
 
-# Paciente 3 del seed tiene 1 objetivo activo: hay lugar para crear otro
-# sin chocar con el limite de 4 de la regla 1.
-PACIENTE = 3
+# --- datos del seed que usan los escenarios -----------------------------
+PACIENTE_ORM = 3        # tiene 1 objetivo activo: hay lugar para crear otro
+TERAPEUTA = 1           # Laura
+SESION = 1              # del terapeuta 1, paciente 1, completa
+OBJETIVO = 2            # activo, del paciente 1, sin evolucion en la sesion 1
+USUARIO_LIBRE = 4       # existe y no esta tomado por uq_pacientes_usuario
 
-# Sesion 1 y objetivo 2 son la combinacion valida del seed (sesion del
-# terapeuta 1, paciente 1, sin evolucion sobre el objetivo 2 todavia).
-SESION_EVOL = 1
-OBJETIVO_EVOL = 2
-
-# Cuantas filas modifica el atacante para pesar mas que la victima.
 FILAS_DE_LASTRE = 200
+SEGUNDOS_DE_RETENCION = 2
+TIMEOUT_DE_LOCK = 1     # segundos, para provocar el 1205 rapido
 
-# Cuanto retiene el atacante su primer lock antes de pedir el segundo. Solo
-# tiene que alcanzar para que la victima quede bloqueada; la victima llega
-# en decenas de milisegundos desde que se la dispara.
-SEGUNDOS_DE_RETENCION = 3
-
-MARCA_OBJETIVO = 'TEST deadlock reintento'
+MARCA_OBJETIVO = 'TEST deadlock objetivo'
+MARCA_HISTORIA = 'HC-TEST-DL'
+MARCA_NOTAS = 'TEST deadlock sesion'
 MARCA_LASTRE = 'lastre-deadlock-test'
+
+FECHA_SESION_LIBRE = '2026-12-01'   # sin sesiones del terapeuta 1 en el seed
 
 
 def _buscar_mysql():
@@ -97,16 +115,15 @@ def _buscar_mysql():
     ruta_env = os.environ.get('ASISTO_MYSQL_EXE')
     if ruta_env and os.path.exists(ruta_env):
         return ruta_env
-    candidatos = [
+    for candidato in (
         r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe",
         r"C:\Program Files\MySQL\MySQL Server 8.4\bin\mysql.exe",
         r"C:\Program Files\MySQL\MySQL Server 9.0\bin\mysql.exe",
         r"C:\Program Files\MySQL\MySQL Server 9.1\bin\mysql.exe",
         r"C:\xampp\mysql\bin\mysql.exe",
-    ]
-    for c in candidatos:
-        if os.path.exists(c):
-            return c
+    ):
+        if os.path.exists(candidato):
+            return candidato
     return None
 
 
@@ -114,7 +131,7 @@ MYSQL_EXE = _buscar_mysql()
 
 
 class CapturaDeLog(logging.Handler):
-    """Escucha al logger del decorador. Es la evidencia del punto 2."""
+    """Escucha al logger del decorador: es la evidencia del punto 2."""
 
     def __init__(self):
         super().__init__()
@@ -131,11 +148,15 @@ class CapturaDeLog(logging.Handler):
             and nombre_funcion in r.getMessage()
         ]
 
+    def mensajes(self):
+        return [r.getMessage() for r in self.registros]
+
 
 @unittest.skipIf(MYSQL_EXE is None,
                  'No se encontro mysql.exe: el atacante necesita el cliente con '
                  '--login-path=asisto. Definir ASISTO_MYSQL_EXE.')
-class TestDeadlockReintento(unittest.TestCase):
+class BaseDeadlock(unittest.TestCase):
+    """Andamiaje comun: atacante, sincronizacion, limpieza y contadores."""
 
     @classmethod
     def setUpClass(cls):
@@ -151,15 +172,16 @@ class TestDeadlockReintento(unittest.TestCase):
         self.captura = CapturaDeLog()
         self.logger_decorador = logging.getLogger('app.utils.db')
         self.logger_decorador.addHandler(self.captura)
+        self._listener_timeout = None
 
     def tearDown(self):
         self.logger_decorador.removeHandler(self.captura)
+        self._quitar_timeout_corto()
         self._limpiar()
 
-    # --- utilidades -----------------------------------------------------
+    # --- infraestructura -------------------------------------------------
 
     def _mysql_privilegiado(self, sql):
-        """Corre SQL con --login-path=asisto (root). Devuelve el proceso."""
         with tempfile.NamedTemporaryFile('w', suffix='.sql', delete=False,
                                          encoding='utf-8') as archivo:
             archivo.write(sql)
@@ -174,9 +196,9 @@ class TestDeadlockReintento(unittest.TestCase):
 
     def _contador_de_deadlocks(self):
         """
-        Contador de deadlocks de InnoDB. Es GLOBAL del servidor: si algo mas
-        estuviera provocando deadlocks en la misma maquina, el delta podria
-        contar de mas, nunca de menos. Por eso la afirmacion es >= 1.
+        Contador de deadlocks de InnoDB. Es GLOBAL del servidor: si otra cosa
+        provocara deadlocks en la misma maquina el delta contaria de mas,
+        nunca de menos. Por eso se afirma >= 1.
         """
         proceso = self._mysql_privilegiado(
             "SELECT COUNT FROM information_schema.INNODB_METRICS "
@@ -184,37 +206,31 @@ class TestDeadlockReintento(unittest.TestCase):
         lineas = [l for l in proceso.stdout.splitlines() if l.strip()]
         if len(lineas) < 2:
             self.fail(
-                'No se pudo leer el contador lock_deadlocks con '
-                f'--login-path=asisto. stdout={proceso.stdout!r} '
-                f'stderr={proceso.stderr!r}. Sin este contador el test no '
-                'puede afirmar que hubo un deadlock, y sin eso no prueba nada.')
+                'No se pudo leer lock_deadlocks con --login-path=asisto. '
+                f'stdout={proceso.stdout!r} stderr={proceso.stderr!r}. Sin ese '
+                'contador el test no puede afirmar que hubo un deadlock.')
         return int(lineas[-1])
 
     def _limpiar(self):
         with self.app.app_context():
             db.session.rollback()
-            db.session.execute(text(
-                'DELETE FROM objetivos_terapeuticos WHERE descripcion LIKE :d'),
-                {'d': MARCA_OBJETIVO + '%'})
-            db.session.execute(text(
-                'DELETE FROM evoluciones WHERE id_sesion = :s AND id_objetivo = :o'),
-                {'s': SESION_EVOL, 'o': OBJETIVO_EVOL})
-            db.session.execute(text(
-                'DELETE FROM auditoria_accesos WHERE email LIKE :m'),
-                {'m': MARCA_LASTRE + '%'})
+            for sentencia, parametros in (
+                ('DELETE FROM objetivos_terapeuticos WHERE descripcion LIKE :m',
+                 {'m': MARCA_OBJETIVO + '%'}),
+                ('DELETE FROM evoluciones WHERE id_sesion = :s AND id_objetivo = :o',
+                 {'s': SESION, 'o': OBJETIVO}),
+                ('DELETE FROM sesiones WHERE notas LIKE :m', {'m': MARCA_NOTAS + '%'}),
+                ('DELETE FROM pacientes WHERE nro_historia LIKE :m',
+                 {'m': MARCA_HISTORIA + '%'}),
+                ('DELETE FROM auditoria_accesos WHERE email LIKE :m',
+                 {'m': MARCA_LASTRE + '%'}),
+            ):
+                db.session.execute(text(sentencia), parametros)
             db.session.commit()
 
-    def _sql_del_atacante(self, tabla_primero, tabla_despues):
-        lastre = ','.join(
+    def _lastre(self):
+        return ','.join(
             f"(NULL,'{MARCA_LASTRE}-{i}','fallido')" for i in range(FILAS_DE_LASTRE))
-        return f"""
-START TRANSACTION;
-INSERT INTO auditoria_accesos (id_usuario,email,resultado) VALUES {lastre};
-{tabla_primero}
-SELECT SLEEP({SEGUNDOS_DE_RETENCION});
-{tabla_despues}
-COMMIT;
-"""
 
     def _lanzar_atacante(self, sql):
         resultado = {}
@@ -226,223 +242,477 @@ COMMIT;
         hilo.start()
         return hilo, resultado
 
-    def _esperar_a_que_el_atacante_tenga_el_lock(self, sql_sonda, timeout=25):
-        """
-        Espera activa con NOWAIT en vez de dormir un rato fijo.
+    def _atacante_de_deadlock(self, primero, despues, cierre='COMMIT;'):
+        """Lastre, toma un recurso, espera, y toma el segundo: orden invertido."""
+        return (
+            'START TRANSACTION;\n'
+            f'INSERT INTO auditoria_accesos (id_usuario,email,resultado) VALUES {self._lastre()};\n'
+            f'{primero}\n'
+            f'SELECT SLEEP({SEGUNDOS_DE_RETENCION});\n'
+            f'{despues}\n'
+            f'{cierre}\n'
+        )
 
-        Mientras el atacante retenga el lock, la sonda falla con 3572. Si en
-        cambio la sonda pasa, el atacante todavia no lo tomo y hay que
-        reintentar: disparar la victima antes de eso es una de las formas de
-        que no se forme el ciclo y el test pase en verde sin probar nada.
+    def _atacante_que_retiene(self, recurso):
+        """Solo retiene: no pide un segundo recurso, asi no puede haber ciclo.
+        Lo que provoca es espera pura, que termina en 1205."""
+        return (
+            'START TRANSACTION;\n'
+            f'{recurso}\n'
+            f'SELECT SLEEP({SEGUNDOS_DE_RETENCION});\n'
+            'ROLLBACK;\n'
+        )
+
+    def _esperar_a_que_el_atacante_tenga_el_lock(self, sonda, timeout=25):
+        """
+        No duerme un rato fijo: comprueba. Mientras el atacante retenga el
+        recurso, la sonda NOWAIT falla con 3572. Disparar la victima antes de
+        eso es una de las formas de que no se forme nada y el test de verde.
         """
         inicio = time.time()
         with self.app.app_context():
             while time.time() - inicio < timeout:
                 try:
-                    db.session.execute(text(sql_sonda))
+                    db.session.execute(text(sonda))
                     db.session.rollback()
-                    time.sleep(0.2)
+                    time.sleep(0.15)
                 except (OperationalError, DBAPIError):
                     db.session.rollback()
                     return True
         return False
 
-    # --- 1. el test principal -------------------------------------------
-
-    def test_deadlock_real_dispara_el_reintento_y_la_operacion_se_completa(self):
+    def _poner_timeout_corto(self):
         """
-        Camino ORM (crear_objetivo): el 1213 llega a Python y el decorador
-        puede verlo.
+        innodb_lock_wait_timeout = 1 en TODA conexion nueva del engine.
 
-        Victima:  trigger de objetivos -> pacientes FOR UPDATE, despues
-                  objetivos_terapeuticos FOR SHARE.
-        Atacante: objetivos_terapeuticos FOR UPDATE primero, pacientes
-                  despues. Orden invertido.
+        Tiene que ser por listener + dispose(): un SET SESSION suelto desde el
+        test se aplica a la conexion del test, no a la que el pool le da al
+        request. Con eso la victima esperaba los 50 s por defecto, nunca
+        expiraba, y el test pasaba sin haber provocado ningun 1205.
         """
-        sql = self._sql_del_atacante(
-            f"SELECT id FROM objetivos_terapeuticos WHERE id_paciente={PACIENTE} FOR UPDATE;",
-            f"SELECT id FROM pacientes WHERE id={PACIENTE} FOR UPDATE;")
-
-        antes = self._contador_de_deadlocks()
-        hilo, resultado = self._lanzar_atacante(sql)
-
-        listo = self._esperar_a_que_el_atacante_tenga_el_lock(
-            f"SELECT id FROM objetivos_terapeuticos WHERE id_paciente={PACIENTE} FOR UPDATE NOWAIT")
-        self.assertTrue(
-            listo,
-            'El atacante nunca llego a retener el lock de objetivos_terapeuticos. '
-            'Sin eso no hay orden invertido y el ciclo no se forma.')
+        def al_conectar(conexion_dbapi, _registro):
+            cursor = conexion_dbapi.cursor()
+            cursor.execute(f'SET SESSION innodb_lock_wait_timeout = {TIMEOUT_DE_LOCK}')
+            cursor.close()
 
         with self.app.app_context():
-            objetivo = crear_objetivo({
-                'id_paciente': PACIENTE,
-                'descripcion': f'{MARCA_OBJETIVO} camino ORM',
-            })
-            id_creado = objetivo.id
+            motor = db.engine
+        event.listen(motor, 'connect', al_conectar)
+        motor.dispose()
+        self._listener_timeout = (motor, al_conectar)
+
+    def _quitar_timeout_corto(self):
+        if not self._listener_timeout:
+            return
+        motor, funcion = self._listener_timeout
+        event.remove(motor, 'connect', funcion)
+        motor.dispose()
+        self._listener_timeout = None
+
+    def _llamar_procedimiento(self, sql, parametros, timeout_corto=False):
+        """
+        Llama al procedimiento pelado y devuelve la excepcion, o None.
+
+        Con timeout_corto se fija innodb_lock_wait_timeout EN ESTA MISMA
+        sesion, ademas del listener del engine. No es redundante: el listener
+        solo alcanza a las conexiones que nazcan despues del dispose(), y la
+        que el pool le entrega a este contexto puede ser una anterior. Con el
+        listener solo, dos de estos casos esperaban los 50 s por defecto, no
+        expiraban nunca y el test daba verde sin haber provocado ningun 1205.
+        Aca la conexion es la misma que corre el CALL, asi que no hay duda.
+        """
+        with self.app.app_context():
+            try:
+                if timeout_corto:
+                    db.session.execute(text(
+                        f'SET SESSION innodb_lock_wait_timeout = {TIMEOUT_DE_LOCK}'))
+                db.session.execute(text(sql), parametros)
+                db.session.commit()
+                return None
+            except (OperationalError, DBAPIError) as error:
+                return error
+            finally:
+                db.session.rollback()
+
+    def _afirmar_errno(self, error, esperado, camino):
+        self.assertIsNotNone(
+            error,
+            f'{camino}: el procedimiento NO propago ningun error. O el escenario '
+            'no produjo la condicion, o el procedimiento se la volvio a tragar '
+            '(que es el defecto que Terminal 1 cerro con ROLLBACK + RESIGNAL).')
+        self.assertEqual(
+            obtener_errno(error), esperado,
+            f'{camino}: llego un error pero con errno {obtener_errno(error)} en vez '
+            f'de {esperado}. Detalle: {str(error)[:200]}')
+
+
+# =====================================================================
+# CAPA 1 — verificacion propia del arreglo de Terminal 1
+#
+# Sin decorador de por medio: con el atacante puesto, se llama al
+# PROCEDIMIENTO y se mira que errno llega al cliente. Antes del arreglo
+# estos seis casos devolvian exito con p_mensaje de "error interno".
+# =====================================================================
+class TestElProcedimientoPropagaElError(BaseDeadlock):
+
+    def test_alta_paciente_propaga_el_1213(self):
+        sql = self._atacante_de_deadlock(
+            f'SELECT id FROM usuarios WHERE id={USUARIO_LIBRE} FOR UPDATE;',
+            'INSERT INTO pacientes (id_usuario,nombre,apellido,fecha_nacimiento,'
+            f"nro_historia,activo,fecha_alta) VALUES (NULL,'Choque','Test',"
+            f"'2015-01-01','{MARCA_HISTORIA}-1213',TRUE,CURRENT_DATE);",
+            cierre='ROLLBACK;')
+        antes = self._contador_de_deadlocks()
+        hilo, _ = self._lanzar_atacante(sql)
+        self.assertTrue(self._esperar_a_que_el_atacante_tenga_el_lock(
+            f'SELECT id FROM usuarios WHERE id={USUARIO_LIBRE} FOR UPDATE NOWAIT'))
+
+        error = self._llamar_procedimiento(
+            'CALL p_alta_paciente(:nom,:ape,:fn,NULL,:hist,:usr,@id,@msg)',
+            {'nom': 'Proto', 'ape': 'Deadlock', 'fn': '2015-01-01',
+             'hist': f'{MARCA_HISTORIA}-1213', 'usr': USUARIO_LIBRE})
 
         hilo.join(timeout=30)
-        self.assertEqual(resultado['proceso'].returncode, 0,
-                         f"El atacante fallo: {resultado['proceso'].stderr!r}")
+        self.assertGreaterEqual(self._contador_de_deadlocks() - antes, 1,
+                                'El contador lock_deadlocks no se movio.')
+        self._afirmar_errno(error, ERRNO_DEADLOCK, 'p_alta_paciente')
 
-        despues = self._contador_de_deadlocks()
+    def test_registrar_sesion_propaga_el_1213(self):
+        sql = self._atacante_de_deadlock(
+            f'SELECT id FROM sesiones WHERE id_terapeuta={TERAPEUTA} FOR UPDATE;',
+            f'SELECT id FROM terapeutas WHERE id={TERAPEUTA} FOR UPDATE;')
+        antes = self._contador_de_deadlocks()
+        hilo, _ = self._lanzar_atacante(sql)
+        self.assertTrue(self._esperar_a_que_el_atacante_tenga_el_lock(
+            f'SELECT id FROM sesiones WHERE id_terapeuta={TERAPEUTA} FOR UPDATE NOWAIT'))
 
-        # 1. hubo un deadlock NUEVO
-        self.assertGreaterEqual(
-            despues - antes, 1,
-            f'El contador lock_deadlocks de InnoDB no se movio ({antes} -> {despues}). '
-            'No hubo ningun deadlock: el ataque no reprodujo la condicion y lo que '
-            'siga no prueba nada.')
+        error = self._llamar_procedimiento(
+            'CALL p_registrar_sesion(:ter,:pac,:fecha,:hi,:hf,:est,:notas,@id,@msg)',
+            {'ter': TERAPEUTA, 'pac': 1, 'fecha': FECHA_SESION_LIBRE,
+             'hi': '08:00:00', 'hf': '09:00:00', 'est': 'completa',
+             'notas': MARCA_NOTAS})
 
-        # 2. el decorador REINTENTO
-        reintentos = self.captura.reintentos_de('crear_objetivo')
+        hilo.join(timeout=30)
+        self.assertGreaterEqual(self._contador_de_deadlocks() - antes, 1,
+                                'El contador lock_deadlocks no se movio.')
+        self._afirmar_errno(error, ERRNO_DEADLOCK, 'p_registrar_sesion')
+
+    def test_registrar_evolucion_propaga_el_1213(self):
+        sql = self._atacante_de_deadlock(
+            f'SELECT id FROM objetivos_terapeuticos WHERE id={OBJETIVO} FOR UPDATE;',
+            f'SELECT id FROM sesiones WHERE id={SESION} FOR UPDATE;')
+        antes = self._contador_de_deadlocks()
+        hilo, _ = self._lanzar_atacante(sql)
+        self.assertTrue(self._esperar_a_que_el_atacante_tenga_el_lock(
+            f'SELECT id FROM objetivos_terapeuticos WHERE id={OBJETIVO} FOR UPDATE NOWAIT'))
+
+        error = self._llamar_procedimiento(
+            'CALL p_registrar_evolucion(:ses,:obj,:val,NULL,:ter,@id,@msg)',
+            {'ses': SESION, 'obj': OBJETIVO, 'val': 3, 'ter': TERAPEUTA})
+
+        hilo.join(timeout=30)
+        self.assertGreaterEqual(self._contador_de_deadlocks() - antes, 1,
+                                'El contador lock_deadlocks no se movio.')
+        self._afirmar_errno(error, ERRNO_DEADLOCK, 'p_registrar_evolucion')
+
+    # --- los mismos tres, con lock wait timeout ---------------------------
+
+    def test_alta_paciente_propaga_el_1205(self):
+        self._poner_timeout_corto()
+        sql = self._atacante_que_retiene(
+            'INSERT INTO pacientes (id_usuario,nombre,apellido,fecha_nacimiento,'
+            f"nro_historia,activo,fecha_alta) VALUES (NULL,'Retencion','Test',"
+            f"'2015-01-01','{MARCA_HISTORIA}-1205',TRUE,CURRENT_DATE);")
+        hilo, _ = self._lanzar_atacante(sql)
+        # La sonda no puede ser un FOR UPDATE sobre una fila que todavia no
+        # existe: se espera a que el INSERT del atacante este puesto mirando
+        # que un INSERT igual se bloquee. Se usa el propio intento como sonda.
+        time.sleep(0.4)
+
+        error = self._llamar_procedimiento(
+            'CALL p_alta_paciente(:nom,:ape,:fn,NULL,:hist,NULL,@id,@msg)',
+            {'nom': 'Proto', 'ape': 'Timeout', 'fn': '2015-01-01',
+             'hist': f'{MARCA_HISTORIA}-1205'}, timeout_corto=True)
+
+        hilo.join(timeout=30)
+        self._afirmar_errno(error, ERRNO_LOCK_TIMEOUT, 'p_alta_paciente (1205)')
+
+    def test_registrar_sesion_propaga_el_1205(self):
+        self._poner_timeout_corto()
+        sql = self._atacante_que_retiene(
+            f'SELECT id FROM terapeutas WHERE id={TERAPEUTA} FOR UPDATE;')
+        hilo, _ = self._lanzar_atacante(sql)
+        self.assertTrue(self._esperar_a_que_el_atacante_tenga_el_lock(
+            f'SELECT id FROM terapeutas WHERE id={TERAPEUTA} FOR UPDATE NOWAIT'))
+
+        error = self._llamar_procedimiento(
+            'CALL p_registrar_sesion(:ter,:pac,:fecha,:hi,:hf,:est,:notas,@id,@msg)',
+            {'ter': TERAPEUTA, 'pac': 1, 'fecha': FECHA_SESION_LIBRE,
+             'hi': '10:00:00', 'hf': '11:00:00', 'est': 'completa',
+             'notas': MARCA_NOTAS}, timeout_corto=True)
+
+        hilo.join(timeout=30)
+        self._afirmar_errno(error, ERRNO_LOCK_TIMEOUT, 'p_registrar_sesion (1205)')
+
+    def test_registrar_evolucion_propaga_el_1205(self):
+        self._poner_timeout_corto()
+        sql = self._atacante_que_retiene(
+            f'SELECT id FROM sesiones WHERE id={SESION} FOR UPDATE;')
+        hilo, _ = self._lanzar_atacante(sql)
+        self.assertTrue(self._esperar_a_que_el_atacante_tenga_el_lock(
+            f'SELECT id FROM sesiones WHERE id={SESION} FOR UPDATE NOWAIT'))
+
+        error = self._llamar_procedimiento(
+            'CALL p_registrar_evolucion(:ses,:obj,:val,NULL,:ter,@id,@msg)',
+            {'ses': SESION, 'obj': OBJETIVO, 'val': 3, 'ter': TERAPEUTA},
+            timeout_corto=True)
+
+        hilo.join(timeout=30)
+        self._afirmar_errno(error, ERRNO_LOCK_TIMEOUT, 'p_registrar_evolucion (1205)')
+
+
+# =====================================================================
+# CAPA 2 — el decorador reintenta y la operacion se completa
+# =====================================================================
+class TestElDecoradorReintenta(BaseDeadlock):
+
+    def _afirmar_reintento(self, nombre_funcion):
+        reintentos = self.captura.reintentos_de(nombre_funcion)
         self.assertGreaterEqual(
             len(reintentos), 1,
-            'Hubo un deadlock pero @reintentar_en_deadlock no registro ningun '
-            'reintento. La operacion termino bien por otro motivo, no por el '
-            f'decorador. Registros vistos: {[r.getMessage() for r in self.captura.registros]}')
+            f'Hubo un error reintentable pero @reintentar_en_deadlock no registro '
+            f'ningun reintento en {nombre_funcion}: la operacion termino bien por '
+            f'otro motivo. Registros: {self.captura.mensajes()}')
 
-        # 3. la operacion se completo, y una sola vez
+    def _contar(self, sentencia, parametros):
         with self.app.app_context():
-            filas = db.session.execute(text(
-                'SELECT COUNT(*) FROM objetivos_terapeuticos WHERE descripcion LIKE :d'),
-                {'d': MARCA_OBJETIVO + '%'}).scalar()
+            valor = db.session.execute(text(sentencia), parametros).scalar()
             db.session.rollback()
+            return valor
+
+    # --- camino ORM (el unico que funcionaba antes del arreglo) -----------
+
+    def test_objetivos_orm_deadlock_dispara_el_reintento(self):
+        sql = self._atacante_de_deadlock(
+            f'SELECT id FROM objetivos_terapeuticos WHERE id_paciente={PACIENTE_ORM} FOR UPDATE;',
+            f'SELECT id FROM pacientes WHERE id={PACIENTE_ORM} FOR UPDATE;')
+        antes = self._contador_de_deadlocks()
+        hilo, _ = self._lanzar_atacante(sql)
+        self.assertTrue(self._esperar_a_que_el_atacante_tenga_el_lock(
+            f'SELECT id FROM objetivos_terapeuticos WHERE id_paciente={PACIENTE_ORM} '
+            'FOR UPDATE NOWAIT'))
+
+        with self.app.app_context():
+            objetivo = crear_objetivo({'id_paciente': PACIENTE_ORM,
+                                       'descripcion': f'{MARCA_OBJETIVO} orm'})
+            self.assertIsNotNone(objetivo.id)
+
+        hilo.join(timeout=30)
+        self.assertGreaterEqual(self._contador_de_deadlocks() - antes, 1)
+        self._afirmar_reintento('crear_objetivo')
         self.assertEqual(
-            filas, 1,
-            f'Se esperaba exactamente 1 objetivo creado y hay {filas}. Si hay 2, el '
-            'reintento repitio una operacion que ya habia quedado escrita.')
-        self.assertIsNotNone(id_creado)
+            self._contar('SELECT COUNT(*) FROM objetivos_terapeuticos '
+                         'WHERE descripcion LIKE :m', {'m': MARCA_OBJETIVO + '%'}), 1,
+            'Se esperaba exactamente 1 objetivo: si hay 2, el reintento repitio '
+            'una operacion que ya habia quedado escrita.')
 
-    # --- 2. la falsacion, dentro del propio test -------------------------
+    # --- alta_paciente ----------------------------------------------------
 
-    def test_sin_el_decorador_el_mismo_ataque_propaga_el_1213(self):
+    def test_alta_paciente_deadlock_dispara_el_reintento(self):
+        sql = self._atacante_de_deadlock(
+            f'SELECT id FROM usuarios WHERE id={USUARIO_LIBRE} FOR UPDATE;',
+            'INSERT INTO pacientes (id_usuario,nombre,apellido,fecha_nacimiento,'
+            f"nro_historia,activo,fecha_alta) VALUES (NULL,'Choque','Test',"
+            f"'2015-01-01','{MARCA_HISTORIA}-A',TRUE,CURRENT_DATE);",
+            cierre='ROLLBACK;')
+        antes = self._contador_de_deadlocks()
+        hilo, _ = self._lanzar_atacante(sql)
+        self.assertTrue(self._esperar_a_que_el_atacante_tenga_el_lock(
+            f'SELECT id FROM usuarios WHERE id={USUARIO_LIBRE} FOR UPDATE NOWAIT'))
+
+        with self.app.app_context():
+            paciente, mensaje = alta_paciente({
+                'nombre': 'Proto', 'apellido': 'Deadlock',
+                'fecha_nacimiento': '2015-01-01',
+                'nro_historia': f'{MARCA_HISTORIA}-A',
+                'id_usuario': USUARIO_LIBRE,
+            })
+            self.assertIsNotNone(paciente.id, mensaje)
+
+        hilo.join(timeout=30)
+        self.assertGreaterEqual(self._contador_de_deadlocks() - antes, 1)
+        self._afirmar_reintento('alta_paciente')
+        self.assertEqual(
+            self._contar('SELECT COUNT(*) FROM pacientes WHERE nro_historia = :h',
+                         {'h': f'{MARCA_HISTORIA}-A'}), 1)
+
+    def test_alta_paciente_lock_timeout_dispara_el_reintento(self):
+        self._poner_timeout_corto()
+        sql = self._atacante_que_retiene(
+            'INSERT INTO pacientes (id_usuario,nombre,apellido,fecha_nacimiento,'
+            f"nro_historia,activo,fecha_alta) VALUES (NULL,'Retencion','Test',"
+            f"'2015-01-01','{MARCA_HISTORIA}-B',TRUE,CURRENT_DATE);")
+        hilo, _ = self._lanzar_atacante(sql)
+        time.sleep(0.4)
+
+        with self.app.app_context():
+            paciente, mensaje = alta_paciente({
+                'nombre': 'Proto', 'apellido': 'Timeout',
+                'fecha_nacimiento': '2015-01-01',
+                'nro_historia': f'{MARCA_HISTORIA}-B',
+            })
+            self.assertIsNotNone(paciente.id, mensaje)
+
+        hilo.join(timeout=30)
+        self._afirmar_reintento('alta_paciente')
+
+    # --- registrar_sesion (por HTTP: el servicio usa el terapeuta logueado)
+
+    def test_registrar_sesion_deadlock_dispara_el_reintento(self):
+        sql = self._atacante_de_deadlock(
+            f'SELECT id FROM sesiones WHERE id_terapeuta={TERAPEUTA} FOR UPDATE;',
+            f'SELECT id FROM terapeutas WHERE id={TERAPEUTA} FOR UPDATE;')
+        antes = self._contador_de_deadlocks()
+        hilo, _ = self._lanzar_atacante(sql)
+        self.assertTrue(self._esperar_a_que_el_atacante_tenga_el_lock(
+            f'SELECT id FROM sesiones WHERE id_terapeuta={TERAPEUTA} FOR UPDATE NOWAIT'))
+
+        respuesta = e.cliente().post(
+            '/api/sesiones', headers=e.encabezado_auth(self.tok_laura),
+            json={'id_paciente': 1, 'fecha': FECHA_SESION_LIBRE,
+                  'hora_inicio': '08:00:00', 'hora_fin': '09:00:00',
+                  'estado': 'completa', 'notas': MARCA_NOTAS})
+
+        hilo.join(timeout=30)
+        self.assertEqual(respuesta.status_code, 201, respuesta.get_json())
+        self.assertGreaterEqual(self._contador_de_deadlocks() - antes, 1)
+        self._afirmar_reintento('registrar_sesion')
+        self.assertEqual(
+            self._contar('SELECT COUNT(*) FROM sesiones WHERE notas LIKE :m',
+                         {'m': MARCA_NOTAS + '%'}), 1)
+
+    def test_registrar_sesion_lock_timeout_dispara_el_reintento(self):
+        self._poner_timeout_corto()
+        sql = self._atacante_que_retiene(
+            f'SELECT id FROM terapeutas WHERE id={TERAPEUTA} FOR UPDATE;')
+        hilo, _ = self._lanzar_atacante(sql)
+        self.assertTrue(self._esperar_a_que_el_atacante_tenga_el_lock(
+            f'SELECT id FROM terapeutas WHERE id={TERAPEUTA} FOR UPDATE NOWAIT'))
+
+        respuesta = e.cliente().post(
+            '/api/sesiones', headers=e.encabezado_auth(self.tok_laura),
+            json={'id_paciente': 1, 'fecha': FECHA_SESION_LIBRE,
+                  'hora_inicio': '10:00:00', 'hora_fin': '11:00:00',
+                  'estado': 'completa', 'notas': MARCA_NOTAS})
+
+        hilo.join(timeout=30)
+        self.assertEqual(respuesta.status_code, 201, respuesta.get_json())
+        self._afirmar_reintento('registrar_sesion')
+
+    # --- registrar_evolucion: EL cierre de la decision 12 -----------------
+
+    def test_registrar_evolucion_deadlock_dispara_el_reintento(self):
         """
-        Control de que el escenario ES el que dice ser.
-
-        Corre EXACTAMENTE el mismo ataque contra la funcion SIN decorar
-        (__wrapped__, que expone functools.wraps) y afirma que ahi si estalla
-        con errno 1213. Si este test pasara sin excepcion, el escenario no
-        estaria produciendo ningun deadlock en la victima y el test principal
-        estaria dando PASS por casualidad.
+        El escenario exacto de la decision 12: sesiones <-> objetivos via el
+        trigger de evoluciones. Es el unico deadlock que el proyecto tenia
+        documentado y reproducible, y hasta el arreglo de Terminal 1 era
+        indemostrable: el procedimiento se lo tragaba y el decorador no veia
+        nada. Este test es el cierre real de esa decision.
         """
+        sql = self._atacante_de_deadlock(
+            f'SELECT id FROM objetivos_terapeuticos WHERE id={OBJETIVO} FOR UPDATE;',
+            f'SELECT id FROM sesiones WHERE id={SESION} FOR UPDATE;')
+        antes = self._contador_de_deadlocks()
+        hilo, _ = self._lanzar_atacante(sql)
+        self.assertTrue(self._esperar_a_que_el_atacante_tenga_el_lock(
+            f'SELECT id FROM objetivos_terapeuticos WHERE id={OBJETIVO} FOR UPDATE NOWAIT'))
+
+        respuesta = e.cliente().post(
+            '/api/evoluciones', headers=e.encabezado_auth(self.tok_laura),
+            json={'id_sesion': SESION, 'id_objetivo': OBJETIVO, 'valor': 3})
+
+        hilo.join(timeout=30)
+        self.assertEqual(respuesta.status_code, 201, respuesta.get_json())
+        self.assertGreaterEqual(
+            self._contador_de_deadlocks() - antes, 1,
+            'El contador lock_deadlocks no se movio: no hubo deadlock y este test '
+            'no esta observando lo que dice observar.')
+        self._afirmar_reintento('registrar_evolucion')
+        self.assertEqual(
+            self._contar('SELECT COUNT(*) FROM evoluciones '
+                         'WHERE id_sesion = :s AND id_objetivo = :o',
+                         {'s': SESION, 'o': OBJETIVO}), 1,
+            'Se esperaba exactamente 1 evolucion: si hay 2, el reintento repitio '
+            'una operacion ya escrita.')
+
+    def test_registrar_evolucion_lock_timeout_dispara_el_reintento(self):
+        self._poner_timeout_corto()
+        sql = self._atacante_que_retiene(
+            f'SELECT id FROM sesiones WHERE id={SESION} FOR UPDATE;')
+        hilo, _ = self._lanzar_atacante(sql)
+        self.assertTrue(self._esperar_a_que_el_atacante_tenga_el_lock(
+            f'SELECT id FROM sesiones WHERE id={SESION} FOR UPDATE NOWAIT'))
+
+        respuesta = e.cliente().post(
+            '/api/evoluciones', headers=e.encabezado_auth(self.tok_laura),
+            json={'id_sesion': SESION, 'id_objetivo': OBJETIVO, 'valor': 3})
+
+        hilo.join(timeout=30)
+        self.assertEqual(respuesta.status_code, 201, respuesta.get_json())
+        self._afirmar_reintento('registrar_evolucion')
+        self.assertEqual(
+            self._contar('SELECT COUNT(*) FROM evoluciones '
+                         'WHERE id_sesion = :s AND id_objetivo = :o',
+                         {'s': SESION, 'o': OBJETIVO}), 1)
+
+
+# =====================================================================
+# CAPA 3 — el control que impide que todo lo de arriba mienta
+# =====================================================================
+class TestControlSinDecorador(BaseDeadlock):
+    """
+    Sin este control, la capa 2 podria estar pasando por casualidad.
+
+    Corre el mismo ataque contra la funcion SIN decorar (__wrapped__, que
+    expone functools.wraps) y afirma que ahi si estalla con 1213 y no queda
+    nada escrito. Reemplaza al ejercicio manual de desactivar el decorador:
+    si alguien lo neutraliza, la capa 2 se cae; si el escenario deja de
+    producir deadlocks, se cae este.
+    """
+
+    def test_sin_decorador_el_mismo_ataque_propaga_el_1213(self):
         sin_decorar = getattr(crear_objetivo, '__wrapped__', None)
         self.assertIsNotNone(
-            sin_decorar,
-            'crear_objetivo no expone __wrapped__: sin eso no se puede correr '
-            'el control sin decorador.')
+            sin_decorar, 'crear_objetivo no expone __wrapped__.')
 
-        sql = self._sql_del_atacante(
-            f"SELECT id FROM objetivos_terapeuticos WHERE id_paciente={PACIENTE} FOR UPDATE;",
-            f"SELECT id FROM pacientes WHERE id={PACIENTE} FOR UPDATE;")
-
-        hilo, resultado = self._lanzar_atacante(sql)
-        listo = self._esperar_a_que_el_atacante_tenga_el_lock(
-            f"SELECT id FROM objetivos_terapeuticos WHERE id_paciente={PACIENTE} FOR UPDATE NOWAIT")
-        self.assertTrue(listo, 'El atacante nunca retuvo el lock.')
+        sql = self._atacante_de_deadlock(
+            f'SELECT id FROM objetivos_terapeuticos WHERE id_paciente={PACIENTE_ORM} FOR UPDATE;',
+            f'SELECT id FROM pacientes WHERE id={PACIENTE_ORM} FOR UPDATE;')
+        hilo, _ = self._lanzar_atacante(sql)
+        self.assertTrue(self._esperar_a_que_el_atacante_tenga_el_lock(
+            f'SELECT id FROM objetivos_terapeuticos WHERE id_paciente={PACIENTE_ORM} '
+            'FOR UPDATE NOWAIT'))
 
         error = None
         with self.app.app_context():
             try:
-                sin_decorar({
-                    'id_paciente': PACIENTE,
-                    'descripcion': f'{MARCA_OBJETIVO} sin decorador',
-                })
+                sin_decorar({'id_paciente': PACIENTE_ORM,
+                             'descripcion': f'{MARCA_OBJETIVO} sin decorador'})
             except (OperationalError, DBAPIError) as capturado:
                 error = capturado
             finally:
                 db.session.rollback()
 
         hilo.join(timeout=30)
-
-        self.assertIsNotNone(
-            error,
-            'Sin el decorador la operacion NO fallo. Entonces el escenario no '
-            'produce un deadlock en la victima, y el test principal esta '
-            'pasando por casualidad.')
-        self.assertEqual(
-            obtener_errno(error), ERRNO_DEADLOCK,
-            f'Fallo, pero no con 1213 sino con {obtener_errno(error)}: {error}')
+        self._afirmar_errno(error, ERRNO_DEADLOCK, 'crear_objetivo sin decorador')
 
         with self.app.app_context():
             filas = db.session.execute(text(
-                'SELECT COUNT(*) FROM objetivos_terapeuticos WHERE descripcion LIKE :d'),
-                {'d': MARCA_OBJETIVO + '%'}).scalar()
+                'SELECT COUNT(*) FROM objetivos_terapeuticos WHERE descripcion LIKE :m'),
+                {'m': MARCA_OBJETIVO + '%'}).scalar()
             db.session.rollback()
         self.assertEqual(filas, 0,
                          'La transaccion abortada por deadlock dejo filas escritas.')
-
-    # --- 3. el hallazgo --------------------------------------------------
-
-    def test_hallazgo_el_procedimiento_se_traga_el_deadlock_y_el_decorador_no_lo_ve(self):
-        """
-        HALLAZGO ABIERTO. Fija el comportamiento de hoy, no el deseado.
-
-        p_registrar_evolucion tiene DECLARE EXIT HANDLER FOR SQLEXCEPTION.
-        El deadlock (SQLSTATE '40001') entra por ese handler igual que
-        cualquier otro error: el procedimiento hace ROLLBACK y devuelve
-        p_mensaje = 'No se pudo registrar la evolucion por un error interno'
-        con p_id_evolucion = NULL, y el CALL termina con exito.
-
-        Consecuencia: por este camino Python NUNCA recibe un OperationalError
-        1213, asi que @reintentar_en_deadlock no puede dispararse y el usuario
-        ve un "error interno" ante una condicion transitoria que se resolvia
-        sola con reintentar.
-
-        Lo grave es cual es este camino: es el escenario CONCRETO de la
-        decision 12 (sesiones <-> objetivos_terapeuticos via el trigger de
-        evoluciones), el unico deadlock reproducible que el proyecto tiene
-        documentado. El decorador esta puesto justo donde no puede funcionar.
-
-        ESTE TEST VA A FALLAR CUANDO SE ARREGLE, y esta bien que asi sea: esa
-        falla es la señal de que el procedimiento dejo de tragarse el 1213.
-        """
-        sql = self._sql_del_atacante(
-            f"SELECT id FROM objetivos_terapeuticos WHERE id={OBJETIVO_EVOL} FOR UPDATE;",
-            f"SELECT id FROM sesiones WHERE id={SESION_EVOL} FOR UPDATE;")
-
-        antes = self._contador_de_deadlocks()
-        hilo, resultado = self._lanzar_atacante(sql)
-
-        listo = self._esperar_a_que_el_atacante_tenga_el_lock(
-            f"SELECT id FROM objetivos_terapeuticos WHERE id={OBJETIVO_EVOL} FOR UPDATE NOWAIT")
-        self.assertTrue(listo, 'El atacante nunca retuvo el lock del objetivo.')
-
-        cliente = e.cliente()
-        respuesta = cliente.post(
-            '/api/evoluciones',
-            headers=e.encabezado_auth(self.tok_laura),
-            json={'id_sesion': SESION_EVOL, 'id_objetivo': OBJETIVO_EVOL, 'valor': 3},
-        )
-
-        hilo.join(timeout=30)
-        despues = self._contador_de_deadlocks()
-
-        # El deadlock ocurrio de verdad: eso no esta en duda.
-        self.assertGreaterEqual(
-            despues - antes, 1,
-            f'El contador lock_deadlocks no se movio ({antes} -> {despues}): el '
-            'ataque sobre el camino de evoluciones no reprodujo ningun deadlock, '
-            'asi que este test no esta observando lo que dice observar.')
-
-        # Y sin embargo el decorador no vio nada.
-        reintentos = self.captura.reintentos_de('registrar_evolucion')
-        self.assertEqual(
-            len(reintentos), 0,
-            'El decorador SI reintento en el camino de evoluciones. Si esto pasa, '
-            'el hallazgo esta cerrado: p_registrar_evolucion dejo de tragarse el '
-            '1213 y hay que reescribir este test en positivo.')
-
-        cuerpo = respuesta.get_json()
-        self.assertIn(
-            'error interno', (cuerpo or {}).get('mensaje', '').lower(),
-            f'Se esperaba el mensaje generico del EXIT HANDLER y llego: {cuerpo}')
-
-        with self.app.app_context():
-            filas = db.session.execute(text(
-                'SELECT COUNT(*) FROM evoluciones WHERE id_sesion = :s AND id_objetivo = :o'),
-                {'s': SESION_EVOL, 'o': OBJETIVO_EVOL}).scalar()
-            db.session.rollback()
-        self.assertEqual(filas, 0, 'El deadlock tragado dejo una evolucion escrita.')
 
 
 if __name__ == '__main__':
