@@ -1181,6 +1181,38 @@ BEGIN
     SET p_mensaje = 'Ya existe un paciente con ese numero de historia';
   END;
 
+  -- =====================================================================
+  -- DEADLOCK: SE PROPAGA, NO SE TRADUCE. Va ANTES del generico.
+  --
+  -- Sin este handler el deadlock (SQLSTATE '40001', errno 1213) entraba por
+  -- el SQLEXCEPTION de abajo como cualquier otro error: el procedimiento
+  -- hacia ROLLBACK, devolvia "error interno" y el CALL terminaba EN EXITO.
+  -- Python nunca veia un OperationalError 1213, asi que
+  -- @reintentar_en_deadlock no podia dispararse. El decorador estaba puesto
+  -- en tres de los seis caminos de escritura donde no podia funcionar.
+  --
+  -- Medido por auditoria antes y despues, no deducido: con el ataque que
+  -- provoca el deadlock, el contador lock_deadlocks de InnoDB subia igual
+  -- —el deadlock ocurria— pero el CALL salia con exit 0.
+  --
+  -- RESIGNAL y no SIGNAL: reemite la condicion ORIGINAL con su SQLSTATE y su
+  -- errno intactos, que es lo unico que el decorador puede reconocer.
+  --
+  -- El ROLLBACK va igual porque el procedimiento abre su propia transaccion:
+  -- InnoDB revierte la sentencia que eligio como victima, no necesariamente
+  -- la transaccion entera.
+  --
+  -- ESTA ES LA UNICA EXCEPCION al criterio de errores de mas arriba. Un
+  -- deadlock no es un error para mostrarle a nadie: es una condicion
+  -- transitoria que se resuelve reintentando, y traducirla a texto es
+  -- convertir algo recuperable en un fracaso.
+  -- =====================================================================
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
   DECLARE EXIT HANDLER FOR SQLEXCEPTION
   BEGIN
     ROLLBACK;
@@ -1265,6 +1297,15 @@ BEGIN
     ROLLBACK;
     SET p_id_sesion = NULL;
     SET p_mensaje = v_error;
+  END;
+
+  -- El deadlock se propaga tal cual, ANTES del generico. El desarrollo
+  -- completo del porque esta en p_alta_paciente; los tres procedimientos de
+  -- escritura llevan el mismo handler y se tocan juntos o no se toca ninguno.
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
   END;
 
   DECLARE EXIT HANDLER FOR SQLEXCEPTION
@@ -1367,6 +1408,19 @@ BEGIN
     SET p_id_evolucion = NULL;
     SET p_mensaje =
       'Ya existe una evolucion para ese objetivo en esa sesion';
+  END;
+
+  -- El deadlock se propaga tal cual, ANTES del generico. Ver p_alta_paciente.
+  --
+  -- Este es EL caso que encontro la auditoria, y no es casual que sea este:
+  -- es el escenario de la decision 12 —sesiones y objetivos_terapeuticos via
+  -- el trigger de evoluciones—, el unico deadlock reproducible que el
+  -- proyecto tiene documentado. El decorador estaba puesto justo donde no
+  -- llegaba.
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
   END;
 
   -- Ver CRITERIO GENERAL DE ERRORES: mensaje fijo, nunca texto de MySQL
