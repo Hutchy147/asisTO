@@ -1690,15 +1690,40 @@ SELECT
  WHERE o.activo = TRUE;
 
 
--- Resumen de asistencia por paciente activo.
+-- Resumen de asistencia por paciente. TODOS los pacientes, activos o no.
+--
 -- LEFT JOIN a proposito: un paciente recien dado de alta, sin sesiones
 -- todavia, tiene que aparecer con los contadores en cero.
+--
+-- EL FILTRO POR ESTADO ES POLITICA DEL CONSUMIDOR, NO DE LA VISTA. NO
+-- agregar aca un WHERE p.activo = TRUE. Lo tuvo hasta el 2026-08-09 y se
+-- saco a proposito:
+--
+--   Un total historico no puede cambiar por un hecho administrativo
+--   POSTERIOR. Si un paciente se da de baja en septiembre, sus sesiones de
+--   julio ocurrieron y tienen que seguir contando para julio. Con el filtro
+--   puesto, el paciente desaparecia del resumen entero y los totales de
+--   meses ya cerrados se reescribian solos.
+--
+-- Es ademas lo que ya hace p_reporte_sesiones_periodo, que nunca filtro por
+-- activo: con el WHERE puesto las dos salidas de RRHH se contradecian entre
+-- si sobre los mismos datos.
+--
+-- El consumidor que necesite solo los activos agrega `WHERE activo = TRUE`
+-- en SU consulta, que es una linea. Al reves no se puede: una vista que
+-- filtra le reescribe la historia a todos sin avisar.
+--
+-- Para que el consumidor pueda hacerlo, la vista EXPONE el estado. Ver la
+-- columna `activo` de abajo.
 CREATE VIEW v_resumen_sesiones AS
 SELECT
   p.id                AS id_paciente,
   p.nombre,
   p.apellido,
   p.nro_historia,
+  -- El estado viaja como dato para que el consumidor pueda filtrar por su
+  -- cuenta. NO es contenido clinico: es administrativo, igual que fecha_alta.
+  p.activo,
   COUNT(s.id)                                        AS total_sesiones,
   COALESCE(SUM(s.estado = 'completa'), 0)            AS sesiones_completas,
   COALESCE(SUM(s.estado = 'incompleta'), 0)          AS sesiones_incompletas,
@@ -1706,8 +1731,7 @@ SELECT
   MAX(s.fecha)                                       AS fecha_ultima_sesion
   FROM pacientes p
   LEFT JOIN sesiones s ON s.id_paciente = p.id
- WHERE p.activo = TRUE
- GROUP BY p.id, p.nombre, p.apellido, p.nro_historia;
+ GROUP BY p.id, p.nombre, p.apellido, p.nro_historia, p.activo;
 
 
 -- =====================================================================
