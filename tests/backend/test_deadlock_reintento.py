@@ -25,7 +25,15 @@ nada:
                                           el procedimiento pelado devuelve
                                           errno 1213 / 1205 al cliente
   2. el decorador REINTENTO            -> su propio logger emitio el WARNING
-  3. la operacion se completo          -> y dejo UNA fila, no dos
+  3. y despues:
+     - deadlock (1213): la operacion se COMPLETA, y deja UNA fila, no dos
+     - lock timeout (1205): la operacion AGOTA los tres intentos y el error
+       que sobrevive es el 1205, traducido a su mensaje propio
+
+Los dos finales del punto 3 son distintos a proposito, y el motivo esta en
+SEGUNDOS_DE_RETENCION_1205: el final "se completa" para el 1205 exige que
+el atacante suelte dentro de una ventana de milisegundos, y esa ventana no
+resulto reproducible. El final "se agota" no tiene carrera ninguna.
 
 Afirmar solo el punto 3 es lo que tienta escribir y es exactamente lo que
 pasa en verde sin probar nada.
@@ -44,20 +52,30 @@ LAS DOS CONDICIONES DEL ATAQUE DE DEADLOCK, que van juntas:
 EL LOCK WAIT TIMEOUT (1205) NO SE DEDUCE, SE PROVOCA. El atacante retiene
 el recurso y la victima corre con innodb_lock_wait_timeout = 1.
 
-Bajar ese valor cuesta mas de lo que parece, y las dos formas que usa este
-archivo son necesarias, no redundantes:
-  - Para la capa 2, que entra por HTTP, no hay manera de tocar la conexion
-    que el pool le da al request: se pone un listener de 'connect' en el
-    engine + dispose() del pool, para que TODA conexion nueva nazca con el
-    timeout corto. Un SET SESSION suelto desde el test se aplicaria a la
-    conexion del test, que no es la del request.
-  - Para la capa 1 eso NO alcanzo. El listener solo cubre las conexiones
-    que nacen despues del dispose(), y a esos contextos el pool les
-    entregaba a veces una anterior: dos casos esperaban los 50 s por
-    defecto, no expiraban nunca y el test pasaba en verde sin haber
-    provocado ningun 1205. Como ahi la conexion del CALL SI es alcanzable,
-    se le fija el timeout en la misma sesion, justo antes.
-Los dos casos se detectaron corriendo el test, no leyendolo.
+Bajar ese valor cuesta mas de lo que parece. Un SET SESSION suelto desde el
+test no sirve para nada que entre por HTTP: la conexion que atiende el
+request sale del pool y no es la del test. Y un listener de 'connect' en el
+engine tampoco alcanza solo, porque cubre unicamente las conexiones que
+nacen despues del dispose(). Con eso, dos tests de 1205 quedaron
+INTERMITENTES: a veces al request le tocaba una conexion anterior, la
+victima esperaba los 50 s por defecto, el atacante soltaba antes y la
+operacion salia bien SIN reintentar.
+
+Lo que si es determinista, y es lo que hace este archivo, son las tres
+cosas juntas: GLOBAL por el cliente privilegiado, vaciado del pool
+(session.remove() + dispose()) y el listener; mas una PRECONDICION que
+comprueba el timeout efectivo antes de atacar y falla con un mensaje claro
+si no quedo puesto. En la capa 1, ademas, se fija en la misma sesion del
+CALL, que ahi si es alcanzable.
+
+La otra fuente de intermitencia era la sincronizacion: donde el atacante
+retiene un INSERT sin confirmar no se puede sondear con FOR UPDATE NOWAIT
+(la fila no existe todavia) y habia un sleep fijo de 0.4 s. Arrancar el
+proceso mysql tarda mas que eso con la maquina cargada, y la victima salia
+sin contencion ninguna. Ahora se espera mirando innodb_trx hasta ver la
+transaccion del atacante con filas ya modificadas.
+
+Las dos cosas se detectaron corriendo el test, no leyendolo.
 
 ESTRUCTURA. Dos capas por cada camino:
   capa 1 (verificacion del arreglo de Terminal 1): con el atacante puesto,
@@ -101,6 +119,23 @@ USUARIO_LIBRE = 4       # existe y no esta tomado por uq_pacientes_usuario
 FILAS_DE_LASTRE = 200
 SEGUNDOS_DE_RETENCION = 2
 TIMEOUT_DE_LOCK = 1     # segundos, para provocar el 1205 rapido
+
+# Cuanto retiene el atacante en los casos de 1205: MUCHO mas que los tres
+# intentos del decorador (3 x 1 s + backoff ~= 3,15 s).
+#
+# El primer diseño buscaba una ventana en la que el atacante soltara despues
+# del primer timeout pero antes del tercero, para poder afirmar que la
+# operacion terminaba bien. Esa ventana resulto irreproducible: depende de
+# cuanto tarde en arrancar el proceso del atacante, y fallo de forma
+# intermitente en cuatro configuraciones distintas. Se cambio por algo que no
+# tiene carrera: el atacante NO suelta durante el ataque, la victima agota
+# sus tres intentos, y lo que se afirma es que el decorador reintento y que
+# el error que sobrevive es el 1205.
+#
+# Que la operacion se COMPLETA despues de reintentar ya lo prueban los siete
+# casos de deadlock, que si son deterministas: InnoDB corta el ciclo apenas
+# se forma, sin depender de ningun reloj.
+SEGUNDOS_DE_RETENCION_1205 = 5
 
 MARCA_OBJETIVO = 'TEST deadlock objetivo'
 MARCA_HISTORIA = 'HC-TEST-DL'
@@ -173,6 +208,7 @@ class BaseDeadlock(unittest.TestCase):
         self.logger_decorador = logging.getLogger('app.utils.db')
         self.logger_decorador.addHandler(self.captura)
         self._listener_timeout = None
+        self._timeout_global_anterior = 50
 
     def tearDown(self):
         self.logger_decorador.removeHandler(self.captura)
@@ -255,11 +291,12 @@ class BaseDeadlock(unittest.TestCase):
 
     def _atacante_que_retiene(self, recurso):
         """Solo retiene: no pide un segundo recurso, asi no puede haber ciclo.
-        Lo que provoca es espera pura, que termina en 1205."""
+        Lo que provoca es espera pura, que termina en 1205. Retiene durante
+        TODO el ataque -- ver SEGUNDOS_DE_RETENCION_1205."""
         return (
             'START TRANSACTION;\n'
             f'{recurso}\n'
-            f'SELECT SLEEP({SEGUNDOS_DE_RETENCION});\n'
+            f'SELECT SLEEP({SEGUNDOS_DE_RETENCION_1205});\n'
             'ROLLBACK;\n'
         )
 
@@ -270,26 +307,65 @@ class BaseDeadlock(unittest.TestCase):
         eso es una de las formas de que no se forme nada y el test de verde.
         """
         inicio = time.time()
+        ultimo_errno = None
         with self.app.app_context():
             while time.time() - inicio < timeout:
                 try:
                     db.session.execute(text(sonda))
                     db.session.rollback()
                     time.sleep(0.15)
-                except (OperationalError, DBAPIError):
+                except (OperationalError, DBAPIError) as error:
                     db.session.rollback()
-                    return True
+                    ultimo_errno = obtener_errno(error)
+                    # SOLO estos dos significan "hay alguien reteniendo": 3572
+                    # es el rechazo inmediato de NOWAIT y 1205 el timeout.
+                    #
+                    # Antes esto devolvia True ante CUALQUIER error, y eso hizo
+                    # intermitentes a los tests de 1205: justo antes de sondear
+                    # se vacia el pool, y la primera consulta contra una
+                    # conexion recien cerrada falla por motivos que no tienen
+                    # nada que ver con el lock. La sonda lo leia como "listo",
+                    # la victima salia sin contencion y no expiraba nada.
+                    if ultimo_errno in (3572, ERRNO_LOCK_TIMEOUT):
+                        return True
+                    time.sleep(0.15)
+        if ultimo_errno is not None:
+            self.fail(
+                f'La sonda nunca vio el lock retenido. Ultimo error: '
+                f'errno={ultimo_errno}. No es un fallo del codigo bajo prueba: '
+                'es que el escenario no se armo.')
         return False
 
     def _poner_timeout_corto(self):
         """
-        innodb_lock_wait_timeout = 1 en TODA conexion nueva del engine.
+        innodb_lock_wait_timeout = 1 para todo lo que corra despues.
 
-        Tiene que ser por listener + dispose(): un SET SESSION suelto desde el
-        test se aplica a la conexion del test, no a la que el pool le da al
-        request. Con eso la victima esperaba los 50 s por defecto, nunca
-        expiraba, y el test pasaba sin haber provocado ningun 1205.
+        Hacen falta LAS TRES COSAS, y cada una tapa un agujero distinto que
+        se vio fallar de verdad:
+
+          - GLOBAL, por el cliente privilegiado: es lo unico que alcanza a
+            una conexion que el pool cree despues, venga de donde venga.
+          - session.remove() + dispose(): vacia el pool, para que ninguna
+            conexion vieja (con los 50 s por defecto) sobreviva y le toque
+            justo al request.
+          - el listener de 'connect': redundante con el GLOBAL a proposito,
+            porque si alguien restaura el global a mitad de camino el
+            listener sigue cubriendo.
+
+        Con solo el listener, dos tests de 1205 quedaron INTERMITENTES: a
+        veces al request le tocaba una conexion anterior, la victima esperaba
+        los 50 s por defecto, el atacante soltaba antes y la operacion salia
+        bien SIN reintentar. Fallaban en rojo, no en falso verde, pero un
+        test intermitente no lo cree nadie.
         """
+        anterior = self._mysql_privilegiado(
+            'SELECT @@GLOBAL.innodb_lock_wait_timeout;')
+        lineas = [l for l in anterior.stdout.splitlines() if l.strip()]
+        self._timeout_global_anterior = int(lineas[-1]) if len(lineas) >= 2 else 50
+
+        self._mysql_privilegiado(
+            f'SET GLOBAL innodb_lock_wait_timeout = {TIMEOUT_DE_LOCK};')
+
         def al_conectar(conexion_dbapi, _registro):
             cursor = conexion_dbapi.cursor()
             cursor.execute(f'SET SESSION innodb_lock_wait_timeout = {TIMEOUT_DE_LOCK}')
@@ -297,17 +373,57 @@ class BaseDeadlock(unittest.TestCase):
 
         with self.app.app_context():
             motor = db.engine
+            db.session.remove()
         event.listen(motor, 'connect', al_conectar)
         motor.dispose()
         self._listener_timeout = (motor, al_conectar)
+
+        # Precondicion explicita: si el timeout NO quedo puesto, este test no
+        # puede provocar ningun 1205 y hay que enterarse aca, no por un
+        # resultado raro tres pasos despues.
+        with self.app.app_context():
+            efectivo = db.session.execute(
+                text('SELECT @@SESSION.innodb_lock_wait_timeout')).scalar()
+            db.session.rollback()
+        self.assertEqual(
+            efectivo, TIMEOUT_DE_LOCK,
+            f'El timeout de lock quedo en {efectivo} y no en {TIMEOUT_DE_LOCK}: '
+            'la victima no va a expirar y el test no probaria nada.')
 
     def _quitar_timeout_corto(self):
         if not self._listener_timeout:
             return
         motor, funcion = self._listener_timeout
         event.remove(motor, 'connect', funcion)
+        self._mysql_privilegiado(
+            f'SET GLOBAL innodb_lock_wait_timeout = {self._timeout_global_anterior};')
+        with self.app.app_context():
+            db.session.remove()
         motor.dispose()
         self._listener_timeout = None
+
+    def _esperar_transaccion_del_atacante(self, timeout=25):
+        """
+        Espera a que el atacante tenga una transaccion ABIERTA con filas ya
+        modificadas.
+
+        Es la sonda para los casos donde no se puede usar FOR UPDATE NOWAIT
+        porque la fila todavia no existe (el atacante retiene un INSERT sin
+        confirmar). Antes habia un sleep fijo de 0.4 s, y arrancar el proceso
+        mysql tarda mas que eso cuando la maquina esta cargada: la victima
+        salia sin contencion ninguna y el test fallaba de manera
+        intermitente.
+        """
+        inicio = time.time()
+        while time.time() - inicio < timeout:
+            proceso = self._mysql_privilegiado(
+                'SELECT COUNT(*) FROM information_schema.innodb_trx '
+                'WHERE trx_rows_modified >= 1;')
+            lineas = [l for l in proceso.stdout.splitlines() if l.strip()]
+            if len(lineas) >= 2 and int(lineas[-1]) >= 1:
+                return True
+            time.sleep(0.1)
+        return False
 
     def _llamar_procedimiento(self, sql, parametros, timeout_corto=False):
         """
@@ -424,10 +540,9 @@ class TestElProcedimientoPropagaElError(BaseDeadlock):
             f"nro_historia,activo,fecha_alta) VALUES (NULL,'Retencion','Test',"
             f"'2015-01-01','{MARCA_HISTORIA}-1205',TRUE,CURRENT_DATE);")
         hilo, _ = self._lanzar_atacante(sql)
-        # La sonda no puede ser un FOR UPDATE sobre una fila que todavia no
-        # existe: se espera a que el INSERT del atacante este puesto mirando
-        # que un INSERT igual se bloquee. Se usa el propio intento como sonda.
-        time.sleep(0.4)
+        self.assertTrue(
+            self._esperar_transaccion_del_atacante(),
+            'El atacante nunca llego a tener su INSERT sin confirmar.')
 
         error = self._llamar_procedimiento(
             'CALL p_alta_paciente(:nom,:ape,:fn,NULL,:hist,NULL,@id,@msg)',
@@ -483,6 +598,50 @@ class TestElDecoradorReintenta(BaseDeadlock):
             f'Hubo un error reintentable pero @reintentar_en_deadlock no registro '
             f'ningun reintento en {nombre_funcion}: la operacion termino bien por '
             f'otro motivo. Registros: {self.captura.mensajes()}')
+
+    def _afirmar_agotamiento(self, nombre_funcion, error):
+        """
+        El atacante no suelta: la victima agota los tres intentos.
+
+        Se afirman las dos mitades. Que el decorador REINTENTO -- dos WARNING,
+        de los intentos 1 y 2, porque en el tercero ya no reintenta -- y que lo
+        que sobrevive es el 1205 y no otra cosa. Sin la segunda mitad,
+        cualquier error repetido tres veces daria el mismo conteo de log.
+        """
+        reintentos = self.captura.reintentos_de(nombre_funcion)
+        self.assertEqual(
+            len(reintentos), 2,
+            f'Se esperaban 2 reintentos antes de agotarse en {nombre_funcion} y '
+            f'hubo {len(reintentos)}. Registros: {self.captura.mensajes()}')
+        self.assertIsNotNone(
+            error,
+            f'{nombre_funcion}: con el atacante reteniendo durante todo el '
+            'ataque, la operacion tenia que agotar los reintentos y fallar.')
+        self.assertEqual(
+            obtener_errno(error), ERRNO_LOCK_TIMEOUT,
+            f'{nombre_funcion}: sobrevivio un error con errno '
+            f'{obtener_errno(error)} en vez de {ERRNO_LOCK_TIMEOUT}.')
+
+    def _afirmar_agotamiento_http(self, nombre_funcion, respuesta):
+        """Lo mismo, para los caminos que entran por HTTP."""
+        reintentos = self.captura.reintentos_de(nombre_funcion)
+        self.assertEqual(
+            len(reintentos), 2,
+            f'Se esperaban 2 reintentos antes de agotarse en {nombre_funcion} y '
+            f'hubo {len(reintentos)}. Registros: {self.captura.mensajes()}')
+        cuerpo = respuesta.get_json() or {}
+        self.assertEqual(
+            respuesta.status_code, 400,
+            'Se esperaba que la operacion fallara tras agotar los reintentos. '
+            f'Llego {respuesta.status_code}: {cuerpo}')
+        # El texto importa: es la traduccion PROPIA del 1205 de errors.py, y
+        # es distinta de la del 1213. Afirmarla es lo que confirma que el
+        # error que sobrevivio fue el lock wait timeout y no otro.
+        self.assertEqual(cuerpo.get('codigo'), 'error_base_de_datos', cuerpo)
+        self.assertIn(
+            'tardo demasiado en obtener acceso', cuerpo.get('mensaje', ''),
+            'El 1205 agotado tiene que llegar con su mensaje traducido, y '
+            f'llego: {cuerpo}')
 
     def _contar(self, sentencia, parametros):
         with self.app.app_context():
@@ -553,18 +712,25 @@ class TestElDecoradorReintenta(BaseDeadlock):
             f"nro_historia,activo,fecha_alta) VALUES (NULL,'Retencion','Test',"
             f"'2015-01-01','{MARCA_HISTORIA}-B',TRUE,CURRENT_DATE);")
         hilo, _ = self._lanzar_atacante(sql)
-        time.sleep(0.4)
+        self.assertTrue(
+            self._esperar_transaccion_del_atacante(),
+            'El atacante nunca llego a tener su INSERT sin confirmar.')
 
+        error = None
         with self.app.app_context():
-            paciente, mensaje = alta_paciente({
-                'nombre': 'Proto', 'apellido': 'Timeout',
-                'fecha_nacimiento': '2015-01-01',
-                'nro_historia': f'{MARCA_HISTORIA}-B',
-            })
-            self.assertIsNotNone(paciente.id, mensaje)
+            try:
+                alta_paciente({
+                    'nombre': 'Proto', 'apellido': 'Timeout',
+                    'fecha_nacimiento': '2015-01-01',
+                    'nro_historia': f'{MARCA_HISTORIA}-B',
+                })
+            except (OperationalError, DBAPIError) as capturado:
+                error = capturado
+            finally:
+                db.session.rollback()
 
         hilo.join(timeout=30)
-        self._afirmar_reintento('alta_paciente')
+        self._afirmar_agotamiento('alta_paciente', error)
 
     # --- registrar_sesion (por HTTP: el servicio usa el terapeuta logueado)
 
@@ -606,8 +772,7 @@ class TestElDecoradorReintenta(BaseDeadlock):
                   'estado': 'completa', 'notas': MARCA_NOTAS})
 
         hilo.join(timeout=30)
-        self.assertEqual(respuesta.status_code, 201, respuesta.get_json())
-        self._afirmar_reintento('registrar_sesion')
+        self._afirmar_agotamiento_http('registrar_sesion', respuesta)
 
     # --- registrar_evolucion: EL cierre de la decision 12 -----------------
 
@@ -658,12 +823,12 @@ class TestElDecoradorReintenta(BaseDeadlock):
             json={'id_sesion': SESION, 'id_objetivo': OBJETIVO, 'valor': 3})
 
         hilo.join(timeout=30)
-        self.assertEqual(respuesta.status_code, 201, respuesta.get_json())
-        self._afirmar_reintento('registrar_evolucion')
+        self._afirmar_agotamiento_http('registrar_evolucion', respuesta)
         self.assertEqual(
             self._contar('SELECT COUNT(*) FROM evoluciones '
                          'WHERE id_sesion = :s AND id_objetivo = :o',
-                         {'s': SESION, 'o': OBJETIVO}), 1)
+                         {'s': SESION, 'o': OBJETIVO}), 0,
+            'El intento agotado no debe dejar ninguna evolucion escrita.')
 
 
 # =====================================================================
