@@ -23,11 +23,24 @@
 # borran). Util para inspeccionar a mano el resultado de una corrida.
 
 param(
-    [string]$TestDbPrefix = "asisto_test_audit",
+    [string]$TestDbPrefix,
     [switch]$KeepDb
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\lib\TestHelpers.ps1"
+
+# Sin -TestDbPrefix explicito, el prefijo sale del rol de la terminal.
+#
+# Cada modulo arma su base como "<prefijo>_<modulo>", asi que con el prefijo
+# fijo de antes dos terminales corriendo esta suite a la vez se destruian las
+# bases entre si: cada modulo arranca con build_test_db.ps1, y ese script
+# empieza con DROP DATABASE. El sintoma no era claro -- no un error de
+# permisos, sino tests fallando por datos que ya no estaban.
+if (-not $PSBoundParameters.ContainsKey('TestDbPrefix')) {
+    $TestDbPrefix = Get-NombreBaseDePrueba -Base "asisto_test_audit"
+}
+Write-Output "Prefijo de bases de prueba: $TestDbPrefix"
 
 $modulos = @(
     @{ Nombre = "reglas_negocio"; Script = "$PSScriptRoot\reglas_negocio\test_reglas_1_a_6.ps1" },

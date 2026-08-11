@@ -10,11 +10,17 @@
 #   .\build_test_db.ps1 -TestDbName asisto_test_otro
 
 param(
-    [string]$TestDbName = "asisto_test_audit"
+    [string]$TestDbName
 )
 
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\..\lib\TestHelpers.ps1"
+
+# Sin -TestDbName explicito, el nombre sale del rol de la terminal. Ver
+# Get-NombreBaseDePrueba: nombres fijos = dos terminales pisandose.
+if (-not $PSBoundParameters.ContainsKey('TestDbName')) {
+    $TestDbName = Get-NombreBaseDePrueba -Base "asisto_test_audit"
+}
 
 if ($TestDbName -ieq "asisto") {
     throw "No se permite usar 'asisto' como base de pruebas: es la base real de Terminal 1."

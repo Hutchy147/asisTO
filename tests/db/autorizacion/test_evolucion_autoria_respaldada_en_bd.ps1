@@ -22,10 +22,18 @@
 #   .\test_evolucion_autoria_respaldada_en_bd.ps1 -Database asisto_test_audit
 
 param(
-    [string]$Database = "asisto_test_audit"
+    [string]$Database
 )
 
 . "$PSScriptRoot\..\lib\TestHelpers.ps1"
+
+
+# Sin -Database explicito, el nombre sale del rol de la terminal
+# (ASISTO_ROL). Con el nombre fijo de antes, dos terminales corriendo
+# esto a la vez usaban la misma base y se la destruian entre si.
+if (-not $PSBoundParameters.ContainsKey('Database')) {
+    $Database = Get-NombreBaseDePrueba -Base "asisto_test_audit"
+}
 
 $modulo = "autorizacion"
 $resultados = @()

@@ -16,12 +16,26 @@
 #   .\run_backend_tests.ps1 -TestDbName otro_nombre -KeepDb
 
 param(
-    [string]$TestDbName = "asisto_test_backend",
+    [string]$TestDbName,
     [switch]$KeepDb,
     [switch]$SinReconstruirBase
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\..\db\lib\TestHelpers.ps1"
+
+# Sin -TestDbName explicito, el nombre sale del rol de la terminal.
+#
+# POR QUE. Este runner arranca con build_test_db.ps1 (que hace DROP
+# DATABASE) y termina con teardown_test_db.ps1 (que vuelve a borrar). Con un
+# nombre fijo, dos terminales corriendo la suite a la vez se destruyen la
+# base entre si a mitad de camino. Sintoma real: "Unknown database
+# 'asisto_test_backend'" en medio de una corrida que habia arrancado bien.
+if (-not $PSBoundParameters.ContainsKey('TestDbName')) {
+    $TestDbName = Get-NombreBaseDePrueba -Base "asisto_test_backend"
+}
+Write-Output "Base de pruebas de esta terminal: $TestDbName"
+
 $repoRoot = (Resolve-Path "$PSScriptRoot\..\..").Path
 $backendDir = Join-Path $repoRoot "backend"
 $python = Join-Path $backendDir "venv\Scripts\python.exe"
@@ -51,7 +65,7 @@ if (-not $SinReconstruirBase) {
         # El GRANT sobre "asisto" (decision 8 de ESTADO.md) no cubre una
         # base con otro nombre. Sin esto, generar_hashes.py y los tests
         # fallarian con "access denied" para $dbUserApp contra $TestDbName.
-        . "$PSScriptRoot\..\db\lib\TestHelpers.ps1"
+        # TestHelpers ya viene dot-sourceado desde arriba.
         $rGrant = Invoke-Sql -Sql @"
 GRANT SELECT, INSERT, UPDATE, DELETE, EXECUTE ON ``$TestDbName``.* TO '$dbUserApp'@'localhost';
 FLUSH PRIVILEGES;

@@ -8,11 +8,13 @@ que se importe config.py -- Config lee el .env una sola vez, al importarse
 el modulo, asi que si DB_NAME ya cambio en el entorno para ese momento,
 Config apunta a la base de pruebas en vez de a "asisto".
 
-Requiere una base descartable ya armada con:
+Requiere una base descartable ya armada. Lo normal es dejar que
+run_backend_tests.ps1 la arme: elige el nombre segun ASISTO_ROL y exporta
+DB_NAME. A mano, para el rol auditoria:
     cd tests/db/setup
-    .\\build_test_db.ps1 -TestDbName asisto_test_backend
+    .\\build_test_db.ps1 -TestDbName asisto_test_backend2
     cd ../../../backend
-    $env:DB_NAME = "asisto_test_backend"
+    $env:DB_NAME = "asisto_test_backend2"
     .\\venv\\Scripts\\python.exe scripts\\generar_hashes.py --aplicar
 
 Y que el usuario de MySQL de la app (el que este en backend/.env, tipicamente
@@ -32,7 +34,44 @@ import sys
 BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
 sys.path.insert(0, BACKEND_DIR)
 
-NOMBRE_DB_TEST = os.environ.setdefault('DB_NAME', 'asisto_test_backend')
+# Nombre de la base de pruebas SEGUN EL ROL de la terminal.
+#
+# run_backend_tests.ps1 ya exporta DB_NAME, asi que por el camino normal esto
+# no decide nada. Importa para las corridas directas de unittest, que es como
+# se itera cuando se esta escribiendo un test.
+#
+# El nombre era fijo y eso hacia que dos terminales corriendo la suite a la
+# vez usaran la MISMA base -- que la suite borra y recrea. Se perdieron
+# corridas de las dos partes por esto, y del lado de auditoria aparecieron
+# dos tests en rojo que en aislamiento no se reprodujeron.
+#
+# El mapeo esta duplicado en tests/db/lib/TestHelpers.ps1
+# (Get-NombreBaseDePrueba). Si se toca uno hay que tocar el otro.
+BASES_POR_ROL = {
+    'construccion': 'asisto_test_backend',
+    'auditoria': 'asisto_test_backend2',
+    'apoyo': 'asisto_test_backend3',
+}
+
+
+def _base_por_rol():
+    rol = os.environ.get('ASISTO_ROL', '')
+    if rol in BASES_POR_ROL:
+        return BASES_POR_ROL[rol]
+    aviso = (f'ASISTO_ROL trae un valor desconocido ({rol!r}).' if rol
+             else 'ASISTO_ROL no esta definida.')
+    print(
+        f'AVISO: {aviso}\n'
+        f"       Se usa '{BASES_POR_ROL['construccion']}', que es la base del rol\n"
+        '       CONSTRUCCION. Si hay otra terminal corriendo esta misma suite, las\n'
+        '       dos van a usar la misma base y se van a pisar.\n'
+        '       Para evitarlo: definir ASISTO_ROL (construccion | auditoria | apoyo).',
+        file=sys.stderr,
+    )
+    return BASES_POR_ROL['construccion']
+
+
+NOMBRE_DB_TEST = os.environ.setdefault('DB_NAME', _base_por_rol())
 
 if NOMBRE_DB_TEST == 'asisto':
     raise RuntimeError(

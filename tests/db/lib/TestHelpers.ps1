@@ -8,6 +8,49 @@
 # Assert-Fails / Assert-Succeeds / Get-ScalarValue para armar su lista de
 # resultados. run_all.ps1 junta los resultados de todos los modulos.
 
+# Nombre de base de pruebas SEGUN EL ROL de la terminal.
+#
+# POR QUE EXISTE ESTO. Los nombres de base de prueba eran fijos, asi que dos
+# terminales que corrieran la misma suite al mismo tiempo usaban la MISMA
+# base. Y estas suites no solo escriben: `build_test_db.ps1` arranca con
+# DROP DATABASE. El resultado es que a la terminal de al lado se le borra la
+# base a mitad de la corrida. Paso de verdad, en las dos direcciones:
+# construccion perdio dos corridas con "Unknown database", y del lado de
+# auditoria aparecieron dos tests en rojo que despues, en aislamiento, no se
+# reprodujeron.
+#
+# El rol llega por ASISTO_ROL, la misma variable que usa el hook de
+# SessionStart. Si falta o trae un valor desconocido se usa el nombre base y
+# se AVISA: es preferible una corrida ruidosa que una medicion invalida sin
+# que nadie se entere.
+#
+# El mapeo esta duplicado en tests/backend/_entorno.py, que resuelve lo
+# mismo del lado de Python para las corridas directas de unittest. Si se
+# toca uno hay que tocar el otro.
+function Get-NombreBaseDePrueba {
+    param(
+        [Parameter(Mandatory)] [string]$Base
+    )
+    $rol = $env:ASISTO_ROL
+    switch ($rol) {
+        "construccion" { return $Base }
+        "auditoria"    { return "${Base}2" }
+        "apoyo"        { return "${Base}3" }
+        default {
+            if ($rol) {
+                Write-Host "AVISO: ASISTO_ROL trae un valor desconocido ('$rol')." -ForegroundColor Yellow
+            } else {
+                Write-Host "AVISO: ASISTO_ROL no esta definida." -ForegroundColor Yellow
+            }
+            Write-Host ("         Se usa '$Base', que es la base del rol CONSTRUCCION. Si hay otra " +
+                        "terminal corriendo esta misma suite, las dos van a usar la misma base y " +
+                        "se van a pisar: una le borra la base a la otra a mitad de la corrida.") -ForegroundColor Yellow
+            Write-Host "         Para evitarlo: definir ASISTO_ROL (construccion | auditoria | apoyo)." -ForegroundColor Yellow
+            return $Base
+        }
+    }
+}
+
 function Get-MysqlExe {
     if ($env:ASISTO_MYSQL_EXE -and (Test-Path $env:ASISTO_MYSQL_EXE)) {
         return $env:ASISTO_MYSQL_EXE
