@@ -30,10 +30,11 @@ nada:
      - lock timeout (1205): la operacion AGOTA los tres intentos y el error
        que sobrevive es el 1205, traducido a su mensaje propio
 
-Los dos finales del punto 3 son distintos a proposito, y el motivo esta en
-SEGUNDOS_DE_RETENCION_1205: el final "se completa" para el 1205 exige que
-el atacante suelte dentro de una ventana de milisegundos, y esa ventana no
-resulto reproducible. El final "se agota" no tiene carrera ninguna.
+Los dos finales del punto 3 son distintos a proposito: el final "se
+completa" para el 1205 exigiria que el atacante soltara dentro de una
+ventana estrecha, y esa ventana no resulto reproducible. El final "se
+agota" no depende de ninguna ventana -- el atacante no suelta hasta que el
+test se lo dice.
 
 Afirmar solo el punto 3 es lo que tienta escribir y es exactamente lo que
 pasa en verde sin probar nada.
@@ -68,14 +69,22 @@ comprueba el timeout efectivo antes de atacar y falla con un mensaje claro
 si no quedo puesto. En la capa 1, ademas, se fija en la misma sesion del
 CALL, que ahi si es alcanzable.
 
-La otra fuente de intermitencia era la sincronizacion: donde el atacante
-retiene un INSERT sin confirmar no se puede sondear con FOR UPDATE NOWAIT
-(la fila no existe todavia) y habia un sleep fijo de 0.4 s. Arrancar el
-proceso mysql tarda mas que eso con la maquina cargada, y la victima salia
-sin contencion ninguna. Ahora se espera mirando innodb_trx hasta ver la
-transaccion del atacante con filas ya modificadas.
+LA SINCRONIZACION VA EN LOS DOS SENTIDOS, y las dos mitades costaron una
+corrida en rojo cada una:
 
-Las dos cosas se detectaron corriendo el test, no leyendolo.
+  DE IDA -- ¿ya tiene el atacante el recurso? Se comprueba, no se supone:
+  una sonda SELECT ... FOR UPDATE NOWAIT que solo cuenta como "listo" si
+  falla con 3572 o 1205. Donde el atacante retiene un INSERT sin confirmar
+  la fila todavia no existe y no se puede sondear asi, asi que ahi se mira
+  innodb_trx hasta ver su transaccion con filas ya modificadas. Antes habia
+  un sleep de 0,4 s y arrancar el proceso mysql tarda mas que eso con la
+  maquina cargada.
+
+  DE VUELTA -- ¿cuanto retiene? Hasta que el test se lo avisa, con un lock
+  de usuario de MySQL que hace de pestillo. No hay sleep, asi que no hay
+  margen que calcular ni constante que ajustar.
+
+Las dos se detectaron corriendo el test, no leyendolo.
 
 ESTRUCTURA. Dos capas por cada camino:
   capa 1 (verificacion del arreglo de Terminal 1): con el atacante puesto,
@@ -120,22 +129,18 @@ FILAS_DE_LASTRE = 200
 SEGUNDOS_DE_RETENCION = 2
 TIMEOUT_DE_LOCK = 1     # segundos, para provocar el 1205 rapido
 
-# Cuanto retiene el atacante en los casos de 1205: MUCHO mas que los tres
-# intentos del decorador (3 x 1 s + backoff ~= 3,15 s).
+# NO hay constante de retencion para los casos de 1205, y es a proposito:
+# el atacante retiene hasta que el test se lo avisa. Ver _atacante_que_retiene
+# y _tomar_pestillo / _soltar_pestillo.
 #
-# El primer diseño buscaba una ventana en la que el atacante soltara despues
-# del primer timeout pero antes del tercero, para poder afirmar que la
-# operacion terminaba bien. Esa ventana resulto irreproducible: depende de
-# cuanto tarde en arrancar el proceso del atacante, y fallo de forma
-# intermitente en cuatro configuraciones distintas. Se cambio por algo que no
-# tiene carrera: el atacante NO suelta durante el ataque, la victima agota
-# sus tres intentos, y lo que se afirma es que el decorador reintento y que
-# el error que sobrevive es el 1205.
-#
-# Que la operacion se COMPLETA despues de reintentar ya lo prueban los siete
-# casos de deadlock, que si son deterministas: InnoDB corta el ciclo apenas
-# se forma, sin depender de ningun reloj.
-SEGUNDOS_DE_RETENCION_1205 = 5
+# La hubo, y fue una carrera. La victima necesita ~3,15 s continuos para
+# agotar sus tres intentos (3 x 1 s + backoff), pero la retencion empezaba a
+# contar cuando el atacante tomaba el lock, y entre eso y el disparo de la
+# victima se consumen la sonda y el arranque del request. Con 5 segundos el
+# margen quedaba en ~1,8 s y fallaba 1 de cada 2 o 3 corridas, un test
+# distinto cada vez. Subir la constante habria hecho el flake mas raro, no
+# lo habria eliminado, y un flake raro es peor: aparece cuando ya nadie
+# sospecha del test.
 
 MARCA_OBJETIVO = 'TEST deadlock objetivo'
 MARCA_HISTORIA = 'HC-TEST-DL'
@@ -209,9 +214,14 @@ class BaseDeadlock(unittest.TestCase):
         self.logger_decorador.addHandler(self.captura)
         self._listener_timeout = None
         self._timeout_global_anterior = 50
+        self._conexion_pestillo = None
 
     def tearDown(self):
         self.logger_decorador.removeHandler(self.captura)
+        # Primero el pestillo: si un test se cayo antes de soltarlo, el
+        # atacante sigue esperando y la limpieza se quedaria bloqueada
+        # contra sus locks de fila.
+        self._soltar_pestillo()
         self._quitar_timeout_corto()
         self._limpiar()
 
@@ -290,15 +300,82 @@ class BaseDeadlock(unittest.TestCase):
         )
 
     def _atacante_que_retiene(self, recurso):
-        """Solo retiene: no pide un segundo recurso, asi no puede haber ciclo.
-        Lo que provoca es espera pura, que termina en 1205. Retiene durante
-        TODO el ataque -- ver SEGUNDOS_DE_RETENCION_1205."""
+        """
+        Retiene el recurso HASTA QUE SE LE AVISA. No hay sleep.
+
+        No pide un segundo recurso, asi que no puede formarse un ciclo: lo
+        que provoca es espera pura, que termina en 1205.
+
+        POR QUE NO ES UN SLEEP. Lo era, y era una carrera: la retencion
+        arrancaba cuando el atacante tomaba el lock, pero entre ese momento y
+        el disparo de la victima se consumen la sonda y el arranque del
+        request, y la victima necesita ~3,15 s continuos para agotar sus tres
+        intentos. Con 5 segundos el margen quedaba en ~1,8 s y fallaba 1 de
+        cada 2 o 3 corridas, siempre un test distinto.
+
+        Subir la constante no elimina la carrera, la vuelve rara -- y un
+        flake raro es peor que uno frecuente, porque aparece cuando ya nadie
+        sospecha del test. Este proyecto ya tuvo cuatro tests que pasaban sin
+        probar nada; no hacen falta mas.
+
+        El pestillo es un lock de usuario de MySQL: el test lo toma ANTES de
+        lanzar al atacante, el atacante se queda esperandolo con su
+        transaccion abierta, y lo suelta el test cuando ya midio lo que
+        queria. Sin tiempo fijo no hay margen que calcular.
+
+        Es la sincronizacion de vuelta; la de ida ya la resolvia la sonda
+        NOWAIT.
+        """
         return (
             'START TRANSACTION;\n'
             f'{recurso}\n'
-            f'SELECT SLEEP({SEGUNDOS_DE_RETENCION_1205});\n'
+            # Si el test muere sin soltar, esto corta solo y la transaccion
+            # se revierte: nunca queda un atacante colgado para siempre.
+            f"SELECT GET_LOCK('{self._nombre_pestillo()}', 60);\n"
             'ROLLBACK;\n'
         )
+
+    # --- el pestillo: retener hasta que se avise --------------------------
+
+    def _nombre_pestillo(self):
+        """
+        Los locks de usuario de MySQL son GLOBALES del servidor, no de la
+        base. Se namespacea con el nombre de la base para que dos terminales
+        corriendo esta misma suite no se suelten el pestillo entre si.
+        """
+        return f'asisto_retencion_{self.db_name}'
+
+    def _tomar_pestillo(self):
+        """Toma el pestillo en una conexion DEDICADA del test."""
+        # Dedicada y no db.session: la sesion devuelve su conexion al pool
+        # entre operaciones, y el lock de usuario vive en la CONEXION. Si la
+        # conexion vuelve al pool y se recicla, el pestillo se suelta solo y
+        # volvemos a tener una carrera, esta vez invisible.
+        with self.app.app_context():
+            self._conexion_pestillo = db.engine.raw_connection()
+        cursor = self._conexion_pestillo.cursor()
+        cursor.execute("SELECT GET_LOCK(%s, 5)", (self._nombre_pestillo(),))
+        obtenido = cursor.fetchone()[0]
+        cursor.close()
+        self.assertEqual(
+            obtenido, 1,
+            f'No se pudo tomar el pestillo {self._nombre_pestillo()!r}. Si lo '
+            'tiene otra corrida, este test no puede garantizar la retencion.')
+
+    def _soltar_pestillo(self):
+        """Suelta el pestillo: el atacante se despierta y hace ROLLBACK."""
+        if not getattr(self, '_conexion_pestillo', None):
+            return
+        try:
+            cursor = self._conexion_pestillo.cursor()
+            cursor.execute("SELECT RELEASE_LOCK(%s)", (self._nombre_pestillo(),))
+            cursor.fetchone()
+            cursor.close()
+        finally:
+            # Cerrar la conexion suelta el lock igual, asi que ni un fallo a
+            # mitad de camino deja al atacante esperando.
+            self._conexion_pestillo.close()
+            self._conexion_pestillo = None
 
     def _esperar_a_que_el_atacante_tenga_el_lock(self, sonda, timeout=25):
         """
@@ -535,6 +612,7 @@ class TestElProcedimientoPropagaElError(BaseDeadlock):
 
     def test_alta_paciente_propaga_el_1205(self):
         self._poner_timeout_corto()
+        self._tomar_pestillo()
         sql = self._atacante_que_retiene(
             'INSERT INTO pacientes (id_usuario,nombre,apellido,fecha_nacimiento,'
             f"nro_historia,activo,fecha_alta) VALUES (NULL,'Retencion','Test',"
@@ -549,11 +627,13 @@ class TestElProcedimientoPropagaElError(BaseDeadlock):
             {'nom': 'Proto', 'ape': 'Timeout', 'fn': '2015-01-01',
              'hist': f'{MARCA_HISTORIA}-1205'}, timeout_corto=True)
 
+        self._soltar_pestillo()
         hilo.join(timeout=30)
         self._afirmar_errno(error, ERRNO_LOCK_TIMEOUT, 'p_alta_paciente (1205)')
 
     def test_registrar_sesion_propaga_el_1205(self):
         self._poner_timeout_corto()
+        self._tomar_pestillo()
         sql = self._atacante_que_retiene(
             f'SELECT id FROM terapeutas WHERE id={TERAPEUTA} FOR UPDATE;')
         hilo, _ = self._lanzar_atacante(sql)
@@ -566,11 +646,13 @@ class TestElProcedimientoPropagaElError(BaseDeadlock):
              'hi': '10:00:00', 'hf': '11:00:00', 'est': 'completa',
              'notas': MARCA_NOTAS}, timeout_corto=True)
 
+        self._soltar_pestillo()
         hilo.join(timeout=30)
         self._afirmar_errno(error, ERRNO_LOCK_TIMEOUT, 'p_registrar_sesion (1205)')
 
     def test_registrar_evolucion_propaga_el_1205(self):
         self._poner_timeout_corto()
+        self._tomar_pestillo()
         sql = self._atacante_que_retiene(
             f'SELECT id FROM sesiones WHERE id={SESION} FOR UPDATE;')
         hilo, _ = self._lanzar_atacante(sql)
@@ -582,6 +664,7 @@ class TestElProcedimientoPropagaElError(BaseDeadlock):
             {'ses': SESION, 'obj': OBJETIVO, 'val': 3, 'ter': TERAPEUTA},
             timeout_corto=True)
 
+        self._soltar_pestillo()
         hilo.join(timeout=30)
         self._afirmar_errno(error, ERRNO_LOCK_TIMEOUT, 'p_registrar_evolucion (1205)')
 
@@ -707,6 +790,7 @@ class TestElDecoradorReintenta(BaseDeadlock):
 
     def test_alta_paciente_lock_timeout_dispara_el_reintento(self):
         self._poner_timeout_corto()
+        self._tomar_pestillo()
         sql = self._atacante_que_retiene(
             'INSERT INTO pacientes (id_usuario,nombre,apellido,fecha_nacimiento,'
             f"nro_historia,activo,fecha_alta) VALUES (NULL,'Retencion','Test',"
@@ -729,6 +813,7 @@ class TestElDecoradorReintenta(BaseDeadlock):
             finally:
                 db.session.rollback()
 
+        self._soltar_pestillo()
         hilo.join(timeout=30)
         self._afirmar_agotamiento('alta_paciente', error)
 
@@ -759,6 +844,7 @@ class TestElDecoradorReintenta(BaseDeadlock):
 
     def test_registrar_sesion_lock_timeout_dispara_el_reintento(self):
         self._poner_timeout_corto()
+        self._tomar_pestillo()
         sql = self._atacante_que_retiene(
             f'SELECT id FROM terapeutas WHERE id={TERAPEUTA} FOR UPDATE;')
         hilo, _ = self._lanzar_atacante(sql)
@@ -771,6 +857,7 @@ class TestElDecoradorReintenta(BaseDeadlock):
                   'hora_inicio': '10:00:00', 'hora_fin': '11:00:00',
                   'estado': 'completa', 'notas': MARCA_NOTAS})
 
+        self._soltar_pestillo()
         hilo.join(timeout=30)
         self._afirmar_agotamiento_http('registrar_sesion', respuesta)
 
@@ -812,6 +899,7 @@ class TestElDecoradorReintenta(BaseDeadlock):
 
     def test_registrar_evolucion_lock_timeout_dispara_el_reintento(self):
         self._poner_timeout_corto()
+        self._tomar_pestillo()
         sql = self._atacante_que_retiene(
             f'SELECT id FROM sesiones WHERE id={SESION} FOR UPDATE;')
         hilo, _ = self._lanzar_atacante(sql)
@@ -822,6 +910,7 @@ class TestElDecoradorReintenta(BaseDeadlock):
             '/api/evoluciones', headers=e.encabezado_auth(self.tok_laura),
             json={'id_sesion': SESION, 'id_objetivo': OBJETIVO, 'valor': 3})
 
+        self._soltar_pestillo()
         hilo.join(timeout=30)
         self._afirmar_agotamiento_http('registrar_evolucion', respuesta)
         self.assertEqual(
