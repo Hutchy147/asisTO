@@ -12,7 +12,7 @@ de escritura se TRAGABAN el error: su EXIT HANDLER FOR SQLEXCEPTION
 capturaba el 1213 y devolvia "error interno" con el CALL en exito, asi que
 Python nunca veia nada que reintentar. Terminal 1 lo cerro agregando, en
 los tres, un handler para SQLSTATE '40001' y otro para el errno 1205, los
-dos con ROLLBACK + RESIGNAL (commit ff65741 y el cambio del 1205).
+dos con ROLLBACK + RESIGNAL (commits ff65741 y 534830f).
 
 Este archivo verifica ese arreglo por cuenta propia y prueba el reintento
 en los cuatro caminos.

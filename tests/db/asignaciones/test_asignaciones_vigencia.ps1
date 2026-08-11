@@ -261,19 +261,35 @@ $resultados += Assert-Fails $modulo "fk_paciente_inexistente_rechazado" $Databas
     "INSERT INTO asignaciones (id_terapeuta,id_paciente,fecha_desde) VALUES (1,999,'2026-06-01');" `
     "foreign key constraint fails"
 
-# --- INFO: el errno real de las violaciones de FK -----------------------
-# ESTADO.md ("Hallazgo lateral") afirma que en esta instalacion las
-# violaciones de FK llegan con errno 1216 y no 1452, y que por eso la
-# entrada ERRNO_FK de errors.py nunca se dispara. En esta base no lo puedo
-# reproducir: da 1452 en las cuatro tablas que probe, incluida `informes`,
-# que es la que ESTADO.md cita. NO lo marco FAIL -- no es una regla de
-# negocio ni algo que estos triggers decidan -- pero queda el numero
-# medido, porque de el depende si ese hallazgo existe.
+# --- El errno de una violacion de FK DEPENDE DEL USUARIO QUE CONECTA ----
+#
+# Hubo una contradiccion aparente entre este archivo y ESTADO.md: yo media
+# 1452 y Terminal 1 media 1216 para la misma sentencia. CERRADA el
+# 2026-08-11, y no habia que elegir un ganador: los dos numeros son
+# correctos y lo que cambia es quien conecta. Medido lado a lado, misma
+# sentencia, misma base:
+#
+#   root@localhost        -> 1452, con el nombre de la constraint
+#   asisto_app@localhost  -> 1216, sin ningun detalle
+#
+# MySQL devuelve la variante generica (1216) cuando el usuario no tiene
+# privilegios para ver la tabla padre. Esta suite corre con
+# --login-path=asisto, o sea root, asi que aca se espera 1452; la
+# aplicacion corre como asisto_app y ve 1216. errors.py mapea los dos al
+# mismo mensaje, asi que la traduccion no depende de quien conecte.
+#
+# La asercion acepta los dos a proposito: si algun dia esta suite corriera
+# con otro usuario, el test tiene que seguir siendo valido. Lo que NO
+# acepta es cualquier otro numero, que seria una FK que dejo de rechazar o
+# que empezo a fallar por otra cosa.
 $rFkErrno = Invoke-Sql -Database $Database -Sql `
-    "INSERT INTO informes (id_paciente,id_terapeuta,periodo) VALUES (999,1,'2026-T3');"
+    "SELECT CURRENT_USER(); INSERT INTO informes (id_paciente,id_terapeuta,periodo) VALUES (999,1,'2026-T3');"
 $errnoFk = Get-Errno $rFkErrno
-$resultados += New-TestResult $modulo "info_errno_de_violacion_de_fk_observado" "INFO" `
-    "informes con id_paciente inexistente devuelve errno $errnoFk (ESTADO.md afirma 1216; medido aca: $errnoFk)"
+$usuarioFk = ($rFkErrno.StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 1)
+$resultados += Assert-True $modulo "fk_errno_es_1452_o_1216_segun_el_usuario" `
+    ($errnoFk -in @("1452", "1216")) `
+    "Como $usuarioFk, una FK violada devuelve errno $errnoFk (root da 1452 con detalle; asisto_app, 1216 sin detalle)" `
+    "Una FK violada devolvio errno $errnoFk como $usuarioFk. Se esperaba 1452 (root) o 1216 (asisto_app): cualquier otro numero es otra falla, no una FK."
 
 Write-ResultsTable $resultados
 return $resultados
