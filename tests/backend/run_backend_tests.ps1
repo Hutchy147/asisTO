@@ -32,7 +32,8 @@ $ErrorActionPreference = "Stop"
 # base entre si a mitad de camino. Sintoma real: "Unknown database
 # 'asisto_test_backend'" en medio de una corrida que habia arrancado bien.
 if (-not $PSBoundParameters.ContainsKey('TestDbName')) {
-    $TestDbName = Get-NombreBaseDePrueba -Base "asisto_test_backend"
+    $TestDbName = Get-NombreBaseDePrueba -Base "asisto_test_backend" `
+        -EjemploExplicito '.\run_backend_tests.ps1 -TestDbName mi_base'
 }
 Write-Output "Base de pruebas de esta terminal: $TestDbName"
 

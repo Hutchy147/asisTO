@@ -17,7 +17,8 @@ $ErrorActionPreference = "Stop"
 # Aca importa el doble -- borrar la base del rol de al lado es justamente el
 # accidente que se esta corrigiendo.
 if (-not $PSBoundParameters.ContainsKey('TestDbName')) {
-    $TestDbName = Get-NombreBaseDePrueba -Base "asisto_test_audit"
+    $TestDbName = Get-NombreBaseDePrueba -Base "asisto_test_audit" `
+        -EjemploExplicito '.\teardown_test_db.ps1 -TestDbName mi_base'
 }
 
 if ($TestDbName -ieq "asisto") {

@@ -26,7 +26,8 @@ param(
 # (ASISTO_ROL). Con el nombre fijo de antes, dos terminales corriendo
 # esto a la vez usaban la misma base y se la destruian entre si.
 if (-not $PSBoundParameters.ContainsKey('Database')) {
-    $Database = Get-NombreBaseDePrueba -Base "asisto_test_audit"
+    $Database = Get-NombreBaseDePrueba -Base "asisto_test_audit" `
+        -EjemploExplicito '.\test_contenido_clinico.ps1 -Database mi_base'
 }
 
 $modulo = "rrhh"

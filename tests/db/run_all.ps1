@@ -38,7 +38,8 @@ $ErrorActionPreference = "Stop"
 # empieza con DROP DATABASE. El sintoma no era claro -- no un error de
 # permisos, sino tests fallando por datos que ya no estaban.
 if (-not $PSBoundParameters.ContainsKey('TestDbPrefix')) {
-    $TestDbPrefix = Get-NombreBaseDePrueba -Base "asisto_test_audit"
+    $TestDbPrefix = Get-NombreBaseDePrueba -Base "asisto_test_audit" `
+        -EjemploExplicito '.\run_all.ps1 -TestDbPrefix mi_prefijo'
 }
 Write-Output "Prefijo de bases de prueba: $TestDbPrefix"
 

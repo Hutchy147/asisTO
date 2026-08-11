@@ -20,35 +20,68 @@
 # reprodujeron.
 #
 # El rol llega por ASISTO_ROL, la misma variable que usa el hook de
-# SessionStart. Si falta o trae un valor desconocido se usa el nombre base y
-# se AVISA: es preferible una corrida ruidosa que una medicion invalida sin
-# que nadie se entere.
+# SessionStart.
+#
+# SIN ROL NO SE CORRE: esto FALLA, no avisa. La primera version avisaba y
+# seguia, y eso es exactamente lo que dejo pasar una sesion entera de
+# corridas contra la base de otra terminal sin que nadie lo notara. Un aviso
+# en medio de 40 lineas de salida no lo lee nadie; estas suites BORRAN y
+# recrean su base, asi que el costo de seguir es destruirle la corrida al de
+# al lado.
+#
+# La salida de escape sigue existiendo y es explicita: quien pase el nombre
+# a mano (-TestDbName / -TestDbPrefix / -Database) ni siquiera llega aca.
 #
 # El mapeo esta duplicado en tests/backend/_entorno.py, que resuelve lo
 # mismo del lado de Python para las corridas directas de unittest. Si se
 # toca uno hay que tocar el otro.
 function Get-NombreBaseDePrueba {
     param(
-        [Parameter(Mandatory)] [string]$Base
+        [Parameter(Mandatory)] [string]$Base,
+        # Como se pasa el nombre a mano en el script que llama. Cambia entre
+        # run_all.ps1 (-TestDbPrefix) y el resto (-TestDbName / -Database).
+        [string]$EjemploExplicito = '-TestDbName <nombre>'
     )
     $rol = $env:ASISTO_ROL
     switch ($rol) {
         "construccion" { return $Base }
         "auditoria"    { return "${Base}2" }
         "apoyo"        { return "${Base}3" }
-        default {
-            if ($rol) {
-                Write-Host "AVISO: ASISTO_ROL trae un valor desconocido ('$rol')." -ForegroundColor Yellow
-            } else {
-                Write-Host "AVISO: ASISTO_ROL no esta definida." -ForegroundColor Yellow
-            }
-            Write-Host ("         Se usa '$Base', que es la base del rol CONSTRUCCION. Si hay otra " +
-                        "terminal corriendo esta misma suite, las dos van a usar la misma base y " +
-                        "se van a pisar: una le borra la base a la otra a mitad de la corrida.") -ForegroundColor Yellow
-            Write-Host "         Para evitarlo: definir ASISTO_ROL (construccion | auditoria | apoyo)." -ForegroundColor Yellow
-            return $Base
-        }
     }
+
+    $motivo = if ($rol) {
+        "ASISTO_ROL trae un valor desconocido ('$rol')."
+    } else {
+        "ASISTO_ROL no esta definida."
+    }
+
+    # La guia va por Write-Host y el throw lleva una sola linea: si el texto
+    # largo va adentro del throw, PowerShell lo imprime dos veces -- una como
+    # mensaje y otra dentro del ErrorRecord, reformateado y partido -- y lo
+    # que tiene que ser una instruccion de cinco segundos se vuelve ilegible.
+    Write-Host ""
+    Write-Host $motivo -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Esta suite BORRA y recrea su base de datos, asi que sin saber el rol de"
+    Write-Host "esta terminal no se puede correr: usaria '$Base', que es la del rol"
+    Write-Host "CONSTRUCCION, y si esa terminal esta corriendo algo se le borra la base"
+    Write-Host "a mitad de camino."
+    Write-Host ""
+    Write-Host "Definir el rol en esta sesion y volver a correr:"
+    Write-Host ""
+    Write-Host '    $env:ASISTO_ROL = "auditoria"      # o "construccion" / "apoyo"' -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "O arrancar la terminal con el rol puesto, como esta en PROCEDIMIENTOS.md:"
+    Write-Host ""
+    Write-Host '    $env:ASISTO_ROL="auditoria"; claude --model claude-opus-5 --effort xhigh' -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Si preferis un nombre puntual y sabes lo que haces, pasalo explicito y"
+    Write-Host "esto no se ejecuta:"
+    Write-Host ""
+    Write-Host "    $EjemploExplicito" -ForegroundColor Cyan
+    Write-Host ""
+
+    throw "$motivo Ver las instrucciones de arriba."
 }
 
 function Get-MysqlExe {

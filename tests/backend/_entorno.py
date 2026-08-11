@@ -55,23 +55,48 @@ BASES_POR_ROL = {
 
 
 def _base_por_rol():
+    """
+    SIN ROL NO SE CORRE: esto levanta, no avisa.
+
+    Es el mismo criterio que Get-NombreBaseDePrueba en PowerShell y por el
+    mismo motivo: estos tests escriben y borran filas de su base, y sin saber
+    el rol terminarian haciendolo sobre la de otra terminal. Un aviso ya se
+    probo y no alcanzo -- paso una sesion entera sin que nadie lo leyera.
+    """
     rol = os.environ.get('ASISTO_ROL', '')
     if rol in BASES_POR_ROL:
         return BASES_POR_ROL[rol]
-    aviso = (f'ASISTO_ROL trae un valor desconocido ({rol!r}).' if rol
-             else 'ASISTO_ROL no esta definida.')
-    print(
-        f'AVISO: {aviso}\n'
-        f"       Se usa '{BASES_POR_ROL['construccion']}', que es la base del rol\n"
-        '       CONSTRUCCION. Si hay otra terminal corriendo esta misma suite, las\n'
-        '       dos van a usar la misma base y se van a pisar.\n'
-        '       Para evitarlo: definir ASISTO_ROL (construccion | auditoria | apoyo).',
-        file=sys.stderr,
+
+    motivo = (f'ASISTO_ROL trae un valor desconocido ({rol!r}).' if rol
+              else 'ASISTO_ROL no esta definida.')
+    raise RuntimeError(
+        f'\n\n{motivo}\n\n'
+        'Estos tests escriben y borran filas de su base de pruebas, asi que sin\n'
+        "saber el rol de esta terminal no se pueden correr: usarian\n"
+        f"'{BASES_POR_ROL['construccion']}', que es la del rol CONSTRUCCION.\n\n"
+        'Definir el rol en esta sesion y volver a correr:\n\n'
+        '    $env:ASISTO_ROL = "auditoria"      # o "construccion" / "apoyo"\n\n'
+        'Lo normal, igual, es no correr unittest a mano sino:\n\n'
+        '    cd tests\\backend\n'
+        '    .\\run_backend_tests.ps1\n\n'
+        'que arma la base, aplica los hashes y exporta DB_NAME por su cuenta.\n'
+        'Si preferis un nombre puntual, definir DB_NAME antes de importar:\n\n'
+        '    $env:DB_NAME = "mi_base_de_prueba"\n'
     )
-    return BASES_POR_ROL['construccion']
 
 
-NOMBRE_DB_TEST = os.environ.setdefault('DB_NAME', _base_por_rol())
+# OJO con el orden: la version anterior hacia
+#     os.environ.setdefault('DB_NAME', _base_por_rol())
+# y Python evalua el argumento SIEMPRE, tambien cuando DB_NAME ya estaba
+# puesta. Con un aviso eso solo ensuciaba la salida; ahora que _base_por_rol
+# levanta, habria roto el camino normal -- el del runner, que si exporta
+# DB_NAME. Se resuelve solo si falta.
+_db_name = os.environ.get('DB_NAME')
+if not _db_name:
+    _db_name = _base_por_rol()
+    os.environ['DB_NAME'] = _db_name
+
+NOMBRE_DB_TEST = _db_name
 
 if NOMBRE_DB_TEST == 'asisto':
     raise RuntimeError(

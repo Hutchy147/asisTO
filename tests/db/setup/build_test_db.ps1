@@ -19,7 +19,8 @@ $ErrorActionPreference = "Stop"
 # Sin -TestDbName explicito, el nombre sale del rol de la terminal. Ver
 # Get-NombreBaseDePrueba: nombres fijos = dos terminales pisandose.
 if (-not $PSBoundParameters.ContainsKey('TestDbName')) {
-    $TestDbName = Get-NombreBaseDePrueba -Base "asisto_test_audit"
+    $TestDbName = Get-NombreBaseDePrueba -Base "asisto_test_audit" `
+        -EjemploExplicito '.\build_test_db.ps1 -TestDbName mi_base'
 }
 
 if ($TestDbName -ieq "asisto") {
