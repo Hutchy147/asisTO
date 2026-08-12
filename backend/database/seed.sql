@@ -87,6 +87,37 @@ INSERT INTO pacientes
    'Lesion de muneca derecha. Rehabilitacion funcional post quirurgica.',
    'HC-0003', TRUE, '2026-04-06');
 
+-- ---------------------------------------------------------------------
+-- Paciente 4 — DADO DE BAJA, y con historia completa detras.
+--
+-- Agregado el 2026-08-12 con el modulo de baja. El unico paciente de baja
+-- que habia en el seed_demo no tenia NADA: 0 sesiones, 0 objetivos, 0
+-- asignaciones. Un test de baja contra un paciente asi pasa en verde sin
+-- probar nada, que es el patron que ya nos costo cuatro tests falsos.
+--
+-- Este tiene lo que hace falta para que la baja se pueda probar de verdad:
+-- 3 sesiones, 4 evoluciones, 2 objetivos que quedaron archivados por la baja
+-- y 1 asignacion cerrada el mismo dia. El estado es EXACTAMENTE el que deja
+-- p_baja_paciente, pero escrito con fechas fijas: un fixture tiene que ser
+-- un estado conocido, no uno que se recalcula en cada carga.
+--
+-- Con esto quedan los dos casos que un test necesita:
+--   - paciente 4, YA dado de baja  -> lectura de su historia, y que toda
+--     escritura sobre el se rechace;
+--   - paciente 1, activo y con historia -> correrle p_baja_paciente encima
+--     y verificar la transicion.
+-- ---------------------------------------------------------------------
+-- Entra ACTIVO y se da de baja al final del archivo. No es un rodeo: los
+-- triggers rechazan crear objetivos activos sobre un paciente dado de baja,
+-- asi que un seed que lo insertara ya inactivo no podria darle historia. El
+-- orden del seed es el orden real de los hechos.
+INSERT INTO pacientes
+  (id, id_usuario, nombre, apellido, fecha_nacimiento, diagnostico,
+   obra_social, nro_historia, activo, fecha_alta) VALUES
+  (4, NULL, 'Ignacio', 'Peralta', '2016-01-19',
+   'Trastorno del desarrollo de la coordinacion. Alta por mudanza.',
+   'OSDE 210', 'HC-0004', TRUE, '2026-03-05');
+
 
 -- =====================================================================
 -- OBJETIVOS TERAPEUTICOS
@@ -108,7 +139,15 @@ INSERT INTO objetivos_terapeuticos
   (5, 2, 'Coordinar movimientos bilaterales',                TRUE,  '2026-03-16 14:05:00', NULL),
   (6, 2, 'Regular la respuesta a estimulos auditivos',       TRUE,  '2026-03-16 14:10:00', NULL),
 
-  (7, 3, 'Recuperar rango de movimiento en muneca derecha',  TRUE,  '2026-04-06 16:30:00', NULL);
+  (7, 3, 'Recuperar rango de movimiento en muneca derecha',  TRUE,  '2026-04-06 16:30:00', NULL),
+
+  -- Paciente 4 (dado de baja). Nacen ACTIVOS a proposito: la regla 4 impide
+  -- cargar evolucion sobre un objetivo archivado, asi que si entraran ya
+  -- archivados el trigger rechazaria las evoluciones de mas abajo. Se
+  -- archivan al final del seed, que es ademas el orden real de los hechos:
+  -- primero se trabajo con ellos, despues se dio de baja al paciente.
+  (8, 4, 'Mejorar el equilibrio en apoyo monopodal',         TRUE,  '2026-03-05 09:30:00', NULL),
+  (9, 4, 'Organizar la secuencia de vestido superior',       TRUE,  '2026-03-05 09:35:00', NULL);
 
 
 -- =====================================================================
@@ -139,7 +178,18 @@ INSERT INTO sesiones
   (9,  1, 3, '2026-06-11', '15:00:00', '16:00:00', 'completa',
    'Progreso en flexion. Sin dolor referido.'),
   (10, 1, 1, '2026-06-30', '09:00:00', '10:00:00', 'completa',
-   'Cierre de mes. Se evaluaron dos objetivos.');
+   'Cierre de mes. Se evaluaron dos objetivos.'),
+
+  -- Paciente 4, dado de baja despues. Las sesiones NO se tocan en la baja:
+  -- son hechos que ocurrieron. Van a las 11:00 porque el terapeuta 1 ya
+  -- tiene ocupadas las 09:00 y las 15:00 de esas semanas, y la regla 6
+  -- rechazaria el solape.
+  (11, 1, 4, '2026-06-05', '11:00:00', '12:00:00', 'completa',
+   'Trabajo de equilibrio con circuito de obstaculos.'),
+  (12, 1, 4, '2026-06-12', '11:00:00', '12:00:00', 'completa',
+   'Secuencia de vestido con apoyo verbal.'),
+  (13, 1, 4, '2026-06-19', '11:00:00', '12:00:00', 'completa',
+   'Ultima sesion antes de la mudanza de la familia.');
 
 
 -- =====================================================================
@@ -163,7 +213,15 @@ INSERT INTO evoluciones (id, id_sesion, id_objetivo, valor, observaciones) VALUE
   (8,  8,  7, 3, 'Rango de flexion medido en 45 grados.'),
   (9,  9,  7, 4, 'Rango de flexion medido en 60 grados.'),
   (10, 10, 1, 4, 'Escritura sostenida durante 8 minutos.'),
-  (11, 10, 3, 3, 'Atencion sostenida cerca del objetivo planteado.');
+  (11, 10, 3, 3, 'Atencion sostenida cerca del objetivo planteado.'),
+
+  -- Paciente 4. Se cargan mientras sus objetivos siguen ACTIVOS; el archivado
+  -- viene despues. Sobreviven a la baja intactas, que es justamente lo que
+  -- hay que poder verificar.
+  (12, 11, 8, 2, 'Sostiene el apoyo monopodal 3 segundos con apoyo.'),
+  (13, 12, 9, 2, 'Ordena dos prendas de tres en la secuencia.'),
+  (14, 13, 8, 3, 'Llega a 8 segundos sin apoyo externo.'),
+  (15, 13, 9, 3, 'Completa la secuencia con una sola indicacion.');
 
 
 -- =====================================================================
@@ -272,7 +330,50 @@ INSERT INTO asignaciones
   (1, 1, 1, '2026-03-02', NULL),
   (2, 2, 1, '2026-03-02', '2026-05-04'),
   (3, 2, 2, '2026-03-16', NULL),
-  (4, 1, 3, '2026-04-06', NULL);
+  (4, 1, 3, '2026-04-06', NULL),
+  -- Paciente 4: cerrada el mismo dia de la baja, que es lo que hace
+  -- p_baja_paciente. "Vigente" es fecha_hasta IS NULL y nada mas.
+  (5, 1, 4, '2026-03-05', '2026-07-20');
+
+
+-- =====================================================================
+-- LA BAJA DEL PACIENTE 4 — al final, y en este orden exacto
+--
+-- El paciente entro activo y con historia. Recien ahora se lo da de baja,
+-- porque los triggers no permiten construir ese estado al reves:
+--
+--   - la regla 4 rechaza cargar evolucion sobre un objetivo archivado, asi
+--     que los objetivos tienen que nacer activos y archivarse despues;
+--   - desde el 2026-08-12 los triggers ademas rechazan crear o activar
+--     objetivos —y abrir asignaciones— sobre un paciente dado de baja, asi
+--     que el paciente tiene que seguir activo hasta este punto.
+--
+-- El propio seed es entonces una prueba de que las dos reglas estan puestas:
+-- si alguna se cayera, este bloque dejaria de ser necesario y el seed
+-- cargaria igual en cualquier orden.
+--
+-- Los objetivos van en DOS updates y el segundo no es redundante:
+--   1. El primero archiva. trg_objetivos_limite_activos_update le pone a
+--      fecha_archivado el NOW() de la carga.
+--   2. El segundo la fija en la fecha de la baja. Con activo pasando de
+--      FALSE a FALSE ninguna rama del trigger se dispara, asi que el valor
+--      queda como se escribe. Sin este paso el fixture cambiaria de
+--      contenido en cada carga y ningun test podria afirmar la fecha.
+--
+-- La asignacion ya entro cerrada mas arriba, asi que no hace falta tocarla.
+-- =====================================================================
+UPDATE objetivos_terapeuticos
+   SET activo = FALSE
+ WHERE id_paciente = 4 AND activo = TRUE;
+
+UPDATE objetivos_terapeuticos
+   SET fecha_archivado = '2026-07-20 09:00:00'
+ WHERE id_paciente = 4;
+
+UPDATE pacientes
+   SET activo = FALSE,
+       fecha_baja = '2026-07-20'
+ WHERE id = 4;
 
 
 -- =====================================================================
