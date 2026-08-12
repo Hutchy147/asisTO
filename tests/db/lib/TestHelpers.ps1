@@ -34,7 +34,8 @@
 #
 # El mapeo esta duplicado en tests/backend/_entorno.py, que resuelve lo
 # mismo del lado de Python para las corridas directas de unittest. Si se
-# toca uno hay que tocar el otro.
+# toca uno hay que tocar el otro. Eso incluye el recorte de espacios de
+# abajo: los dos comparan el valor RECORTADO.
 function Get-NombreBaseDePrueba {
     param(
         [Parameter(Mandatory)] [string]$Base,
@@ -42,13 +43,31 @@ function Get-NombreBaseDePrueba {
         # run_all.ps1 (-TestDbPrefix) y el resto (-TestDbName / -Database).
         [string]$EjemploExplicito = '-TestDbName <nombre>'
     )
-    $rol = $env:ASISTO_ROL
+    # SE COMPARA RECORTADO, y no es cosmetico. La forma `set VAR=valor &&
+    # comando` de CMD guarda el espacio que queda ANTES del `&&`, asi que las
+    # tres terminales arrancan con "auditoria " (con espacio al final) sin que
+    # eso se vea en ningun lado. Sin el recorte, el fallo duro de abajo rebota
+    # en las tres por un caracter invisible, y el mensaje acusa a un valor que
+    # a simple vista se lee perfecto.
+    #
+    # Se recorta y NADA MAS: no se pasa a minusculas ni se normalizan acentos.
+    # Un valor realmente invalido tiene que seguir fallando.
+    #
+    # La interpolacion "$(...)" es para que un ASISTO_ROL ausente no reviente
+    # en .Trim(): $null.Trim() es un error en PowerShell 5.1, y el camino "no
+    # esta definida" tiene que llegar al mensaje de abajo, no a una excepcion
+    # de metodo sobre un valor nulo.
+    $rol = "$($env:ASISTO_ROL)".Trim()
     switch ($rol) {
         "construccion" { return $Base }
         "auditoria"    { return "${Base}2" }
         "apoyo"        { return "${Base}3" }
     }
 
+    # El valor que se muestra es el YA RECORTADO, que es exactamente el que se
+    # comparo: si se mostrara el crudo, un "auditoria " que ahora resuelve bien
+    # haria pensar que el espacio es el problema cuando no lo es. Un valor de
+    # solo espacios cae en la rama "no esta definida", que es lo que es.
     $motivo = if ($rol) {
         "ASISTO_ROL trae un valor desconocido ('$rol')."
     } else {

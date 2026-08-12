@@ -46,7 +46,9 @@ sys.path.insert(0, BACKEND_DIR)
 # dos tests en rojo que en aislamiento no se reprodujeron.
 #
 # El mapeo esta duplicado en tests/db/lib/TestHelpers.ps1
-# (Get-NombreBaseDePrueba). Si se toca uno hay que tocar el otro.
+# (Get-NombreBaseDePrueba). Si se toca uno hay que tocar el otro. Eso incluye
+# el recorte de espacios de _base_por_rol(): los dos comparan el valor
+# RECORTADO.
 BASES_POR_ROL = {
     'construccion': 'asisto_test_backend',
     'auditoria': 'asisto_test_backend2',
@@ -63,10 +65,20 @@ def _base_por_rol():
     el rol terminarian haciendolo sobre la de otra terminal. Un aviso ya se
     probo y no alcanzo -- paso una sesion entera sin que nadie lo leyera.
     """
-    rol = os.environ.get('ASISTO_ROL', '')
+    # SE COMPARA RECORTADO, igual que Get-NombreBaseDePrueba y por el mismo
+    # motivo: `set VAR=valor && comando` en CMD guarda el espacio previo al
+    # `&&`, asi que ASISTO_ROL llega como 'auditoria ' en las tres terminales
+    # sin que se note. Sin el recorte, este raise -- que es duro a proposito --
+    # frena a las tres por un caracter invisible.
+    #
+    # Solo espacios: nada de .lower() ni de normalizar acentos. Un valor
+    # realmente invalido tiene que seguir levantando.
+    rol = os.environ.get('ASISTO_ROL', '').strip()
     if rol in BASES_POR_ROL:
         return BASES_POR_ROL[rol]
 
+    # El {rol!r} muestra el valor YA RECORTADO, que es el que se comparo. Un
+    # valor de solo espacios queda como '' y cae en "no esta definida".
     motivo = (f'ASISTO_ROL trae un valor desconocido ({rol!r}).' if rol
               else 'ASISTO_ROL no esta definida.')
     raise RuntimeError(
