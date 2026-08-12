@@ -24,10 +24,15 @@
 #     el paciente nuevo y la evolucion apuntando a una sesion del paciente
 #     viejo.
 #
-# HOY: se espera que los tres terminen en el estado prohibido (bug
-# confirmado). La correccion (agregar FOR UPDATE sobre la fila de
-# sesiones/objetivos_terapeuticos que lee el trigger de evoluciones, ANTES
-# de leer su estado) deberia hacer que los tres pasen a PASS.
+# ESTADO ACTUAL (actualizado el 2026-08-12; el parrafo anterior decia que se
+# esperaba que los tres FALLARAN, y quedo viejo). La correccion se aplico:
+# los dos SELECT del trigger llevan FOR SHARE, y los tres casos PASAN. Lo que
+# afirman ahora es que la regla aguanta la carrera, no que se rompe.
+#
+# Cada caso lleva ademas su propia asercion "el_ataque_quedo_armado": si la
+# conexion A no llego a tomar el lock, el caso se reporta en rojo por eso y no
+# por su estado final. Sin ese control, este archivo ya dio un FAIL que no era
+# del producto -- ver Esperar-LockExclusivo, mas abajo.
 #
 # Uso:
 #   .\test_race_reglas_2_3_4_evoluciones.ps1 -Database asisto_test_audit
@@ -69,6 +74,49 @@ function Iniciar-ConexionQueMantieneAbierta {
     Start-Job -ScriptBlock $jobScript -ArgumentList $script:MysqlExe, $script:LoginPath, $Database, $SqlConSleep
 }
 
+# Espera a que la conexion A tenga tomado DE VERDAD el lock exclusivo sobre la
+# tabla que esta modificando, en vez de dormir un tiempo fijo y confiar.
+#
+# POR QUE EXISTE (2026-08-12). Los tres casos arrancaban la conexion A con
+# Start-Job y despues hacian "Start-Sleep -Seconds 1". Ese segundo no alcanza:
+# el PRIMER Start-Job de la sesion paga el arranque en frio del runspace de
+# PowerShell mas la conexion a MySQL. Medido en esta maquina, el lock recien
+# aparece a los 3,17 s. Con lo cual la conexion B disparaba unos dos segundos
+# ANTES de que hubiera algo con que competir: insertaba contra un objetivo
+# todavia activo (legitimo), y A lo archivaba despues. El estado final quedaba
+# igual que el del bug -- una evolucion sobre un objetivo archivado -- y el
+# caso 1 daba FAIL sin que hubiera ninguna carrera. Los casos 2 y 3 pasaban
+# porque para entonces el job ya estaba caliente y arrancaba a tiempo.
+#
+# Verificado con esta espera: la conexion B es rechazada con
+# "ERROR 1644 (45000) ... No se puede cargar evolucion sobre un objetivo
+# archivado". El trigger nunca estuvo mal; estaba mal el banco.
+#
+# Es el criterio 1 de AUDITORIA.md aplicado a este archivo: un banco que
+# depende de que un proceso arranque en menos de un segundo no esta midiendo
+# concurrencia, esta midiendo la carga de la maquina.
+#
+# Necesita privilegio PROCESS para leer performance_schema.data_locks. Estas
+# suites se conectan con --login-path=asisto, que lo tiene; `asisto_app` NO
+# (da 1227), asi que esto no se puede mover tal cual a un test que corra con
+# el usuario de la app.
+function Esperar-LockExclusivo {
+    param(
+        [Parameter(Mandatory)] [string]$Database,
+        [Parameter(Mandatory)] [string]$Tabla,
+        [int]$SegundosMaximo = 20
+    )
+    $reloj = [Diagnostics.Stopwatch]::StartNew()
+    while ($reloj.Elapsed.TotalSeconds -lt $SegundosMaximo) {
+        $n = Get-ScalarValue -Database $Database -Sql @"
+SELECT COUNT(*) FROM performance_schema.data_locks
+ WHERE OBJECT_NAME = '$Tabla' AND LOCK_TYPE = 'RECORD' AND LOCK_MODE LIKE '%X%';
+"@
+        if ([int]$n -gt 0) { return $true }
+    }
+    return $false
+}
+
 # --- Caso 1: regla 4 -- archivar un objetivo mientras se carga una
 #     evolucion nueva sobre el ---------------------------------------
 $idPaciente1 = ($(Invoke-Sql -Database $Database -Sql @"
@@ -89,7 +137,10 @@ UPDATE objetivos_terapeuticos SET activo = FALSE WHERE id = $idObjetivo4;
 SELECT SLEEP(4);
 COMMIT;
 "@
-Start-Sleep -Seconds 1
+$armado1 = Esperar-LockExclusivo -Database $Database -Tabla 'objetivos_terapeuticos'
+$resultados += Assert-True $modulo "race_regla4_el_ataque_quedo_armado" $armado1 `
+    "La conexion A tomo el lock exclusivo antes de disparar la conexion B" `
+    "La conexion A nunca tomo el lock: lo que siga NO es una carrera y su resultado no significa nada"
 $rB1 = Invoke-Sql -Database $Database -Sql `
     "INSERT INTO evoluciones (id_sesion, id_objetivo, valor) VALUES ($idSesion4, $idObjetivo4, 3);"
 Wait-Job $jobA1 | Out-Null; Receive-Job $jobA1 | Out-Null; Remove-Job $jobA1
@@ -115,7 +166,10 @@ UPDATE sesiones SET estado = 'ausencia' WHERE id = $idSesion2;
 SELECT SLEEP(4);
 COMMIT;
 "@
-Start-Sleep -Seconds 1
+$armado2 = Esperar-LockExclusivo -Database $Database -Tabla 'sesiones'
+$resultados += Assert-True $modulo "race_regla2_el_ataque_quedo_armado" $armado2 `
+    "La conexion A tomo el lock exclusivo antes de disparar la conexion B" `
+    "La conexion A nunca tomo el lock: lo que siga NO es una carrera y su resultado no significa nada"
 $rB2 = Invoke-Sql -Database $Database -Sql `
     "INSERT INTO evoluciones (id_sesion, id_objetivo, valor) VALUES ($idSesion2, 1, 3);"
 Wait-Job $jobA2 | Out-Null; Receive-Job $jobA2 | Out-Null; Remove-Job $jobA2
@@ -144,7 +198,10 @@ UPDATE objetivos_terapeuticos SET id_paciente = 2 WHERE id = $idObjetivo3;
 SELECT SLEEP(4);
 COMMIT;
 "@
-Start-Sleep -Seconds 1
+$armado3 = Esperar-LockExclusivo -Database $Database -Tabla 'objetivos_terapeuticos'
+$resultados += Assert-True $modulo "race_regla3_el_ataque_quedo_armado" $armado3 `
+    "La conexion A tomo el lock exclusivo antes de disparar la conexion B" `
+    "La conexion A nunca tomo el lock: lo que siga NO es una carrera y su resultado no significa nada"
 $rB3 = Invoke-Sql -Database $Database -Sql `
     "INSERT INTO evoluciones (id_sesion, id_objetivo, valor) VALUES ($idSesion3, $idObjetivo3, 3);"
 Wait-Job $jobA3 | Out-Null; Receive-Job $jobA3 | Out-Null; Remove-Job $jobA3

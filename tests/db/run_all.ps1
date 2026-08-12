@@ -73,10 +73,33 @@ Write-Output ""
 Write-Output "================ RESUMEN ================"
 $todos | Format-Table -AutoSize -Property Modulo, Test, Resultado | Out-String -Width 200 | Write-Output
 
-$pass = ($todos | Where-Object { $_.Resultado -eq "PASS" }).Count
-$fail = ($todos | Where-Object { $_.Resultado -eq "FAIL" }).Count
-$info = ($todos | Where-Object { $_.Resultado -eq "INFO" }).Count
+# El @() NO es cosmetico y esto ya dio un falso verde. Con EXACTAMENTE UNA
+# coincidencia, "($todos | Where-Object {...}).Count" devuelve VACIO en
+# PowerShell 5.1 -- no 1, y tampoco 0: la expresion no es un array, es el
+# objeto suelto, y .Count sobre el no resuelve. Con cero coincidencias si
+# devuelve 0, que es lo que hacia parecer que la linea funcionaba.
+#
+# Consecuencia medida el 2026-08-12: la corrida tenia UN test en rojo y el
+# resumen imprimio "PASS: 74   FAIL:    INFO: 4   TOTAL: 79" -- el conteo de
+# FAIL en blanco -- y ademas la lista de abajo NO se imprimio, porque
+# "$null -gt 0" es falso. El unico rastro del rojo era que 74+4 no llegaba a
+# 79. Un test en rojo tiene que gritar, no esconderse en una aritmetica que
+# no cierra.
+$pass = @($todos | Where-Object { $_.Resultado -eq "PASS" }).Count
+$fail = @($todos | Where-Object { $_.Resultado -eq "FAIL" }).Count
+$info = @($todos | Where-Object { $_.Resultado -eq "INFO" }).Count
 Write-Output "PASS: $pass   FAIL: $fail   INFO: $info   TOTAL: $($todos.Count)"
+
+# Red por si algun modulo devuelve algo que no es un resultado (ya paso: una
+# tabla formateada colandose por el stream de salida) o un Resultado que no
+# es ninguno de los tres. Sin esto, esos objetos solo se notan sumando a mano.
+$clasificados = $pass + $fail + $info
+if ($clasificados -ne $todos.Count) {
+    Write-Output ""
+    Write-Output ("ATENCION: $($todos.Count) objetos devueltos y solo $clasificados " +
+                  "clasificados como PASS/FAIL/INFO. Hay $($todos.Count - $clasificados) " +
+                  "objeto(s) que no son resultados o que traen otro valor en Resultado.")
+}
 
 if ($fail -gt 0) {
     Write-Output ""
