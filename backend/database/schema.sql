@@ -1275,6 +1275,217 @@ END$$
 
 
 -- ---------------------------------------------------------------------
+-- p_baja_paciente — baja LOGICA del paciente
+--
+-- Nunca borra: la historia clinica no se borra. Marca activo = FALSE, deja
+-- fecha_baja, cierra las asignaciones vigentes y archiva los objetivos
+-- activos. Las sesiones y las evoluciones NO se tocan: son hechos que
+-- ocurrieron y una baja administrativa posterior no los cambia.
+--
+-- ORDEN DE LOCKS: pacientes -> asignaciones -> objetivos_terapeuticos.
+--
+-- `asignaciones` NO esta en el orden canonico del CLAUDE.md, que se escribio
+-- antes de que la tabla existiera (migracion del 2026-08-07). Se la ubica
+-- entre `terapeutas` y `sesiones`, que es donde cae por dependencia: referencia
+-- a pacientes y a terapeutas, y nada la referencia a ella. QUEDA PROPUESTO
+-- para el chat de planeamiento; este procedimiento ya respeta esa ubicacion.
+--
+-- Las tres escrituras van en UNA transaccion. Una baja a medias —el paciente
+-- inactivo pero con objetivos activos, o con asignaciones abiertas— es peor
+-- que una baja que falla entera, porque el filtro de "pacientes asignados"
+-- que viene en la Entrega 2 leeria una asignacion que ya no es cierta.
+--
+-- Sobre el GREATEST de la fecha: una asignacion puede tener fecha_desde en el
+-- futuro. Cerrarla con CURRENT_DATE a secas dejaria fecha_hasta < fecha_desde
+-- y trg_asignaciones_vigente_update la rechaza con 1644, o sea que UNA
+-- asignacion futura haria fallar la baja entera. Se cierra en el maximo entre
+-- hoy y su propio inicio: una asignacion que nunca llego a empezar queda
+-- cerrada el dia en que iba a empezar, que es lo unico coherente.
+-- ---------------------------------------------------------------------
+CREATE PROCEDURE p_baja_paciente (
+  IN  p_id_paciente           INT UNSIGNED,
+  OUT p_objetivos_archivados  INT UNSIGNED,
+  OUT p_asignaciones_cerradas INT UNSIGNED,
+  OUT p_mensaje               VARCHAR(255)
+)
+BEGIN
+  DECLARE v_existe  INT UNSIGNED DEFAULT 0;
+  DECLARE v_activo  BOOLEAN      DEFAULT NULL;
+  DECLARE v_lock    INT UNSIGNED DEFAULT NULL;
+  DECLARE v_error   VARCHAR(255) DEFAULT '';
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_objetivos_archivados = NULL;
+    SET p_asignaciones_cerradas = NULL;
+    SET p_mensaje = v_error;
+  END;
+
+  -- Ver el bloque DEADLOCK de p_alta_paciente. Los dos handlers van en TODO
+  -- procedimiento de escritura o en ninguno: media proteccion es peor que
+  -- ninguna, porque parece que esta.
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_objetivos_archivados = NULL;
+    SET p_asignaciones_cerradas = NULL;
+    SET p_mensaje = 'No se pudo dar de baja el paciente por un error interno';
+  END;
+
+  SET p_objetivos_archivados = NULL;
+  SET p_asignaciones_cerradas = NULL;
+
+  SELECT COUNT(*), MAX(activo) INTO v_existe, v_activo
+    FROM pacientes
+   WHERE id = p_id_paciente;
+
+  IF v_existe = 0 THEN
+    SET p_mensaje = 'El paciente indicado no existe';
+  ELSEIF v_activo = FALSE THEN
+    SET p_mensaje = 'El paciente ya estaba dado de baja';
+  ELSE
+    START TRANSACTION;
+
+    -- 1) pacientes. Primero por el orden canonico, y ademas porque es el lock
+    --    que los triggers de las otras dos tablas toman sobre esta misma fila.
+    SELECT id INTO v_lock
+      FROM pacientes
+     WHERE id = p_id_paciente
+     FOR UPDATE;
+
+    UPDATE pacientes
+       SET activo = FALSE,
+           fecha_baja = CURRENT_DATE
+     WHERE id = p_id_paciente;
+
+    -- 2) asignaciones: vigente es fecha_hasta IS NULL y nada mas
+    UPDATE asignaciones
+       SET fecha_hasta = GREATEST(fecha_desde, CURRENT_DATE)
+     WHERE id_paciente = p_id_paciente
+       AND fecha_hasta IS NULL;
+
+    SET p_asignaciones_cerradas = ROW_COUNT();
+
+    -- 3) objetivos_terapeuticos. fecha_archivado la pone
+    --    trg_objetivos_limite_activos_update, no se escribe aca.
+    UPDATE objetivos_terapeuticos
+       SET activo = FALSE
+     WHERE id_paciente = p_id_paciente
+       AND activo = TRUE;
+
+    SET p_objetivos_archivados = ROW_COUNT();
+
+    COMMIT;
+    SET p_mensaje = 'Paciente dado de baja correctamente';
+  END IF;
+END$$
+
+
+-- ---------------------------------------------------------------------
+-- p_reactivar_paciente — deshace la baja, y NADA MAS
+--
+-- Un tratamiento que se retoma es un escenario clinico normal, asi que la
+-- baja no es definitiva. Pero reactivar NO desarchiva los objetivos ni
+-- reabre las asignaciones, y eso es deliberado:
+--
+--   - Los objetivos los elige la terapeuta al retomar. Desarchivarlos todos
+--     podria ademas pasarse del limite de 4 activos si mientras tanto se
+--     cargaron otros, y el trigger rechazaria la reactivacion entera por una
+--     razon que no tiene nada que ver con lo que se pidio.
+--   - Una asignacion cerrada dice quien lo atendia ANTES. Reabrirla afirmaria
+--     que esa terapeuta lo sigue atendiendo, que es justo lo que no se sabe.
+--
+-- Toca una sola tabla, pero lleva los mismos handlers: es un camino de
+-- escritura y el decorador de Python necesita ver el 1213 y el 1205.
+-- ---------------------------------------------------------------------
+-- p_reactivado sale en 1 si la reactivacion ocurrio y en NULL si se rechazo,
+-- igual que p_id_paciente en p_alta_paciente. El llamador NO tiene que
+-- deducir el resultado del texto de p_mensaje: comparar mensajes es la misma
+-- trampa que duplicar una regla de negocio en el backend, porque cambiar una
+-- palabra del mensaje rompe silenciosamente al que lo estaba comparando.
+CREATE PROCEDURE p_reactivar_paciente (
+  IN  p_id_paciente  INT UNSIGNED,
+  OUT p_reactivado   TINYINT UNSIGNED,
+  OUT p_mensaje      VARCHAR(255)
+)
+BEGIN
+  DECLARE v_existe  INT UNSIGNED DEFAULT 0;
+  DECLARE v_activo  BOOLEAN      DEFAULT NULL;
+  DECLARE v_lock    INT UNSIGNED DEFAULT NULL;
+  DECLARE v_error   VARCHAR(255) DEFAULT '';
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_reactivado = NULL;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_reactivado = NULL;
+    SET p_mensaje = 'No se pudo reactivar el paciente por un error interno';
+  END;
+
+  SET p_reactivado = NULL;
+
+  SELECT COUNT(*), MAX(activo) INTO v_existe, v_activo
+    FROM pacientes
+   WHERE id = p_id_paciente;
+
+  IF v_existe = 0 THEN
+    SET p_mensaje = 'El paciente indicado no existe';
+  ELSEIF v_activo = TRUE THEN
+    SET p_mensaje = 'El paciente ya estaba activo';
+  ELSE
+    START TRANSACTION;
+
+    SELECT id INTO v_lock
+      FROM pacientes
+     WHERE id = p_id_paciente
+     FOR UPDATE;
+
+    UPDATE pacientes
+       SET activo = TRUE,
+           fecha_baja = NULL
+     WHERE id = p_id_paciente;
+
+    COMMIT;
+    SET p_reactivado = 1;
+    SET p_mensaje = 'Paciente reactivado correctamente';
+  END IF;
+END$$
+
+
+-- ---------------------------------------------------------------------
 -- p_registrar_sesion — regla 6
 --
 -- Detecta superposicion horaria del TERAPEUTA. Si hora_fin es NULL se
@@ -1304,6 +1515,7 @@ BEGIN
   DECLARE v_superpuestas  INT UNSIGNED DEFAULT 0;
   DECLARE v_existe_ter    INT UNSIGNED DEFAULT 0;
   DECLARE v_existe_pac    INT UNSIGNED DEFAULT 0;
+  DECLARE v_activo_pac    BOOLEAN      DEFAULT NULL;
   DECLARE v_lock          INT UNSIGNED DEFAULT NULL;
   DECLARE v_error         VARCHAR(255) DEFAULT '';
 
@@ -1346,12 +1558,21 @@ BEGIN
 
   -- Validacion de FK antes de tocar nada, para no depender del error nativo
   SELECT COUNT(*) INTO v_existe_ter FROM terapeutas WHERE id = p_id_terapeuta;
-  SELECT COUNT(*) INTO v_existe_pac FROM pacientes  WHERE id = p_id_paciente;
+  SELECT COUNT(*), MAX(activo) INTO v_existe_pac, v_activo_pac
+    FROM pacientes WHERE id = p_id_paciente;
 
   IF v_existe_ter = 0 THEN
     SET p_mensaje = 'El terapeuta indicado no existe';
   ELSEIF v_existe_pac = 0 THEN
     SET p_mensaje = 'El paciente indicado no existe';
+  -- Agregado el 2026-08-12, con el modulo de baja. Hasta hoy el procedimiento
+  -- validaba que el paciente EXISTIERA y nada mas, y lo unico que impedia
+  -- agendarle una sesion a alguien dado de baja era que no apareciera en el
+  -- desplegable: una proteccion de interfaz, que un CALL directo, un script o
+  -- un cliente cualquiera esquiva sin enterarse. Es la misma leccion de las
+  -- reglas 1 a 6 — si vive solo en un camino, no vive.
+  ELSEIF v_activo_pac = FALSE THEN
+    SET p_mensaje = 'El paciente esta dado de baja: no se le pueden registrar sesiones';
   ELSEIF v_hora_fin <= p_hora_inicio THEN
     SET p_mensaje = 'La hora de fin debe ser posterior a la hora de inicio';
   ELSE

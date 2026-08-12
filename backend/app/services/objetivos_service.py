@@ -144,8 +144,15 @@ def _seguimiento_de_archivados(id_paciente):
 
 
 def listar_por_paciente(id_paciente):
-    """Objetivos separados en activos y archivados, con su seguimiento."""
-    paciente = obtener_paciente(id_paciente)
+    """
+    Objetivos separados en activos y archivados, con su seguimiento.
+
+    Incluye a los pacientes dados de baja: es lectura de historia clinica.
+    Crear o editar un objetivo sigue rechazandolos — ver `crear_objetivo`,
+    que llama a `obtener_paciente` con el default. Lectura abierta,
+    escritura restringida.
+    """
+    paciente = obtener_paciente(id_paciente, incluir_inactivos=True)
 
     objetivos = (
         ObjetivoTerapeutico.query

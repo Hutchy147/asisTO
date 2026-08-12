@@ -69,8 +69,25 @@ def obtener_paciente(id_paciente, incluir_inactivos=False):
 
 
 def obtener_detalle(id_paciente):
-    """Paciente + sus objetivos activos."""
-    paciente = obtener_paciente(id_paciente)
+    """
+    Paciente + sus objetivos activos.
+
+    Incluye a los pacientes dados de baja A PROPOSITO, y es un cambio de
+    comportamiento del 2026-08-12. Antes esta ficha devolvia 404 para un
+    paciente inactivo, y con eso su historia clinica quedaba inaccesible por
+    la API: 404 en la ficha, 404 en el historial y 404 en sus objetivos. Un
+    paciente dado de baja no es un paciente que no existe — es uno que ya no
+    esta en tratamiento, y sus registros tienen que poder consultarse.
+
+    Lo que NO cambia es la escritura: `obtener_paciente` sigue rechazando por
+    defecto a los inactivos, asi que crear un objetivo o registrar una sesion
+    sobre un paciente de baja sigue dando 404. La lectura se abre; la
+    escritura no. Es la misma forma de la decision 8.
+
+    `activo` y `fecha_baja` viajan en el to_dict(), asi que la interfaz tiene
+    con que dibujar la ficha en modo lectura.
+    """
+    paciente = obtener_paciente(id_paciente, incluir_inactivos=True)
 
     objetivos = (
         ObjetivoTerapeutico.query
@@ -82,6 +99,9 @@ def obtener_detalle(id_paciente):
     return {
         'paciente': paciente.to_dict_clinico(),
         'objetivos_activos': [objetivo.to_dict() for objetivo in objetivos],
+        # La interfaz necesita saber que esta en modo lectura ANTES de dibujar
+        # los botones, no cuando el servidor le rechace la accion.
+        'solo_lectura': not paciente.activo,
     }
 
 
@@ -147,5 +167,80 @@ def alta_paciente(datos):
 
     paciente = Paciente.query.get(int(id_creado))
     logger.info('Paciente %s dado de alta (%s)', paciente.id, paciente.nro_historia)
+
+    return paciente, mensaje
+
+
+@reintentar_en_deadlock()
+def baja_paciente(id_paciente):
+    """
+    Baja LOGICA via p_baja_paciente. Nunca borra.
+
+    El procedimiento hace las tres escrituras —paciente, asignaciones y
+    objetivos— en una sola transaccion y en el orden de locks; aca no se
+    replica ninguna de esas reglas. Ver p_baja_paciente en schema.sql.
+
+    Devuelve (paciente, resumen) donde resumen trae los conteos de lo que
+    arrastro la baja, para poder decirselo al usuario en vez de dejarlo
+    descubrir solo que se le archivaron los objetivos.
+    """
+    db.session.execute(
+        text(
+            'CALL p_baja_paciente(:id_paciente, @p_objetivos, '
+            '@p_asignaciones, @p_mensaje)'
+        ),
+        {'id_paciente': id_paciente},
+    )
+
+    objetivos, asignaciones, mensaje = db.session.execute(
+        text('SELECT @p_objetivos, @p_asignaciones, @p_mensaje')
+    ).first()
+
+    # El procedimiento hace su propio COMMIT/ROLLBACK. Este cierra la
+    # transaccion que SQLAlchemy abrio para leer las variables de salida.
+    db.session.commit()
+
+    # NULL en los contadores = el procedimiento rechazo la baja. No se compara
+    # el texto de p_mensaje: ver la nota de p_reactivar_paciente en schema.sql.
+    if objetivos is None:
+        raise ErrorAplicacion(mensaje or 'No se pudo dar de baja el paciente.')
+
+    paciente = Paciente.query.get(id_paciente)
+    logger.info(
+        'Paciente %s dado de baja (%s objetivos archivados, %s asignaciones cerradas)',
+        id_paciente, objetivos, asignaciones,
+    )
+
+    return paciente, {
+        'objetivos_archivados': int(objetivos),
+        'asignaciones_cerradas': int(asignaciones),
+        'mensaje': mensaje,
+    }
+
+
+@reintentar_en_deadlock()
+def reactivar_paciente(id_paciente):
+    """
+    Deshace la baja. NO desarchiva objetivos ni reabre asignaciones.
+
+    Ver p_reactivar_paciente en schema.sql para el porque de cada una de esas
+    dos omisiones: las dos son decisiones, no simplificaciones.
+    """
+    db.session.execute(
+        text('CALL p_reactivar_paciente(:id_paciente, @p_reactivado, @p_mensaje)'),
+        {'id_paciente': id_paciente},
+    )
+
+    reactivado, mensaje = db.session.execute(
+        text('SELECT @p_reactivado, @p_mensaje')
+    ).first()
+
+    db.session.commit()
+
+    if reactivado is None:
+        raise ErrorAplicacion(mensaje or 'No se pudo reactivar el paciente.')
+
+    paciente = Paciente.query.get(id_paciente)
+    logger.info('Paciente %s reactivado', id_paciente)
 
     return paciente, mensaje

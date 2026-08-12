@@ -262,10 +262,13 @@ def listar_por_paciente(id_paciente):
     Filtrar por terapeuta aca mostraria media historia clinica, que es peor
     que mostrarla entera.
     """
-    # Valida que exista y no este dado de baja, con el 404 correspondiente
+    # Valida que exista, con el 404 correspondiente. Los dados de baja SI se
+    # incluyen: el historial de sesiones es justamente lo que hay que poder
+    # consultar despues de la baja. Registrar una sesion nueva sigue
+    # rechazandolos por otro camino.
     from app.services.pacientes_service import obtener_paciente
 
-    paciente = obtener_paciente(id_paciente)
+    paciente = obtener_paciente(id_paciente, incluir_inactivos=True)
 
     sesiones = (
         Sesion.query
