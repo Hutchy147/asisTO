@@ -1720,6 +1720,7 @@ BEGIN
   DECLARE v_existe_ter    INT UNSIGNED DEFAULT 0;
   DECLARE v_existe_pac    INT UNSIGNED DEFAULT 0;
   DECLARE v_activo_pac    BOOLEAN      DEFAULT NULL;
+  DECLARE v_fecha_baja    DATE         DEFAULT NULL;
   DECLARE v_lock          INT UNSIGNED DEFAULT NULL;
   DECLARE v_error         VARCHAR(255) DEFAULT '';
 
@@ -1762,21 +1763,36 @@ BEGIN
 
   -- Validacion de FK antes de tocar nada, para no depender del error nativo
   SELECT COUNT(*) INTO v_existe_ter FROM terapeutas WHERE id = p_id_terapeuta;
-  SELECT COUNT(*), MAX(activo) INTO v_existe_pac, v_activo_pac
+  SELECT COUNT(*), MAX(activo), MAX(fecha_baja)
+    INTO v_existe_pac, v_activo_pac, v_fecha_baja
     FROM pacientes WHERE id = p_id_paciente;
 
   IF v_existe_ter = 0 THEN
     SET p_mensaje = 'El terapeuta indicado no existe';
   ELSEIF v_existe_pac = 0 THEN
     SET p_mensaje = 'El paciente indicado no existe';
-  -- Agregado el 2026-08-12, con el modulo de baja. Hasta hoy el procedimiento
-  -- validaba que el paciente EXISTIERA y nada mas, y lo unico que impedia
-  -- agendarle una sesion a alguien dado de baja era que no apareciera en el
-  -- desplegable: una proteccion de interfaz, que un CALL directo, un script o
-  -- un cliente cualquiera esquiva sin enterarse. Es la misma leccion de las
-  -- reglas 1 a 6 — si vive solo en un camino, no vive.
-  ELSEIF v_activo_pac = FALSE THEN
-    SET p_mensaje = 'El paciente esta dado de baja: no se le pueden registrar sesiones';
+  -- Agregado el 2026-08-12, con el modulo de baja. Hasta ese dia el
+  -- procedimiento validaba que el paciente EXISTIERA y nada mas, y lo unico
+  -- que impedia agendarle una sesion a alguien dado de baja era que no
+  -- apareciera en el desplegable: una proteccion de interfaz, que un CALL
+  -- directo, un script o un cliente cualquiera esquiva sin enterarse.
+  --
+  -- LA CARGA RETROACTIVA SI SE PERMITE: el corte es la FECHA de la sesion
+  -- contra fecha_baja, no el estado del paciente. El caso real es la terapeuta
+  -- que atendio el viernes y recien carga el lunes; si entre medio el paciente
+  -- se dio de baja, esa sesion ocurrio igual y tiene que poder registrarse.
+  -- Lo que se rechaza es una sesion POSTERIOR a la baja, que no ocurrio.
+  --
+  -- Sin esto la unica salida era reactivar, cargar y volver a dar de baja, que
+  -- ademas pisa fecha_baja: la correccion de un olvido administrativo
+  -- terminaba falseando la fecha del alta medica.
+  --
+  -- fecha_baja NULL con el paciente inactivo no deberia existir —la pone la
+  -- misma sentencia que apaga `activo`— pero si apareciera no hay con que
+  -- comparar, y ante un estado incoherente se rechaza en vez de adivinar.
+  ELSEIF v_activo_pac = FALSE
+     AND (v_fecha_baja IS NULL OR p_fecha > v_fecha_baja) THEN
+    SET p_mensaje = 'El paciente esta dado de baja: solo se pueden cargar sesiones hasta el dia de la baja';
   ELSEIF v_hora_fin <= p_hora_inicio THEN
     SET p_mensaje = 'La hora de fin debe ser posterior a la hora de inicio';
   ELSE
@@ -1794,15 +1810,22 @@ BEGIN
     --
     -- Va ANTES de terapeutas por el orden canonico de locks del CLAUDE.md
     -- (pacientes -> terapeutas -> ...). Invertirlo es la decision 12 otra vez.
-    SELECT activo INTO v_activo_pac
+    --
+    -- fecha_baja se lee EN ESTE MISMO SELECT y no antes. Leerla afuera y
+    -- comparar aca adentro seria el mismo TOCTOU que el chequeo de `activo`
+    -- que se corrigio hoy: entre las dos operaciones la baja puede entrar y
+    -- cambiar justamente el valor contra el que se compara. El dato con el que
+    -- se decide tiene que venir de la lectura que sostiene el lock.
+    SELECT activo, fecha_baja INTO v_activo_pac, v_fecha_baja
       FROM pacientes
      WHERE id = p_id_paciente
      FOR SHARE;
 
-    IF v_activo_pac = FALSE THEN
+    IF v_activo_pac = FALSE
+       AND (v_fecha_baja IS NULL OR p_fecha > v_fecha_baja) THEN
       ROLLBACK;
       SET p_id_sesion = NULL;
-      SET p_mensaje = 'El paciente esta dado de baja: no se le pueden registrar sesiones';
+      SET p_mensaje = 'El paciente esta dado de baja: solo se pueden cargar sesiones hasta el dia de la baja';
     ELSE
 
     -- Ver NOTA DE CONCURRENCIA. Mismo orden que el trigger de sesiones:
