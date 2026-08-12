@@ -54,7 +54,8 @@ $modulos = @(
     @{ Nombre = "concurrencia_evol"; Script = "$PSScriptRoot\concurrencia\test_race_reglas_2_3_4_evoluciones.ps1" },
     @{ Nombre = "regla19";        Script = "$PSScriptRoot\bordes\test_regla19_objetivo_archivado_inmutable.ps1" },
     @{ Nombre = "autorizacion";   Script = "$PSScriptRoot\autorizacion\test_evolucion_autoria_respaldada_en_bd.ps1" },
-    @{ Nombre = "asignaciones";   Script = "$PSScriptRoot\asignaciones\test_asignaciones_vigencia.ps1" }
+    @{ Nombre = "asignaciones";   Script = "$PSScriptRoot\asignaciones\test_asignaciones_vigencia.ps1" },
+    @{ Nombre = "baja";           Script = "$PSScriptRoot\pacientes\test_baja_reactivacion.ps1" }
 )
 
 $todos = @()
