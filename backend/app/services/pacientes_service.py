@@ -72,6 +72,26 @@ def obtener_paciente(id_paciente, incluir_inactivos=False):
     return paciente
 
 
+def _contar_asignaciones_vigentes(id_paciente):
+    """
+    Cuantas asignaciones vigentes tiene el paciente. Vigente es
+    `fecha_hasta IS NULL` y nada mas, igual que en el trigger y en
+    p_baja_paciente: si esta definicion se duplicara con otro criterio, la
+    interfaz anunciaria un numero y la base cerraria otro.
+
+    Va con SQL directo porque `asignaciones` todavia no tiene modelo: la tabla
+    entro en la migracion del 2026-08-07 y su modulo no existe. Mapearla
+    entera para un COUNT seria construir la mitad de un modulo que no se pidio.
+    """
+    return db.session.execute(
+        text(
+            'SELECT COUNT(*) FROM asignaciones '
+            'WHERE id_paciente = :id AND fecha_hasta IS NULL'
+        ),
+        {'id': id_paciente},
+    ).scalar()
+
+
 def obtener_detalle(id_paciente):
     """
     Paciente + sus objetivos activos.
@@ -106,6 +126,18 @@ def obtener_detalle(id_paciente):
         # La interfaz necesita saber que esta en modo lectura ANTES de dibujar
         # los botones, no cuando el servidor le rechace la accion.
         'solo_lectura': not paciente.activo,
+        # Que va a arrastrar la baja, para poder decirlo ANTES de pedir la
+        # confirmacion. Sin estos dos numeros el dialogo tendria que hablar en
+        # abstracto ("se van a archivar sus objetivos") y el terapeuta se
+        # entera de lo que hizo despues de hacerlo.
+        #
+        # Se calcula al pedirlo y no se guarda: entre que se abre la ficha y
+        # se aprieta el boton pueden pasar minutos, y un numero viejo en un
+        # dialogo de confirmacion es peor que ninguno.
+        'baja_arrastra': {
+            'objetivos_activos': len(objetivos),
+            'asignaciones_vigentes': _contar_asignaciones_vigentes(paciente.id),
+        },
     }
 
 
