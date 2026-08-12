@@ -16,11 +16,17 @@
 # p_registrar_sesion cita —"si vive solo en un camino, no vive"— es el criterio
 # con el que se escribieron los grupos 4 y 5.
 #
-# Los tests del grupo 4 y 5 que hoy fallan NO son un error del banco: son
-# hallazgos, y estan escritos en la direccion deseada a proposito. Un test que
-# afirma el comportamiento roto de hoy pasa a verde y hay que acordarse de
-# reescribirlo cuando se arregla; ya paso en este proyecto con el canario del
-# deadlock. Ver AUDITORIA.md, seccion del 2026-08-12.
+# ESTADO (2026-08-13): el archivo esta entero en verde. Los cinco hallazgos que
+# abrio —tres caminos de escritura que la base no cerraba, la carrera del
+# chequeo de `activo` y la doble baja— los cerro construccion, y los tests que
+# los documentaban pasaron solos a PASS sin tocarlos.
+#
+# Dos de ellos SI hubo que reescribirlos, y el motivo vale la pena: afirmaban
+# una PRECONDICION del defecto ("la baja logra entrar en la ventana") en vez de
+# la garantia. Cuando el defecto se arregla, esa precondicion deja de ser
+# alcanzable y el test se pone rojo justo cuando el sistema empieza a andar
+# bien. Ahora afirman la garantia: la baja no entra mientras la victima
+# sostiene el lock. Ver el grupo 5.
 #
 # Uso:
 #   .\test_baja_reactivacion.ps1 -Database asisto_test_audit2_pacientes
@@ -301,17 +307,26 @@ $resultados += Assert-True $modulo "asignacion_nueva_sobre_paciente_de_baja_es_r
     "ACEPTADO: se puede abrir una asignacion vigente sobre un paciente dado de baja. Todavia no hay endpoint de asignaciones, asi que es el momento barato de decidirlo."
 
 # =======================================================================
-# GRUPO 5 — la carrera: el chequeo de `activo` de p_registrar_sesion es una
-# lectura SIN LOCK y ANTERIOR al START TRANSACTION
+# GRUPO 5 — la baja no puede colarse entre el chequeo y el INSERT
 #
-# El procedimiento lee `MAX(activo)` con un SELECT comun, fuera de toda
-# transaccion, y recien despues abre la transaccion y toma el lock de
-# `terapeutas`. Entre esas dos cosas hay una ventana: si la baja entra ahi, la
-# sesion se inserta igual sobre un paciente que YA esta dado de baja.
+# HISTORIA, porque explica que afirma este grupo. Cuando se escribio,
+# p_registrar_sesion leia `MAX(activo)` con un SELECT comun, fuera de toda
+# transaccion, y recien despues abria la transaccion. Entre esas dos cosas
+# habia una ventana y la baja entraba: quedaba una sesion registrada sobre un
+# paciente ya dado de baja. Era la misma carrera de las reglas 2, 3 y 4 de
+# evoluciones.
 #
-# Es la MISMA clase de carrera que se encontro y se cerro en los triggers de
-# evoluciones (reglas 2, 3 y 4), donde la solucion fue leer con FOR SHARE
-# DENTRO de la transaccion. Aca el chequeo nacio afuera.
+# El arreglo (2026-08-12) fue revalidar bajo `pacientes FOR SHARE` DENTRO de la
+# transaccion, y antes del FOR UPDATE de `terapeutas` para no invertir el
+# orden de locks. Con eso la precondicion de esta carrera dejo de ser
+# alcanzable: la victima sostiene el lock compartido mientras espera, y la baja
+# tiene que esperarla.
+#
+# Por eso el grupo se reescribio el 2026-08-13 y ahora afirma la GARANTIA en
+# vez de la precondicion vieja: mientras la victima sostiene el lock, la baja
+# no se aplica; y al final las dos operaciones quedan serializadas. Un test que
+# siguiera exigiendo "la baja entro en la ventana" se pondria rojo justamente
+# cuando el sistema empieza a funcionar bien.
 #
 # COMO SE HACE DETERMINISTA. La ventana real dura microsegundos, asi que se
 # ensancha con un tercer actor: un atacante que retiene el lock exclusivo de
@@ -382,27 +397,57 @@ $resultados += Assert-True $modulo "carrera_la_victima_quedo_esperando_el_lock" 
     "La victima paso el chequeo de activo y quedo esperando el lock de terapeutas" `
     "La victima nunca llego a esperar el lock: la ventana no se abrio y el resultado no significa nada"
 
-# Con la victima detenida DESPUES del chequeo, entra la baja.
-$bajaEnLaVentana = Llamar-Baja $pac4
+# La baja se lanza como JOB, y ese cambio es la noticia. Antes se llamaba
+# derecho, porque entraba: el chequeo de `activo` se hacia sin lock y afuera de
+# la transaccion, asi que la baja se colaba entre el chequeo y el INSERT.
+#
+# Desde que p_registrar_sesion revalida bajo `pacientes FOR SHARE` DENTRO de la
+# transaccion, esa ventana no existe: la victima sostiene el lock compartido
+# mientras espera, y el FOR UPDATE de la baja tiene que esperarla. Llamarla
+# derecho colgaria el test hasta que la victima termine.
+#
+# Lo que se afirma abajo ya no es "la baja entro" —esa precondicion dejo de ser
+# alcanzable, que es exactamente el arreglo— sino la GARANTIA nueva: mientras
+# la victima sostiene el lock, la baja NO puede aplicarse.
+$jobBaja = Start-Job -ScriptBlock $jobScript -ArgumentList $script:MysqlExe, $script:LoginPath, $Database, @"
+CALL p_baja_paciente($pac4, @obj, @asig, @msg);
+SELECT IFNULL(@obj,'NULL'), IFNULL(@asig,'NULL'), @msg;
+"@
 
-$victimaSigueEsperando = [int](Get-ScalarValue $Database `
-    "SELECT COUNT(*) FROM information_schema.innodb_trx WHERE trx_state = 'LOCK WAIT';")
-$resultados += Assert-True $modulo "carrera_la_baja_entro_antes_de_que_la_victima_avanzara" `
-    ($bajaEnLaVentana.Mensaje -match "correctamente" -and $victimaSigueEsperando -gt 0) `
-    "La baja se completo mientras la victima seguia detenida: la ventana quedo demostrada" `
-    "La baja no entro dentro de la ventana (mensaje='$($bajaEnLaVentana.Mensaje)', victima esperando=$victimaSigueEsperando). Sin eso, el resultado de abajo no prueba nada."
+# Dos transacciones esperando: la victima por `terapeutas` (la retiene el
+# atacante) y la baja por `pacientes` (lo retiene la victima). Esa segunda
+# espera ES la garantia; si no aparece, la baja se estaria colando.
+$lasDosEsperando = Esperar-Condicion @"
+SELECT COUNT(*) - 1 FROM information_schema.innodb_trx WHERE trx_state = 'LOCK WAIT';
+"@
+
+$sigueActivo = [int](Get-ScalarValue $Database "SELECT activo FROM pacientes WHERE id = $pac4;")
+$resultados += Assert-True $modulo "carrera_la_baja_no_entra_mientras_la_victima_sostiene_el_lock" `
+    ($lasDosEsperando -and $sigueActivo -eq 1) `
+    "La baja quedo esperando el lock que sostiene la victima y el paciente sigue activo: la ventana entre el chequeo y el INSERT ya no existe" `
+    "La baja no quedo bloqueada por la victima (dos esperas detectadas=$lasDosEsperando, paciente activo=$sigueActivo). Si la baja se aplico mientras la victima estaba detenida DESPUES de su chequeo, la ventana volvio a abrirse."
 
 Wait-Job $jobAtacante | Out-Null; Receive-Job $jobAtacante | Out-Null; Remove-Job $jobAtacante
 $salidaVictima = Receive-Job (Wait-Job $jobVictima); Remove-Job $jobVictima
+$salidaBaja = Receive-Job (Wait-Job $jobBaja); Remove-Job $jobBaja
 
-$sesionesSobreBaja = [int](Get-ScalarValue $Database @"
-SELECT COUNT(*) FROM sesiones s JOIN pacientes p ON p.id = s.id_paciente
- WHERE s.id_paciente = $pac4 AND p.activo = FALSE;
-"@)
-$resultados += Assert-True $modulo "carrera_no_queda_sesion_sobre_paciente_dado_de_baja" `
-    ($sesionesSobreBaja -eq 0) `
-    "La sesion no se inserto: el chequeo de activo resistio la carrera" `
-    "Quedo $sesionesSobreBaja sesion(es) sobre un paciente que ya estaba dado de baja cuando se inserto. El chequeo de activo de p_registrar_sesion es una lectura sin lock y anterior al START TRANSACTION. Respuesta del procedimiento a la victima: $(($salidaVictima -split "`r?`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 1))"
+$finVictima = ($salidaVictima -split "`r?`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 1).Trim()
+$finBaja = ($salidaBaja -split "`r?`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 1).Trim()
+
+# El estado final NO se mide contando "sesiones sobre un paciente inactivo":
+# esa cuenta da 1 tambien cuando todo funciono bien, porque la sesion se
+# registro con el paciente todavia activo y la baja llego despues. Es el mismo
+# error de forma que tenia la asercion de la regla 4. Lo que se afirma es la
+# SERIALIZACION: las dos operaciones ocurrieron una despues de la otra y las
+# dos vieron un estado coherente.
+$estadoFinal = Get-ScalarValue $Database @"
+SELECT CONCAT_WS('|', (SELECT activo FROM pacientes WHERE id = $pac4),
+                      (SELECT COUNT(*) FROM sesiones WHERE id_paciente = $pac4));
+"@
+$resultados += Assert-True $modulo "carrera_las_dos_operaciones_quedan_serializadas" `
+    ($finVictima -notmatch "dado de baja" -and $finBaja -match "correctamente" -and $estadoFinal -eq "0|1") `
+    "La sesion se registro con el paciente activo y la baja se aplico despues: sin estado intermedio (paciente|sesiones = $estadoFinal)" `
+    "Las dos operaciones no quedaron serializadas. Victima: '$finVictima' | Baja: '$finBaja' | estado final (activo|sesiones): $estadoFinal"
 
 # =======================================================================
 # GRUPO 6 — la misma forma, adentro de p_baja_paciente
@@ -466,6 +511,121 @@ $unaRechazada = ($finA -match "ya estaba dado de baja") -or ($finB -match "ya es
 $resultados += Assert-True $modulo "carrera_baja_la_segunda_es_rechazada" $unaRechazada `
     "La segunda baja fue rechazada con 'ya estaba dado de baja'" `
     "Las dos bajas se dieron por buenas. A: '$finA' | B: '$finB'. La segunda pisa fecha_baja y devuelve contadores en 0 con mensaje de exito, porque la decision se tomo con la lectura previa al START TRANSACTION y no se revalido bajo el FOR UPDATE."
+
+# =======================================================================
+# GRUPO 7 — sesiones retroactivas sobre un paciente dado de baja
+#
+# Regla nueva (construccion, commit b34954d): el corte NO es el estado del
+# paciente sino la FECHA de la sesion contra `fecha_baja`. Una sesion que
+# ocurrio antes de la baja se puede cargar despues; una posterior a la baja no,
+# porque no ocurrio.
+#
+# El caso real es la terapeuta que atendio el viernes y carga el lunes. Antes
+# la unica salida era reactivar, cargar y volver a dar de baja, y eso pisaba
+# `fecha_baja`: corregir un olvido administrativo terminaba falseando la fecha
+# del alta medica.
+#
+# LOS TRES BORDES SE PRUEBAN JUNTOS A PROPOSITO. La condicion es
+# `p_fecha > v_fecha_baja`, o sea que el dia exacto de la baja ENTRA. Un `>=`
+# por error correria el limite un dia y ninguno de los otros dos casos lo
+# notaria: el de un dia antes seguiria pasando y el de un dia despues seguiria
+# fallando. El borde exacto es el unico que distingue las dos versiones.
+# =======================================================================
+
+$pac6 = Nuevo-Paciente "SEIS"
+$null = Llamar-Baja $pac6
+$fechaBaja = Get-ScalarValue $Database "SELECT fecha_baja FROM pacientes WHERE id = $pac6;"
+
+function Probar-SesionRetroactiva {
+    param([string]$Test, [string]$ExpresionFecha, [bool]$DebeAceptarse, [string]$Porque)
+    $r = Invoke-Sql -Database $Database -Sql @"
+SET @f = $ExpresionFecha;
+CALL p_registrar_sesion(1, $pac6, @f, '08:00:00', '09:00:00', 'completa', NULL, @id, @msg);
+SELECT IFNULL(@id,'NULL'), @msg, @f;
+"@
+    $ultima = (($r.StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 1)).Trim()
+    $seAcepto = ($ultima -notmatch "^NULL")
+    if ($DebeAceptarse) {
+        return Assert-True $modulo $Test $seAcepto `
+            "Aceptada, como corresponde ($Porque). Respuesta: $ultima" `
+            "RECHAZADA una sesion que tenia que entrar ($Porque). Respuesta: $ultima"
+    }
+    return Assert-True $modulo $Test (-not $seAcepto -and $ultima -match "hasta el dia de la baja") `
+        "Rechazada con el mensaje correcto ($Porque). Respuesta: $ultima" `
+        "ACEPTADA una sesion que no tenia que entrar ($Porque). Respuesta: $ultima"
+}
+
+$resultados += Probar-SesionRetroactiva "retroactiva_un_dia_antes_de_la_baja_se_acepta" `
+    "DATE_SUB('$fechaBaja', INTERVAL 1 DAY)" $true "ocurrio antes de la baja"
+
+$resultados += Probar-SesionRetroactiva "retroactiva_el_dia_exacto_de_la_baja_se_acepta" `
+    "'$fechaBaja'" $true "el corte es p_fecha mayor a fecha_baja, asi que el dia de la baja entra"
+
+$resultados += Probar-SesionRetroactiva "retroactiva_un_dia_despues_de_la_baja_se_rechaza" `
+    "DATE_ADD('$fechaBaja', INTERVAL 1 DAY)" $false "es posterior a la baja: esa sesion no ocurrio"
+
+$sesionesDelSeis = [int](Get-ScalarValue $Database "SELECT COUNT(*) FROM sesiones WHERE id_paciente = $pac6;")
+$resultados += Assert-True $modulo "retroactiva_la_rechazada_no_dejo_fila" ($sesionesDelSeis -eq 2) `
+    "Quedaron las 2 sesiones aceptadas y ninguna de la rechazada" `
+    "Quedaron $sesionesDelSeis sesiones y tenian que quedar 2: la rechazada dejo fila"
+
+# --- La carrera de siempre, ahora sobre la regla de fecha ----------------
+#
+# Con la sesion fechada DESPUES de la baja que esta por ocurrir, si la baja se
+# colara entre el chequeo y el INSERT quedaria registrada una sesion que la
+# regla nueva prohibe. La garantia es la misma que en el grupo 5, y se afirma
+# igual: la baja no entra mientras la victima sostiene el lock.
+
+$pac7 = Nuevo-Paciente "SIETE"
+
+$jobAtacante7 = Start-Job -ScriptBlock $jobScript -ArgumentList $script:MysqlExe, $script:LoginPath, $Database, @"
+START TRANSACTION;
+SELECT id FROM terapeutas WHERE id = 1 FOR UPDATE;
+SELECT SLEEP($SEGUNDOS_DE_RETENCION);
+COMMIT;
+"@
+$armado7 = Esperar-Condicion @"
+SELECT COUNT(*) FROM performance_schema.data_locks
+ WHERE OBJECT_NAME = 'terapeutas' AND LOCK_TYPE = 'RECORD' AND LOCK_MODE LIKE '%X%';
+"@
+
+# Fecha futura: hoy el paciente esta activo y la sesion es legitima; despues de
+# la baja, la misma fecha seria posterior a fecha_baja y estaria prohibida.
+$jobVictima7 = Start-Job -ScriptBlock $jobScript -ArgumentList $script:MysqlExe, $script:LoginPath, $Database, @"
+CALL p_registrar_sesion(1, $pac7, DATE_ADD(CURRENT_DATE, INTERVAL 10 DAY), '12:00:00', '13:00:00', 'incompleta', NULL, @id, @msg);
+SELECT IFNULL(@id,'NULL'), @msg;
+"@
+$esperando7 = Esperar-Condicion @"
+SELECT COUNT(*) FROM information_schema.innodb_trx WHERE trx_state = 'LOCK WAIT';
+"@
+
+$jobBaja7 = Start-Job -ScriptBlock $jobScript -ArgumentList $script:MysqlExe, $script:LoginPath, $Database, @"
+CALL p_baja_paciente($pac7, @obj, @asig, @msg);
+SELECT IFNULL(@obj,'NULL'), IFNULL(@asig,'NULL'), @msg;
+"@
+$lasDosEsperando7 = Esperar-Condicion @"
+SELECT COUNT(*) - 1 FROM information_schema.innodb_trx WHERE trx_state = 'LOCK WAIT';
+"@
+$sigueActivo7 = [int](Get-ScalarValue $Database "SELECT activo FROM pacientes WHERE id = $pac7;")
+
+$resultados += Assert-True $modulo "retroactiva_carrera_la_baja_espera_a_la_sesion_en_vuelo" `
+    ($armado7 -and $esperando7 -and $lasDosEsperando7 -and $sigueActivo7 -eq 1) `
+    "Con una sesion en vuelo, la baja queda esperando y el paciente sigue activo" `
+    "No se logro dejar la baja esperando detras de la sesion (atacante=$armado7, victima esperando=$esperando7, dos esperas=$lasDosEsperando7, activo=$sigueActivo7)"
+
+Wait-Job $jobAtacante7 | Out-Null; Receive-Job $jobAtacante7 | Out-Null; Remove-Job $jobAtacante7
+$finVictima7 = ((Receive-Job (Wait-Job $jobVictima7)) -split "`r?`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 1).Trim()
+Remove-Job $jobVictima7
+$finBaja7 = ((Receive-Job (Wait-Job $jobBaja7)) -split "`r?`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 1).Trim()
+Remove-Job $jobBaja7
+
+# La sesion quedo con fecha POSTERIOR a fecha_baja, y esta bien: se decidio
+# cuando el paciente estaba activo. Lo que no puede pasar es que se haya
+# decidido DESPUES de la baja. Por eso se afirma el orden, no el estado.
+$resultados += Assert-True $modulo "retroactiva_carrera_la_sesion_se_decidio_antes_de_la_baja" `
+    ($finVictima7 -notmatch "^NULL" -and $finBaja7 -match "correctamente") `
+    "La sesion se registro con el paciente activo y la baja se aplico despues. Victima: $finVictima7" `
+    "Orden inesperado. Victima: '$finVictima7' | Baja: '$finBaja7'"
 
 Write-ResultsTable $resultados
 return $resultados
