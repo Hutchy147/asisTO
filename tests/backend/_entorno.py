@@ -71,16 +71,25 @@ def _base_por_rol():
     # sin que se note. Sin el recorte, este raise -- que es duro a proposito --
     # frena a las tres por un caracter invisible.
     #
-    # Solo espacios: nada de .lower() ni de normalizar acentos. Un valor
-    # realmente invalido tiene que seguir levantando.
-    rol = os.environ.get('ASISTO_ROL', '').strip()
+    # MAYUSCULAS: tampoco distinguen (decision del 2026-08-12). 'Auditoria' y
+    # 'AUDITORIA' son el rol auditoria. Los tres lugares que leen la variable
+    # convergen a insensible, no a estricto: no hay ningun caso donde una
+    # mayuscula signifique otra cosa, y rechazar un valor valido cuesta una
+    # sesion de trabajo. Del lado de PowerShell el `switch` ya era insensible;
+    # este .lower() es lo que hacia falta para que los dos digan lo mismo.
+    #
+    # Espacios y mayusculas, y nada mas: no se normalizan acentos ni se aceptan
+    # abreviaturas. Un valor realmente invalido tiene que seguir levantando.
+    rol_como_lo_escribieron = os.environ.get('ASISTO_ROL', '').strip()
+    rol = rol_como_lo_escribieron.lower()
     if rol in BASES_POR_ROL:
         return BASES_POR_ROL[rol]
 
-    # El {rol!r} muestra el valor YA RECORTADO, que es el que se comparo. Un
-    # valor de solo espacios queda como '' y cae en "no esta definida".
-    motivo = (f'ASISTO_ROL trae un valor desconocido ({rol!r}).' if rol
-              else 'ASISTO_ROL no esta definida.')
+    # Se muestra el valor RECORTADO PERO SIN CAMBIAR DE CAJA: en minusculas
+    # mandaria a buscar una diferencia de mayusculas que ya no importa. Un valor
+    # de solo espacios queda como '' y cae en "no esta definida".
+    motivo = (f'ASISTO_ROL trae un valor desconocido ({rol_como_lo_escribieron!r}).'
+              if rol else 'ASISTO_ROL no esta definida.')
     raise RuntimeError(
         f'\n\n{motivo}\n\n'
         'Estos tests escriben y borran filas de su base de pruebas, asi que sin\n'

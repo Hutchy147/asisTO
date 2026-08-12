@@ -50,26 +50,42 @@ function Get-NombreBaseDePrueba {
     # en las tres por un caracter invisible, y el mensaje acusa a un valor que
     # a simple vista se lee perfecto.
     #
-    # Se recorta y NADA MAS: no se pasa a minusculas ni se normalizan acentos.
-    # Un valor realmente invalido tiene que seguir fallando.
+    # MAYUSCULAS: tampoco distinguen (decision del 2026-08-12). "Auditoria" y
+    # "AUDITORIA" son el rol auditoria. No hay ningun caso donde una mayuscula
+    # signifique otra cosa, y rechazar un valor valido cuesta una sesion entera
+    # de trabajo; aceptarlo no cuesta nada. Los tres lugares que leen la
+    # variable convergen a insensible, no a estricto.
+    #
+    # El .ToLowerInvariant() es explicito aunque el `switch` de PowerShell ya
+    # ignore mayusculas por defecto: asi la decision queda ESCRITA y no heredada
+    # de un default del lenguaje. Si alguien agrega -CaseSensitive al switch, el
+    # comportamiento no cambia. Invariant y no ToLower() a secas para no quedar
+    # atado a la cultura de la maquina (la I turca es el caso clasico).
+    #
+    # Se normalizan espacios y mayusculas, y NADA MAS: no se normalizan acentos
+    # ni se aceptan abreviaturas. Un valor realmente invalido tiene que seguir
+    # fallando.
     #
     # La interpolacion "$(...)" es para que un ASISTO_ROL ausente no reviente
     # en .Trim(): $null.Trim() es un error en PowerShell 5.1, y el camino "no
     # esta definida" tiene que llegar al mensaje de abajo, no a una excepcion
     # de metodo sobre un valor nulo.
-    $rol = "$($env:ASISTO_ROL)".Trim()
+    $rolComoLoEscribieron = "$($env:ASISTO_ROL)".Trim()
+    $rol = $rolComoLoEscribieron.ToLowerInvariant()
     switch ($rol) {
         "construccion" { return $Base }
         "auditoria"    { return "${Base}2" }
         "apoyo"        { return "${Base}3" }
     }
 
-    # El valor que se muestra es el YA RECORTADO, que es exactamente el que se
-    # comparo: si se mostrara el crudo, un "auditoria " que ahora resuelve bien
-    # haria pensar que el espacio es el problema cuando no lo es. Un valor de
-    # solo espacios cae en la rama "no esta definida", que es lo que es.
+    # El valor que se muestra es el RECORTADO PERO SIN CAMBIAR DE CAJA: como lo
+    # escribio quien lanzo la terminal, menos los espacios. Mostrar el crudo
+    # haria pensar que el espacio es el problema cuando ya no lo es, y mostrarlo
+    # en minusculas haria buscar una diferencia de mayusculas que tampoco
+    # importa. Un valor de solo espacios cae en la rama "no esta definida", que
+    # es lo que es.
     $motivo = if ($rol) {
-        "ASISTO_ROL trae un valor desconocido ('$rol')."
+        "ASISTO_ROL trae un valor desconocido ('$rolComoLoEscribieron')."
     } else {
         "ASISTO_ROL no esta definida."
     }
