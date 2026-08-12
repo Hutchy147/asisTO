@@ -13,8 +13,8 @@
 # para el detalle completo de cada uno):
 #
 #   - Regla 4: mientras se archiva un objetivo, se puede cargar una
-#     evolucion nueva sobre el (todavia lo ve activo). Termina archivado
-#     Y con una evolucion encima.
+#     evolucion nueva sobre el (todavia lo ve activo), o sea que se crea una
+#     evolucion que el trigger tenia que haber rechazado.
 #   - Regla 2: mientras se marca una sesion como ausencia, se puede
 #     cargar una evolucion nueva sobre ella (todavia la ve sin marcar).
 #     Termina en ausencia Y con una evolucion cargada.
@@ -145,13 +145,32 @@ $rB1 = Invoke-Sql -Database $Database -Sql `
     "INSERT INTO evoluciones (id_sesion, id_objetivo, valor) VALUES ($idSesion4, $idObjetivo4, 3);"
 Wait-Job $jobA1 | Out-Null; Receive-Job $jobA1 | Out-Null; Remove-Job $jobA1
 
-$evolucionSobreArchivado = [int](Get-ScalarValue $Database @"
-SELECT COUNT(*) FROM evoluciones e JOIN objetivos_terapeuticos o ON o.id = e.id_objetivo
- WHERE e.id_objetivo = $idObjetivo4 AND o.activo = FALSE;
-"@)
-$resultados += Assert-True $modulo "race_regla4_evolucion_no_queda_sobre_archivado" ($evolucionSobreArchivado -eq 0) `
-    "No quedo ninguna evolucion sobre el objetivo ya archivado" `
-    "Quedo una evolucion cargada sobre un objetivo que termino archivado: la regla 4 fue violada por la carrera de concurrencia (conexion B insertar: exitcode $($rB1.ExitCode))"
+# LO QUE SE AFIRMA ACA CAMBIO EL 2026-08-13, y el cambio es conceptual, no
+# tecnico. Antes esto contaba "evoluciones que quedaron sobre un objetivo
+# archivado" y exigia cero. Esa nunca fue la regla:
+#
+#   - Archivar a mano un objetivo QUE YA TIENE evoluciones esta permitido y
+#     produce ese mismo estado. Verificado: el UPDATE devuelve 0.
+#   - La baja de paciente lo produce a proposito, y es el motivo por el que
+#     archiva: congelar el texto contra el que se puntuaron esas evoluciones.
+#   - El seed lo trae desde que siembra un paciente dado de baja con historia.
+#
+# La regla 4 del CLAUDE.md dice otra cosa: no se puede CARGAR una evolucion
+# sobre un objetivo archivado. Es una regla sobre la escritura nueva, no sobre
+# el estado final. Por eso ahora se afirma que la conexion B fue RECHAZADA.
+#
+# POR QUE LOS CASOS 2 Y 3 SI PUEDEN MIRAR EL ESTADO FINAL: en esos dos la
+# transicion inversa tambien esta cerrada —marcar como ausencia una sesion con
+# evoluciones da 1644, y mover a otro paciente un objetivo con evoluciones
+# tambien—, asi que ahi el estado prohibido es inalcanzable por cualquier
+# camino. En la regla 4 esa puerta esta abierta a proposito. Esa asimetria es
+# justamente lo que hacia falsa la asercion vieja.
+$evolucionesDelObjetivo4 = [int](Get-ScalarValue $Database `
+    "SELECT COUNT(*) FROM evoluciones WHERE id_objetivo = $idObjetivo4;")
+$resultados += Assert-True $modulo "race_regla4_la_evolucion_nueva_es_rechazada" `
+    ($rB1.ExitCode -ne 0 -and $rB1.StdErr -match "objetivo archivado" -and $evolucionesDelObjetivo4 -eq 0) `
+    "La evolucion nueva fue rechazada por la regla 4 y no se escribio ninguna fila" `
+    "La conexion B logro CREAR una evolucion sobre un objetivo que ya estaba archivado (exitcode $($rB1.ExitCode), evoluciones sobre el objetivo: $evolucionesDelObjetivo4, error: $($rB1.StdErr.Trim())). El objetivo no tenia ninguna evolucion antes de la carrera, asi que esta fila es nueva."
 
 # --- Caso 2: regla 2 -- marcar una sesion como ausencia mientras se
 #     carga una evolucion nueva sobre ella ----------------------------
