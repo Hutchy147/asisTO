@@ -38,7 +38,13 @@ SELECT CONCAT_WS(',',
   (SELECT COUNT(*) FROM evoluciones)
 );
 "@
-$esperado = "6,3,2,7,6,10,11"
+# Actualizado el 2026-08-13, despues de que el seed sumara un paciente dado de
+# baja con historia completa (commit d7a0f25). Era "6,3,2,7,6,10,11".
+# Los conteos se midieron sobre una base recien construida, no sobre una donde
+# ya habia corrido otro modulo: con `run_all.ps1` cada modulo tiene su propia
+# base, pero corriendo dos modulos a mano contra la misma base estos numeros
+# dan cualquier cosa.
+$esperado = "6,4,3,9,6,13,15"
 $resultados += Assert-True $modulo "conteos_iniciales_coinciden_con_estado_md" ($conteos -eq $esperado) `
     "Conteos: $conteos" "Conteos no coinciden. Esperado $esperado, obtenido $conteos"
 
@@ -64,17 +70,44 @@ SELECT COUNT(*) FROM sesiones s
 $resultados += Assert-True $modulo "seed_ausencias_sin_evolucion" ([int]$ausenciasConEvolucion -eq 0) `
     "Ninguna ausencia tiene evolucion" "$ausenciasConEvolucion sesion(es) de ausencia tienen evolucion cargada en el seed"
 
-# --- Toda evolucion respeta que el objetivo sea del paciente de la sesion,
-#     y que el objetivo este activo (coherencia interna del seed con las
-#     reglas 3 y 4, antes de que cualquier UPDATE posterior las rompa) ---
+# --- Toda evolucion tiene su objetivo y su sesion en el MISMO paciente
+#     (regla 3). Esta si es una invariante del estado final: mover a otro
+#     paciente un objetivo que ya tiene evoluciones tambien esta prohibido,
+#     asi que el estado no se puede alcanzar por ningun camino.
+#
+#     LA CONDICION `o.activo = FALSE` SE SACO DE ESTA CONSULTA el 2026-08-13.
+#     Estaba mal desde el principio y el seed nuevo la puso en evidencia: una
+#     evolucion sobre un objetivo ARCHIVADO no viola la regla 4. La regla 4
+#     prohibe CARGAR una evolucion nueva sobre un objetivo archivado, no que
+#     exista una evolucion vieja debajo de uno que se archivo despues.
+#     Archivar un objetivo con evoluciones esta permitido —verificado— y es
+#     exactamente lo que hace la baja de paciente: congela el texto contra el
+#     que se puntuaron esas evoluciones. Ver AUDITORIA.md, 2026-08-13.
 $inconsistencias = Get-ScalarValue $Database @"
 SELECT COUNT(*) FROM evoluciones e
   JOIN sesiones s ON s.id = e.id_sesion
   JOIN objetivos_terapeuticos o ON o.id = e.id_objetivo
- WHERE o.id_paciente <> s.id_paciente OR o.activo = FALSE;
+ WHERE o.id_paciente <> s.id_paciente;
 "@
-$resultados += Assert-True $modulo "seed_evoluciones_consistentes_con_reglas_3_y_4" ([int]$inconsistencias -eq 0) `
-    "Todas las evoluciones son consistentes" "$inconsistencias evolucion(es) del seed ya violan la regla 3 o 4 desde el arranque"
+$resultados += Assert-True $modulo "seed_evoluciones_consistentes_con_la_regla_3" ([int]$inconsistencias -eq 0) `
+    "Toda evolucion tiene objetivo y sesion del mismo paciente" `
+    "$inconsistencias evolucion(es) del seed tienen el objetivo y la sesion en pacientes distintos (regla 3) desde el arranque"
+
+# --- Las evoluciones que quedaron bajo un objetivo archivado NO son un error:
+#     son el rastro del paciente dado de baja que el seed siembra desde el
+#     commit d7a0f25. Se cuentan para que el dia que ese numero cambie sin que
+#     nadie haya tocado el seed, se vea. La regla de verdad —no se pueden
+#     cargar evoluciones NUEVAS sobre un objetivo archivado— la prueban
+#     regla4_evolucion_sobre_archivado_rechazada (reglas_negocio) y
+#     evolucion_update_hacia_objetivo_archivado (bordes), en los dos caminos
+#     de escritura.
+$bajoArchivado = Get-ScalarValue $Database @"
+SELECT COUNT(*) FROM evoluciones e
+  JOIN objetivos_terapeuticos o ON o.id = e.id_objetivo
+ WHERE o.activo = FALSE;
+"@
+$resultados += New-TestResult $modulo "nota_evoluciones_bajo_objetivo_archivado" "INFO" `
+    "Evoluciones que quedaron bajo un objetivo archivado: $bajoArchivado (legitimo: son las del paciente dado de baja, cuyos objetivos archivo la baja despues de cargarlas)"
 
 # --- El seed se puede recargar (TRUNCATE + reinsert) sin depender del
 #     AUTO_INCREMENT ni del orden de una corrida anterior ----------------
@@ -93,7 +126,7 @@ SELECT CONCAT_WS(',',
 );
 "@
 $resultados += Assert-True $modulo "seed_recargable_dos_veces_seguidas_sin_error" `
-    ($rReload1.ExitCode -eq 0 -and $rReload2.ExitCode -eq 0 -and $conteosTrasRecarga -eq "6,3,7,10,11") `
+    ($rReload1.ExitCode -eq 0 -and $rReload2.ExitCode -eq 0 -and $conteosTrasRecarga -eq "6,4,9,13,15") `
     "Conteos estables tras recargar dos veces: $conteosTrasRecarga" `
     "Recargar el seed dos veces seguidas fallo o cambio los conteos: $conteosTrasRecarga. Error1: $($rReload1.StdErr.Trim()) Error2: $($rReload2.StdErr.Trim())"
 
