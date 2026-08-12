@@ -7,6 +7,10 @@ from sqlalchemy import text
 
 from app import db
 from app.models import ObjetivoTerapeutico, Paciente
+from app.models.paciente import (
+    MAXIMO_CARACTERES_APELLIDO, MAXIMO_CARACTERES_NOMBRE,
+    MAXIMO_CARACTERES_NRO_HISTORIA, MAXIMO_CARACTERES_OBRA_SOCIAL,
+)
 from app.utils.db import reintentar_en_deadlock
 from app.utils.errors import ErrorAplicacion
 
@@ -167,6 +171,96 @@ def alta_paciente(datos):
 
     paciente = Paciente.query.get(int(id_creado))
     logger.info('Paciente %s dado de alta (%s)', paciente.id, paciente.nro_historia)
+
+    return paciente, mensaje
+
+
+def _texto_valido(datos, clave, etiqueta, maximo, obligatorio=True):
+    """
+    Valida un campo de texto contra su tope y lo devuelve ya recortado.
+
+    Una sola funcion para todos los campos, por la misma razon que
+    `_descripcion_valida` en objetivos: si cada campo se valida en su propia
+    linea, en algun momento uno queda sin validar y nadie lo nota.
+
+    El largo se mide DESPUES del strip(): los espacios de los extremos no se
+    guardan, asi que no tiene sentido que consuman cupo.
+    """
+    valor = (datos.get(clave) or '').strip()
+
+    if obligatorio and not valor:
+        raise ErrorAplicacion('Falta indicar %s.' % etiqueta, campo=clave)
+
+    if len(valor) > maximo:
+        raise ErrorAplicacion(
+            'El campo %s no puede superar los %s caracteres.' % (etiqueta, maximo),
+            campo=clave,
+        )
+
+    return valor or None
+
+
+@reintentar_en_deadlock()
+def editar_paciente(id_paciente, datos):
+    """
+    Edicion via p_editar_paciente. NO toca id_usuario ni el estado de baja.
+
+    El procedimiento valida el numero de historia duplicado y rechaza editar
+    a un paciente dado de baja; aca no se replica ninguna de las dos. Lo que
+    SI vive aca es el largo de los campos, porque el unico limite en la base
+    es el VARCHAR y llega como errno 1406 sin marcar el campo.
+
+    Devuelve (paciente, mensaje).
+    """
+    nombre = _texto_valido(datos, 'nombre', 'nombre', MAXIMO_CARACTERES_NOMBRE)
+    apellido = _texto_valido(datos, 'apellido', 'apellido', MAXIMO_CARACTERES_APELLIDO)
+    nro_historia = _texto_valido(
+        datos, 'nro_historia', 'numero de historia', MAXIMO_CARACTERES_NRO_HISTORIA
+    )
+    # Los dos opcionales: un paciente particular no tiene obra social y el
+    # diagnostico puede no estar cargado todavia.
+    obra_social = _texto_valido(
+        datos, 'obra_social', 'obra social', MAXIMO_CARACTERES_OBRA_SOCIAL,
+        obligatorio=False,
+    )
+    fecha_nacimiento = (datos.get('fecha_nacimiento') or '').strip()
+    if not fecha_nacimiento:
+        raise ErrorAplicacion(
+            'Falta indicar la fecha de nacimiento.', campo='fecha_nacimiento'
+        )
+
+    diagnostico = datos.get('diagnostico')
+    if diagnostico is not None:
+        diagnostico = diagnostico.strip() or None
+
+    db.session.execute(
+        text(
+            'CALL p_editar_paciente(:id_paciente, :nombre, :apellido, '
+            ':fecha_nacimiento, :diagnostico, :obra_social, :nro_historia, '
+            '@p_editado, @p_mensaje)'
+        ),
+        {
+            'id_paciente': id_paciente,
+            'nombre': nombre,
+            'apellido': apellido,
+            'fecha_nacimiento': fecha_nacimiento,
+            'diagnostico': diagnostico,
+            'obra_social': obra_social,
+            'nro_historia': nro_historia,
+        },
+    )
+
+    editado, mensaje = db.session.execute(
+        text('SELECT @p_editado, @p_mensaje')
+    ).first()
+
+    db.session.commit()
+
+    if editado is None:
+        raise ErrorAplicacion(mensaje or 'No se pudo editar el paciente.')
+
+    paciente = Paciente.query.get(id_paciente)
+    logger.info('Paciente %s editado', id_paciente)
 
     return paciente, mensaje
 

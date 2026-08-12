@@ -4,8 +4,8 @@
 from flask import Blueprint, jsonify, request
 
 from app.services.pacientes_service import (
-    alta_paciente, baja_paciente, listar_pacientes, obtener_detalle,
-    reactivar_paciente,
+    alta_paciente, baja_paciente, editar_paciente, listar_pacientes,
+    obtener_detalle, reactivar_paciente,
 )
 from app.services.sesiones_service import listar_por_paciente as listar_sesiones_de_paciente
 from app.utils.security import requiere_rol
@@ -37,6 +37,30 @@ def crear():
 @requiere_rol('terapeuta')
 def detalle(id_paciente):
     return jsonify(obtener_detalle(id_paciente)), 200
+
+
+@pacientes_bp.put('/pacientes/<int:id_paciente>')
+@requiere_rol('terapeuta')
+def editar(id_paciente):
+    """
+    Edita los datos del paciente.
+
+    PUT y no PATCH: el formulario manda la ficha entera, no un delta. Aceptar
+    PATCH obligaria a distinguir "el campo no vino" de "el campo vino vacio",
+    y con `obra_social` y `diagnostico` —los dos opcionales y los dos
+    borrables— esa distincion decide si se limpia el dato o se lo deja como
+    estaba. Con PUT no hay ambiguedad: lo que llega es el estado final.
+
+    NO cambia el estado de baja ni el login: para eso estan /baja,
+    /reactivacion, y una operacion de vinculo que todavia no existe.
+    """
+    datos = request.get_json(silent=True) or {}
+    paciente, mensaje = editar_paciente(id_paciente, datos)
+
+    return jsonify({
+        'paciente': paciente.to_dict_clinico(),
+        'mensaje': mensaje,
+    }), 200
 
 
 @pacientes_bp.post('/pacientes/<int:id_paciente>/baja')

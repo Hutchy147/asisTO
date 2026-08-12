@@ -591,14 +591,31 @@ FOR EACH ROW
 BEGIN
   DECLARE v_activos INT UNSIGNED DEFAULT 0;
   DECLARE v_lock    INT UNSIGNED DEFAULT NULL;
+  DECLARE v_paciente_activo BOOLEAN DEFAULT NULL;
 
   -- Un objetivo que nace archivado no consume cupo
   IF NEW.activo = TRUE THEN
     -- Ver NOTA DE CONCURRENCIA
-    SELECT id INTO v_lock
+    SELECT id, activo INTO v_lock, v_paciente_activo
       FROM pacientes
      WHERE id = NEW.id_paciente
      FOR UPDATE;
+
+    -- Un paciente dado de baja no admite objetivos activos nuevos.
+    --
+    -- Agregado el 2026-08-12 por un hallazgo de auditoria. Hasta hoy esto lo
+    -- frenaba SOLO `obtener_paciente()` en Python, o sea un unico camino: un
+    -- INSERT directo, un script o cualquier endpoint futuro lo esquivaba, y
+    -- el paciente quedaba inactivo pero con objetivos vivos. La baja dejaba
+    -- de ser cierta sin que nada avisara.
+    --
+    -- Va aca adentro y no en su propio IF porque el lock sobre `pacientes` ya
+    -- esta tomado en esta rama: se aprovecha la lectura que ya se hacia.
+    IF v_paciente_activo = FALSE THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+          'El paciente esta dado de baja: no se le pueden crear objetivos';
+    END IF;
 
     SELECT COUNT(*) INTO v_activos
       FROM objetivos_terapeuticos
@@ -630,6 +647,7 @@ BEGIN
   DECLARE v_activos     INT UNSIGNED DEFAULT 0;
   DECLARE v_evoluciones INT UNSIGNED DEFAULT 0;
   DECLARE v_lock        INT UNSIGNED DEFAULT NULL;
+  DECLARE v_paciente_activo BOOLEAN DEFAULT NULL;
 
   -- La descripcion de un objetivo ARCHIVADO es inmutable.
   --
@@ -672,10 +690,20 @@ BEGIN
      AND (OLD.activo = FALSE OR NEW.id_paciente <> OLD.id_paciente) THEN
 
     -- Ver NOTA DE CONCURRENCIA
-    SELECT id INTO v_lock
+    SELECT id, activo INTO v_lock, v_paciente_activo
       FROM pacientes
      WHERE id = NEW.id_paciente
      FOR UPDATE;
+
+    -- Desarchivar un objetivo de un paciente dado de baja deja al paciente
+    -- inactivo y con un objetivo vivo: la baja deja de ser cierta. Es el
+    -- mismo hueco que el del INSERT, por la puerta del UPDATE — que es
+    -- exactamente el par que este schema ya cuida en las otras cuatro reglas.
+    IF v_paciente_activo = FALSE THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+          'El paciente esta dado de baja: no se le pueden activar objetivos';
+    END IF;
 
     SELECT COUNT(*) INTO v_activos
       FROM objetivos_terapeuticos
@@ -1037,6 +1065,7 @@ FOR EACH ROW
 BEGIN
   DECLARE v_vigentes INT UNSIGNED DEFAULT 0;
   DECLARE v_lock     INT UNSIGNED DEFAULT NULL;
+  DECLARE v_paciente_activo BOOLEAN DEFAULT NULL;
 
   IF NEW.fecha_hasta IS NOT NULL AND NEW.fecha_hasta < NEW.fecha_desde THEN
     SIGNAL SQLSTATE '45000'
@@ -1047,10 +1076,22 @@ BEGIN
   -- Una asignacion que nace cerrada no compite por la vigencia
   IF NEW.fecha_hasta IS NULL THEN
     -- Ver NOTA DE CONCURRENCIA
-    SELECT id INTO v_lock
+    SELECT id, activo INTO v_lock, v_paciente_activo
       FROM pacientes
      WHERE id = NEW.id_paciente
      FOR UPDATE;
+
+    -- Una asignacion VIGENTE afirma que esa terapeuta atiende hoy a ese
+    -- paciente. Sobre un paciente dado de baja eso es falso por definicion, y
+    -- ademas ensucia el filtro de "pacientes asignados" que viene en la
+    -- Entrega 2. Hallazgo de auditoria del 2026-08-12: todavia no hay
+    -- endpoint de asignaciones, asi que esto se cierra ANTES de que exista un
+    -- camino que lo explote, que es la unica vez que sale barato.
+    IF v_paciente_activo = FALSE THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+          'El paciente esta dado de baja: no se le pueden abrir asignaciones';
+    END IF;
 
     SELECT COUNT(*) INTO v_vigentes
       FROM asignaciones
@@ -1077,6 +1118,7 @@ FOR EACH ROW
 BEGIN
   DECLARE v_vigentes INT UNSIGNED DEFAULT 0;
   DECLARE v_lock     INT UNSIGNED DEFAULT NULL;
+  DECLARE v_paciente_activo BOOLEAN DEFAULT NULL;
 
   IF NEW.fecha_hasta IS NOT NULL AND NEW.fecha_hasta < NEW.fecha_desde THEN
     SIGNAL SQLSTATE '45000'
@@ -1086,10 +1128,18 @@ BEGIN
 
   IF NEW.fecha_hasta IS NULL THEN
     -- Ver NOTA DE CONCURRENCIA
-    SELECT id INTO v_lock
+    SELECT id, activo INTO v_lock, v_paciente_activo
       FROM pacientes
      WHERE id = NEW.id_paciente
      FOR UPDATE;
+
+    -- Mismo chequeo que el trigger de INSERT, con el mismo mensaje. Ver alla
+    -- el porque; aca solo cambia la puerta por la que se entra.
+    IF v_paciente_activo = FALSE THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+          'El paciente esta dado de baja: no se le pueden abrir asignaciones';
+    END IF;
 
     -- id <> OLD.id: la propia fila no cuenta como conflicto consigo misma.
     -- Sin esto, guardar una asignacion vigente sin cambiarle nada fallaria.
@@ -1275,6 +1325,132 @@ END$$
 
 
 -- ---------------------------------------------------------------------
+-- p_editar_paciente
+--
+-- Edita los datos del paciente. NO toca id_usuario: vincular o desvincular
+-- un login es otra operacion, con su propia UNIQUE y sus propias reglas, y
+-- meterla aca la escondería adentro de un formulario de datos personales.
+--
+-- fecha_nacimiento y nro_historia SI son editables, por indicacion de
+-- planeamiento: los dos se cargan a mano en el alta y los dos se tipean mal.
+-- Bloquearlos obligaria a dar de baja y volver a crear al paciente para
+-- corregir un digito, y eso parte la historia clinica en dos.
+--
+-- Rechaza editar un paciente dado de baja. Es la misma linea que ya rige el
+-- resto del modulo: su ficha se LEE, no se escribe. Para editarlo hay que
+-- reactivarlo primero, que es una decision explicita y no un efecto lateral
+-- de guardar un formulario.
+-- ---------------------------------------------------------------------
+CREATE PROCEDURE p_editar_paciente (
+  IN  p_id_paciente       INT UNSIGNED,
+  IN  p_nombre            VARCHAR(100),
+  IN  p_apellido          VARCHAR(100),
+  IN  p_fecha_nacimiento  DATE,
+  IN  p_diagnostico       TEXT,
+  IN  p_obra_social       VARCHAR(120),
+  IN  p_nro_historia      VARCHAR(30),
+  OUT p_editado           TINYINT UNSIGNED,
+  OUT p_mensaje           VARCHAR(255)
+)
+BEGIN
+  DECLARE v_existe    INT UNSIGNED DEFAULT 0;
+  DECLARE v_activo    BOOLEAN      DEFAULT NULL;
+  DECLARE v_duplicado INT UNSIGNED DEFAULT 0;
+  DECLARE v_lock      INT UNSIGNED DEFAULT NULL;
+  DECLARE v_error     VARCHAR(255) DEFAULT '';
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_editado = NULL;
+    SET p_mensaje = v_error;
+  END;
+
+  -- La UNIQUE de nro_historia gana la carrera si dos ediciones simultaneas
+  -- pasan el chequeo amigable de abajo. Mismo criterio que p_alta_paciente.
+  DECLARE EXIT HANDLER FOR SQLSTATE '23000'
+  BEGIN
+    ROLLBACK;
+    SET p_editado = NULL;
+    SET p_mensaje = 'Ya existe un paciente con ese numero de historia';
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_editado = NULL;
+    SET p_mensaje = 'No se pudo editar el paciente por un error interno';
+  END;
+
+  SET p_editado = NULL;
+
+  SELECT COUNT(*), MAX(activo) INTO v_existe, v_activo
+    FROM pacientes
+   WHERE id = p_id_paciente;
+
+  -- El duplicado se busca en los OTROS pacientes: la propia fila no cuenta
+  -- como conflicto consigo misma. Sin el id <> p_id_paciente, guardar sin
+  -- cambiarle el numero de historia fallaria siempre.
+  SELECT COUNT(*) INTO v_duplicado
+    FROM pacientes
+   WHERE nro_historia = p_nro_historia
+     AND id <> p_id_paciente;
+
+  IF v_existe = 0 THEN
+    SET p_mensaje = 'El paciente indicado no existe';
+  ELSEIF v_activo = FALSE THEN
+    SET p_mensaje = 'El paciente esta dado de baja: reactivelo antes de editarlo';
+  ELSEIF v_duplicado > 0 THEN
+    SET p_mensaje = CONCAT(
+      'Ya existe un paciente con el numero de historia ', p_nro_historia);
+  ELSE
+    START TRANSACTION;
+
+    SELECT id, activo INTO v_lock, v_activo
+      FROM pacientes
+     WHERE id = p_id_paciente
+     FOR UPDATE;
+
+    -- Relectura dentro del lock: una baja concurrente puede haber entrado
+    -- entre el chequeo de arriba y este lock, y editar a un paciente recien
+    -- dado de baja lo dejaria con datos nuevos y la baja puesta.
+    IF v_activo = FALSE THEN
+      ROLLBACK;
+      SET p_editado = NULL;
+      SET p_mensaje = 'El paciente esta dado de baja: reactivelo antes de editarlo';
+    ELSE
+
+    UPDATE pacientes
+       SET nombre           = p_nombre,
+           apellido         = p_apellido,
+           fecha_nacimiento = p_fecha_nacimiento,
+           diagnostico      = p_diagnostico,
+           obra_social      = p_obra_social,
+           nro_historia     = p_nro_historia
+     WHERE id = p_id_paciente;
+
+    COMMIT;
+    SET p_editado = 1;
+    SET p_mensaje = 'Paciente actualizado correctamente';
+    END IF;
+  END IF;
+END$$
+
+
+-- ---------------------------------------------------------------------
 -- p_baja_paciente — baja LOGICA del paciente
 --
 -- Nunca borra: la historia clinica no se borra. Marca activo = FALSE, deja
@@ -1362,10 +1538,29 @@ BEGIN
 
     -- 1) pacientes. Primero por el orden canonico, y ademas porque es el lock
     --    que los triggers de las otras dos tablas toman sobre esta misma fila.
-    SELECT id INTO v_lock
+    SELECT id, activo INTO v_lock, v_activo
       FROM pacientes
      WHERE id = p_id_paciente
      FOR UPDATE;
+
+    -- RELECTURA DENTRO DEL LOCK, y no es redundante.
+    --
+    -- El chequeo de mas arriba corre FUERA de la transaccion. Entre esa
+    -- lectura y este lock hay una ventana real: dos bajas simultaneas leian
+    -- las dos `activo = TRUE`, hacian cola en el lock, y la segunda escribia
+    -- encima informando "Paciente dado de baja correctamente" con los
+    -- contadores en cero. Lo demostro un test de auditoria con las dos
+    -- conexiones detenidas a proposito.
+    --
+    -- No alcanza con bloquear: hay que VOLVER A LEER despues de bloquear. Es
+    -- la misma leccion de la regla 1, donde el FOR UPDATE del padre sin
+    -- relectura dejaba pasar el quinto objetivo.
+    IF v_activo = FALSE THEN
+      ROLLBACK;
+      SET p_objetivos_archivados = NULL;
+      SET p_asignaciones_cerradas = NULL;
+      SET p_mensaje = 'El paciente ya estaba dado de baja';
+    ELSE
 
     UPDATE pacientes
        SET activo = FALSE,
@@ -1391,6 +1586,7 @@ BEGIN
 
     COMMIT;
     SET p_mensaje = 'Paciente dado de baja correctamente';
+    END IF;
   END IF;
 END$$
 
@@ -1468,19 +1664,27 @@ BEGIN
   ELSE
     START TRANSACTION;
 
-    SELECT id INTO v_lock
+    SELECT id, activo INTO v_lock, v_activo
       FROM pacientes
      WHERE id = p_id_paciente
      FOR UPDATE;
 
-    UPDATE pacientes
-       SET activo = TRUE,
-           fecha_baja = NULL
-     WHERE id = p_id_paciente;
+    -- Relectura dentro del lock. Ver el comentario largo de p_baja_paciente:
+    -- dos reactivaciones simultaneas tenian la misma ventana.
+    IF v_activo = TRUE THEN
+      ROLLBACK;
+      SET p_reactivado = NULL;
+      SET p_mensaje = 'El paciente ya estaba activo';
+    ELSE
+      UPDATE pacientes
+         SET activo = TRUE,
+             fecha_baja = NULL
+       WHERE id = p_id_paciente;
 
-    COMMIT;
-    SET p_reactivado = 1;
-    SET p_mensaje = 'Paciente reactivado correctamente';
+      COMMIT;
+      SET p_reactivado = 1;
+      SET p_mensaje = 'Paciente reactivado correctamente';
+    END IF;
   END IF;
 END$$
 
@@ -1578,6 +1782,29 @@ BEGIN
   ELSE
     START TRANSACTION;
 
+    -- PACIENTES PRIMERO, y el chequeo de activo se REHACE aca adentro.
+    --
+    -- El chequeo de arriba corre fuera de la transaccion y por si solo no
+    -- sirve: auditoria demostro la ventana con las dos conexiones detenidas
+    -- —la victima pasaba el chequeo, quedaba esperando el lock de terapeutas,
+    -- la baja entraba, y la sesion terminaba insertada sobre un paciente ya
+    -- dado de baja—. Se toma FOR SHARE, no FOR UPDATE: alcanza con impedir
+    -- que una baja escriba esa fila mientras dura esta transaccion, y dos
+    -- sesiones de pacientes distintos no tienen por que serializarse.
+    --
+    -- Va ANTES de terapeutas por el orden canonico de locks del CLAUDE.md
+    -- (pacientes -> terapeutas -> ...). Invertirlo es la decision 12 otra vez.
+    SELECT activo INTO v_activo_pac
+      FROM pacientes
+     WHERE id = p_id_paciente
+     FOR SHARE;
+
+    IF v_activo_pac = FALSE THEN
+      ROLLBACK;
+      SET p_id_sesion = NULL;
+      SET p_mensaje = 'El paciente esta dado de baja: no se le pueden registrar sesiones';
+    ELSE
+
     -- Ver NOTA DE CONCURRENCIA. Mismo orden que el trigger de sesiones:
     -- terapeutas primero, sesiones despues. El trigger vuelve a pedir este
     -- mismo lock durante el INSERT: como ya lo tiene esta transaccion, no
@@ -1611,6 +1838,7 @@ BEGIN
       SET p_id_sesion = LAST_INSERT_ID();
       COMMIT;
       SET p_mensaje = 'Sesion registrada correctamente';
+    END IF;
     END IF;
   END IF;
 END$$
