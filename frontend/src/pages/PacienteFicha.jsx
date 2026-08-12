@@ -22,10 +22,13 @@ import AppLayout from '../components/layout/AppLayout.jsx';
 import DialogoConfirmacion from '../components/modal/DialogoConfirmacion.jsx';
 import { ObjetivoActivo, ObjetivoArchivado } from '../components/objetivos/FilaObjetivo.jsx';
 import ModalObjetivo from '../components/objetivos/ModalObjetivo.jsx';
+import ModalEditarPaciente from '../components/pacientes/ModalEditarPaciente.jsx';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { archivarObjetivo, listarObjetivosDePaciente } from '../services/objetivosService.js';
-import { listarSesionesDePaciente } from '../services/pacientesService.js';
+import {
+  darDeBajaPaciente, listarSesionesDePaciente, obtenerPaciente, reactivarPaciente,
+} from '../services/pacientesService.js';
 import { formatearFecha, formatearMes, textoEdad } from '../utils/fechas.js';
 
 /** Panel con encabezado, para las secciones de la ficha. */
@@ -92,6 +95,11 @@ export default function PacienteFicha() {
   const [archivando, setArchivando] = useState(false);
   const [idEvolucion, setIdEvolucion] = useState(null);
   const [aviso, setAviso] = useState('');
+  const [editando, setEditando] = useState(false);
+  // null | { cargando } | { objetivos_activos, asignaciones_vigentes }
+  const [confirmandoBaja, setConfirmandoBaja] = useState(null);
+  const [procesandoEstado, setProcesandoEstado] = useState(false);
+  const [confirmandoReactivacion, setConfirmandoReactivacion] = useState(false);
 
   if (objetivos.cargando) {
     return (
@@ -113,6 +121,59 @@ export default function PacienteFicha() {
 
   const { paciente, activos, archivados, cupo } = objetivos.datos;
   const enTope = cupo.disponibles <= 0;
+  // Un paciente dado de baja se LEE entero pero no se escribe. Es la misma
+  // forma que ya rige las sesiones de otro terapeuta.
+  const soloLectura = !paciente.activo;
+
+  // Los números de la confirmación se piden al abrir el diálogo y no al
+  // cargar la ficha: entre una cosa y la otra pueden pasar minutos, y un
+  // número viejo en una confirmación es peor que ninguno.
+  const pedirConfirmacionDeBaja = async () => {
+    setConfirmandoBaja({ cargando: true });
+    try {
+      const detalle = await obtenerPaciente(paciente.id);
+      setConfirmandoBaja(detalle.baja_arrastra);
+    } catch (error) {
+      setConfirmandoBaja(null);
+      setAviso(error.message);
+    }
+  };
+
+  const confirmarBaja = async () => {
+    setProcesandoEstado(true);
+    try {
+      const respuesta = await darDeBajaPaciente(paciente.id);
+      setConfirmandoBaja(null);
+      objetivos.recargar();
+      sesiones.recargar();
+      // Se informa lo que arrastró, no solo que salió bien: son dos efectos
+      // que el terapeuta no pidió explícitamente.
+      setAviso(
+        `${respuesta.mensaje}. Se archivaron ${respuesta.objetivos_archivados} `
+        + `objetivo(s) y se cerraron ${respuesta.asignaciones_cerradas} asignación(es).`,
+      );
+    } catch (error) {
+      setConfirmandoBaja(null);
+      setAviso(error.message);
+    } finally {
+      setProcesandoEstado(false);
+    }
+  };
+
+  const confirmarReactivacion = async () => {
+    setProcesandoEstado(true);
+    try {
+      const respuesta = await reactivarPaciente(paciente.id);
+      setConfirmandoReactivacion(false);
+      objetivos.recargar();
+      setAviso(`${respuesta.mensaje}. Los objetivos archivados no se reactivaron.`);
+    } catch (error) {
+      setConfirmandoReactivacion(false);
+      setAviso(error.message);
+    } finally {
+      setProcesandoEstado(false);
+    }
+  };
 
   const confirmarArchivado = async () => {
     setArchivando(true);
@@ -173,11 +234,39 @@ export default function PacienteFicha() {
         .filter(Boolean)
         .join(' · ')}
       acciones={
-        <Button variant="outlined" onClick={() => navigate('/pacientes')}>
-          Volver a pacientes
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Button variant="outlined" onClick={() => navigate('/pacientes')}>
+            Volver a pacientes
+          </Button>
+          {soloLectura ? (
+            <Button variant="contained" onClick={() => setConfirmandoReactivacion(true)}>
+              Reactivar
+            </Button>
+          ) : (
+            <>
+              <Button variant="outlined" onClick={() => setEditando(true)}>
+                Editar datos
+              </Button>
+              {/* Sin color de alarma: dar de baja es una acción clínica
+                  normal —un tratamiento que termina— y no un borrado. Lo que
+                  la hace segura es la confirmación con números, no el rojo. */}
+              <Button variant="outlined" onClick={pedirConfirmacionDeBaja}>
+                Dar de baja
+              </Button>
+            </>
+          )}
+        </Box>
       }
     >
+      {soloLectura && (
+        <Alert severity="info" sx={{ mb: 2.5 }}>
+          <strong>Paciente dado de baja</strong>
+          {paciente.fecha_baja ? ` el ${formatearFecha(paciente.fecha_baja)}` : ''}. Su
+          historia clínica se sigue consultando entera —objetivos archivados y todas
+          sus sesiones— pero no se puede modificar. Para retomar el tratamiento,
+          reactivalo.
+        </Alert>
+      )}
       {/* --- Cabecera con los datos del paciente --- */}
       <Box
         sx={(t) => ({
@@ -198,6 +287,7 @@ export default function PacienteFicha() {
         <Dato etiqueta="N° de historia">
           <span className="tabular">{paciente.nro_historia}</span>
         </Dato>
+        <Dato etiqueta="Obra social">{paciente.obra_social}</Dato>
         <Box sx={{ flex: 1, minWidth: 230 }}>
           <Dato etiqueta="Diagnóstico">{paciente.diagnostico}</Dato>
         </Box>
@@ -239,34 +329,49 @@ export default function PacienteFicha() {
             titulo="Objetivos activos"
             descripcion="Hasta 4 por paciente. Se califican en cada sesión."
             acciones={
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                {/* La razón del bloqueo va escrita al lado, no en un
-                    tooltip: el terapeuta necesita entender el límite, no
-                    descubrirlo pasando el mouse por encima. */}
-                {enTope && (
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ maxWidth: 260, textAlign: 'right' }}
-                  >
-                    Llegaste al tope de 4. Archivá uno para crear otro.
-                  </Typography>
-                )}
-                <Button variant="contained" disabled={enTope} onClick={() => setModalObjetivo({})}>
-                  Nuevo objetivo
-                </Button>
-              </Box>
+              // Con el paciente dado de baja no se ofrece el alta: el aviso de
+              // arriba ya explica por qué, y un botón deshabilitado más
+              // repetiría el motivo en un lugar donde no se lee.
+              soloLectura ? null : (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  {/* La razón del bloqueo va escrita al lado, no en un
+                      tooltip: el terapeuta necesita entender el límite, no
+                      descubrirlo pasando el mouse por encima. */}
+                  {enTope && (
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ maxWidth: 260, textAlign: 'right' }}
+                    >
+                      Llegaste al tope de 4. Archivá uno para crear otro.
+                    </Typography>
+                  )}
+                  <Button variant="contained" disabled={enTope} onClick={() => setModalObjetivo({})}>
+                    Nuevo objetivo
+                  </Button>
+                </Box>
+              )
             }
           >
             {activos.length === 0 ? (
               <EstadoVacio
                 plano
-                titulo="Todavía no hay objetivos cargados"
-                descripcion={`Los objetivos son las frases que describen qué se busca lograr con ${paciente.nombre}. Se califican sesión a sesión, así que conviene cargarlos antes de la primera.`}
+                titulo={
+                  soloLectura
+                    ? 'Sin objetivos activos'
+                    : 'Todavía no hay objetivos cargados'
+                }
+                descripcion={
+                  soloLectura
+                    ? 'La baja archivó todos sus objetivos. Están abajo, con sus calificaciones intactas.'
+                    : `Los objetivos son las frases que describen qué se busca lograr con ${paciente.nombre}. Se califican sesión a sesión, así que conviene cargarlos antes de la primera.`
+                }
                 acciones={
-                  <Button variant="contained" onClick={() => setModalObjetivo({})}>
-                    Cargar el primer objetivo
-                  </Button>
+                  soloLectura ? null : (
+                    <Button variant="contained" onClick={() => setModalObjetivo({})}>
+                      Cargar el primer objetivo
+                    </Button>
+                  )
                 }
               />
             ) : (
@@ -275,8 +380,10 @@ export default function PacienteFicha() {
                   key={objetivo.id}
                   objetivo={objetivo}
                   numero={indice + 1}
-                  onEditar={(o) => setModalObjetivo({ objetivo: o })}
-                  onArchivar={setAArchivar}
+                  // Sin handlers, la fila no dibuja sus botones: es el mismo
+                  // mecanismo que ya usa ObjetivoArchivado.
+                  onEditar={soloLectura ? undefined : (o) => setModalObjetivo({ objetivo: o })}
+                  onArchivar={soloLectura ? undefined : setAArchivar}
                 />
               ))
             )}
@@ -351,6 +458,69 @@ export default function PacienteFicha() {
           setAviso(respuesta?.mensaje ?? 'Objetivo guardado.');
         }}
       />
+
+      <ModalEditarPaciente
+        // key: si se abre la ficha de otro paciente sin desmontar, el
+        // formulario tiene que arrancar de cero con los datos nuevos.
+        key={`editar-${paciente.id}`}
+        abierto={editando}
+        paciente={paciente}
+        onCerrar={() => setEditando(false)}
+        onGuardado={(respuesta) => {
+          objetivos.recargar();
+          setAviso(respuesta?.mensaje ?? 'Datos actualizados.');
+        }}
+      />
+
+      <DialogoConfirmacion
+        abierto={Boolean(confirmandoBaja)}
+        titulo="¿Dar de baja a este paciente?"
+        etiquetaConfirmar="Dar de baja"
+        etiquetaProcesando="Dando de baja…"
+        procesando={procesandoEstado}
+        // Mientras no lleguen los números no se puede confirmar: el sentido
+        // del diálogo es decir qué va a pasar, y sin ellos no lo dice.
+        confirmarDeshabilitado={Boolean(confirmandoBaja?.cargando)}
+        onConfirmar={confirmarBaja}
+        onCancelar={() => setConfirmandoBaja(null)}
+      >
+        {confirmandoBaja?.cargando ? (
+          'Consultando qué va a arrastrar la baja…'
+        ) : (
+          <>
+            Se marca como dado de baja con la fecha de hoy. Además, en la misma
+            operación:
+            <Box component="ul" sx={{ pl: 2.5, mt: 1, mb: 1 }}>
+              <li>
+                se archivan sus <strong>{confirmandoBaja?.objetivos_activos ?? 0}</strong>{' '}
+                objetivo(s) activo(s), con sus calificaciones intactas;
+              </li>
+              <li>
+                se cierran sus{' '}
+                <strong>{confirmandoBaja?.asignaciones_vigentes ?? 0}</strong>{' '}
+                asignación(es) vigente(s).
+              </li>
+            </Box>
+            Las sesiones y las evoluciones no se tocan. Su historia se sigue
+            consultando entera, y se lo puede reactivar más adelante.
+          </>
+        )}
+      </DialogoConfirmacion>
+
+      <DialogoConfirmacion
+        abierto={confirmandoReactivacion}
+        titulo="¿Reactivar a este paciente?"
+        etiquetaConfirmar="Reactivar"
+        etiquetaProcesando="Reactivando…"
+        procesando={procesandoEstado}
+        onConfirmar={confirmarReactivacion}
+        onCancelar={() => setConfirmandoReactivacion(false)}
+      >
+        Vuelve a estar en tratamiento y su ficha se puede volver a editar.
+        <strong> Los objetivos archivados no se reactivan solos:</strong> elegí
+        cuáles retomar creándolos de nuevo. Las asignaciones cerradas tampoco se
+        reabren.
+      </DialogoConfirmacion>
 
       <ModalCargarEvolucion
         key={idEvolucion ?? 'sin-sesion'}

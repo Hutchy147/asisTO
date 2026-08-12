@@ -1,7 +1,20 @@
 // frontend/src/services/pacientesService.js
 // Contrato: docs/api-pacientes-objetivos.md
 
-import { construirQuery, get, post } from './api.js';
+import { construirQuery, get, post, put } from './api.js';
+
+// Topes de largo de los campos de texto del paciente.
+//
+// EL MISMO NUMERO VIVE EN TRES LUGARES y los tres se mueven en el mismo
+// commit: el VARCHAR de schema.sql, MAXIMO_CARACTERES_* en
+// backend/app/models/paciente.py, y esta constante. Ya nos paso con la
+// descripcion de los objetivos: 180 en el formulario, nada en el servicio y
+// 500 en la base, y el resultado fue que una terapeuta no podia cargar un
+// objetivo real, cortado a mitad de frase y sin aviso.
+export const MAXIMO_CARACTERES_NOMBRE = 100;
+export const MAXIMO_CARACTERES_APELLIDO = 100;
+export const MAXIMO_CARACTERES_OBRA_SOCIAL = 120;
+export const MAXIMO_CARACTERES_NRO_HISTORIA = 30;
 
 /**
  * Pacientes activos, con su cantidad de objetivos activos.
@@ -39,12 +52,73 @@ export function crearPaciente({
 
 /**
  * Ficha del paciente con sus objetivos activos.
- * -> { paciente, objetivos_activos: [...] }
+ * -> { paciente, objetivos_activos, solo_lectura, baja_arrastra }
  *
- * 404 tanto si no existe como si esta dado de baja, con mensajes distintos.
+ * 404 solo si NO EXISTE. Desde el 2026-08-12 un paciente dado de baja se
+ * devuelve igual, con `solo_lectura: true`: su historia clinica tiene que
+ * poder consultarse. Lo que sigue rechazado es escribir sobre el.
+ *
+ * `baja_arrastra` trae cuantos objetivos activos y cuantas asignaciones
+ * vigentes se van a tocar si se lo da de baja. Se pide JUSTO ANTES de
+ * confirmar, no al abrir la ficha: entre una cosa y la otra pueden pasar
+ * minutos y un numero viejo en un dialogo de confirmacion miente.
  */
 export function obtenerPaciente(idPaciente) {
   return get(`/pacientes/${idPaciente}`);
+}
+
+/**
+ * Edicion de los datos del paciente.
+ *
+ * PUT y no PATCH: se manda la ficha entera. Con `obra_social` y
+ * `diagnostico`, los dos opcionales y los dos borrables, un PATCH obligaria
+ * a distinguir "no vino" de "vino vacio", y esa distincion decide si se
+ * limpia el dato o se lo deja como estaba.
+ *
+ * NO cambia el estado de baja ni el login: para eso estan darDeBajaPaciente,
+ * reactivarPaciente, y una operacion de vinculo que todavia no existe.
+ *
+ * -> { paciente, mensaje }
+ */
+export function editarPaciente(idPaciente, {
+  nombre,
+  apellido,
+  fecha_nacimiento: fechaNacimiento,
+  diagnostico = null,
+  obra_social: obraSocial = null,
+  nro_historia: nroHistoria,
+}) {
+  return put(`/pacientes/${idPaciente}`, {
+    nombre,
+    apellido,
+    fecha_nacimiento: fechaNacimiento,
+    diagnostico,
+    obra_social: obraSocial,
+    nro_historia: nroHistoria,
+  });
+}
+
+/**
+ * Baja LOGICA del paciente. Nunca borra.
+ *
+ * Arrastra dos efectos que el usuario no pidio explicitamente: cierra las
+ * asignaciones vigentes y archiva los objetivos activos. Por eso la respuesta
+ * los devuelve contados, para poder decirle que paso.
+ *
+ * -> { paciente, objetivos_archivados, asignaciones_cerradas, mensaje }
+ */
+export function darDeBajaPaciente(idPaciente) {
+  return post(`/pacientes/${idPaciente}/baja`);
+}
+
+/**
+ * Deshace la baja. Los objetivos archivados NO vuelven solos: los elige la
+ * terapeuta al retomar el tratamiento.
+ *
+ * -> { paciente, mensaje }
+ */
+export function reactivarPaciente(idPaciente) {
+  return post(`/pacientes/${idPaciente}/reactivacion`);
 }
 
 /**

@@ -68,14 +68,25 @@ export function ObjetivoActivo({ objetivo, numero, onEditar, onArchivar }) {
         </Typography>
       </Box>
 
-      <Box sx={{ display: 'flex', gap: 1, flex: 'none' }}>
-        <Button size="small" variant="outlined" onClick={() => onEditar(objetivo)}>
-          Editar
-        </Button>
-        <Button size="small" variant="outlined" onClick={() => onArchivar(objetivo)}>
-          Archivar
-        </Button>
-      </Box>
+      {/* Cada botón se dibuja solo si le pasaron su handler. La ficha de un
+          paciente dado de baja los omite: ahí el objetivo se lee y no se
+          toca. Sin esta guarda el botón aparecía igual y el click reventaba
+          con "onEditar is not a function" — un modo de lectura que en la
+          práctica escribe, o falla. */}
+      {(onEditar || onArchivar) && (
+        <Box sx={{ display: 'flex', gap: 1, flex: 'none' }}>
+          {onEditar && (
+            <Button size="small" variant="outlined" onClick={() => onEditar(objetivo)}>
+              Editar
+            </Button>
+          )}
+          {onArchivar && (
+            <Button size="small" variant="outlined" onClick={() => onArchivar(objetivo)}>
+              Archivar
+            </Button>
+          )}
+        </Box>
+      )}
     </Box>
   );
 }

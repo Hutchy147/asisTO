@@ -16,6 +16,11 @@ export default function DialogoConfirmacion({
   etiquetaConfirmar = 'Confirmar',
   etiquetaProcesando = 'Procesando…',
   procesando = false,
+  // Bloquea el botón sin que haya nada en curso. Es para el caso en que el
+  // diálogo todavía no puede decir QUÉ va a pasar —porque está buscando ese
+  // dato— y confirmar a ciegas sería justo lo que la confirmación evita.
+  // Distinto de `procesando`, que además bloquea Cancelar y el Escape.
+  confirmarDeshabilitado = false,
   onConfirmar,
   onCancelar,
 }) {
@@ -41,7 +46,7 @@ export default function DialogoConfirmacion({
         <Button
           variant="contained"
           onClick={onConfirmar}
-          disabled={procesando}
+          disabled={procesando || confirmarDeshabilitado}
           startIcon={procesando ? <CircularProgress size={14} color="inherit" thickness={5} /> : null}
         >
           {procesando ? etiquetaProcesando : etiquetaConfirmar}
