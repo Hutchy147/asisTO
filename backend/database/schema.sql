@@ -751,6 +751,38 @@ BEGIN
   DECLARE v_hora_fin     TIME         DEFAULT NULL;
   DECLARE v_superpuestas INT UNSIGNED DEFAULT 0;
   DECLARE v_lock         INT UNSIGNED DEFAULT NULL;
+  DECLARE v_activo_pac   BOOLEAN      DEFAULT NULL;
+  DECLARE v_fecha_baja   DATE         DEFAULT NULL;
+
+  -- =====================================================================
+  -- SESION SOBRE UN PACIENTE DADO DE BAJA (2026-08-13)
+  --
+  -- Mismo criterio que p_registrar_sesion: el corte es la FECHA de la
+  -- sesion contra fecha_baja, no el estado del paciente. Una sesion que
+  -- ocurrio antes de la baja se puede cargar tarde; una posterior no
+  -- ocurrio. Ver el bloque largo del procedimiento.
+  --
+  -- ESTE CHEQUEO VA PRIMERO, ANTES DEL LOCK DE TERAPEUTAS, Y NO ES
+  -- COSMETICO. El orden canonico es pacientes -> terapeutas, y si se
+  -- invierte aca se abre un ciclo con cualquier baja concurrente. Por lo
+  -- mismo va DENTRO de este trigger y no en uno propio: MySQL corre los
+  -- triggers del mismo evento en orden de creacion, asi que uno nuevo
+  -- correria DESPUES de este y tomaria pacientes despues de terapeutas.
+  --
+  -- El texto del mensaje es identico al del trigger de UPDATE y al del
+  -- procedimiento. Son las tres puertas de la misma regla.
+  -- =====================================================================
+  SELECT activo, fecha_baja INTO v_activo_pac, v_fecha_baja
+    FROM pacientes
+   WHERE id = NEW.id_paciente
+   FOR SHARE;
+
+  IF v_activo_pac = FALSE
+     AND (v_fecha_baja IS NULL OR NEW.fecha > v_fecha_baja) THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT =
+        'El paciente esta dado de baja: solo se pueden cargar sesiones hasta el dia de la baja';
+  END IF;
 
   -- Ver NOTA DE CONCURRENCIA
   SELECT id INTO v_lock
@@ -801,6 +833,50 @@ BEGIN
   DECLARE v_superpuestas INT UNSIGNED DEFAULT 0;
   DECLARE v_evoluciones  INT UNSIGNED DEFAULT 0;
   DECLARE v_lock         INT UNSIGNED DEFAULT NULL;
+  DECLARE v_activo_pac   BOOLEAN      DEFAULT NULL;
+  DECLARE v_fecha_baja   DATE         DEFAULT NULL;
+
+  -- =====================================================================
+  -- SESION SOBRE UN PACIENTE DADO DE BAJA (2026-08-13)
+  --
+  -- Par del chequeo del trigger de INSERT, con el mismo mensaje. Ver alla
+  -- el porque; aca cambian dos cosas.
+  --
+  -- 1. VA FUERA DEL "IF cambio el horario". Ese IF cubre el solape, que
+  --    solo puede aparecer si se movio dia u hora. Esta regla no: mover la
+  --    sesion a OTRO PACIENTE que esta dado de baja no toca el horario y
+  --    tiene que rechazarse igual.
+  --
+  -- 2. ACA EL ORDEN DE LOCKS QUEDA INVERTIDO Y NO HAY FORMA DE EVITARLO.
+  --    Un BEFORE UPDATE corre con el lock exclusivo de la fila de sesiones
+  --    YA tomado por el UPDATE, asi que este SELECT sobre pacientes llega
+  --    despues: sesiones -> pacientes, al reves del canonico. Medido: con
+  --    una baja concurrente eso ARMA UN DEADLOCK real, y la victima que
+  --    elige InnoDB es la baja.
+  --
+  --    Se aplica igual, y esto se decidio con el numero en la mano: la baja
+  --    esta decorada con @reintentar_en_deadlock, recibe el 1213 por el
+  --    RESIGNAL y ENTRA EN EL PRIMER REINTENTO. Cuatro corridas end-to-end
+  --    por la aplicacion, las cuatro identicas: 1 reintento de 3, 2,49 s,
+  --    baja completa y correcta.
+  --
+  --    Y el deadlock solo lo produce quien se saltea la convencion: un
+  --    llamador que tome pacientes FOR SHARE antes que terapeutas —como
+  --    hace p_registrar_sesion— llega aca con el lock ya en su propia
+  --    transaccion, y este SELECT no espera a nadie. Ver la NOTA PARA LA
+  --    ENTREGA 4 al pie de este bloque de triggers.
+  -- =====================================================================
+  SELECT activo, fecha_baja INTO v_activo_pac, v_fecha_baja
+    FROM pacientes
+   WHERE id = NEW.id_paciente
+   FOR SHARE;
+
+  IF v_activo_pac = FALSE
+     AND (v_fecha_baja IS NULL OR NEW.fecha > v_fecha_baja) THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT =
+        'El paciente esta dado de baja: solo se pueden cargar sesiones hasta el dia de la baja';
+  END IF;
 
   -- Regla 2 por la puerta de atras: marcar como ausencia una sesion que
   -- ya tiene evolucion cargada deja exactamente el estado que la regla 2
@@ -857,6 +933,44 @@ BEGIN
     END IF;
   END IF;
 END$$
+
+
+-- =====================================================================
+-- NOTA PARA LA ENTREGA 4 EN ADELANTE — leer antes de escribir cualquier
+-- camino nuevo que escriba en `sesiones`. La agenda a futuro, el modulo de
+-- IA y el endpoint de EDITAR SESION entran todos por aca.
+--
+-- REGLA: todo camino de escritura sobre `sesiones` tiene que pasar por un
+-- procedimiento que tome `pacientes FOR SHARE` ANTES que `terapeutas`,
+-- como hace p_registrar_sesion. No es una preferencia de estilo.
+--
+-- Por que. Los triggers de arriba leen `pacientes` para decidir si la
+-- sesion cae despues de la baja. En el INSERT eso no cuesta nada: el
+-- trigger corre antes de que exista la fila, asi que el orden queda
+-- pacientes -> terapeutas -> sesiones, el canonico. En el UPDATE es
+-- distinto y no se puede arreglar desde el trigger: un BEFORE UPDATE corre
+-- con el lock exclusivo de la fila YA tomado, o sea sesiones -> pacientes.
+--
+-- Medido, no deducido: un UPDATE directo sobre `sesiones` concurrente con
+-- una baja del mismo paciente PRODUCE UN DEADLOCK (errno 1213), y InnoDB
+-- elige como victima a la baja. Con la falsacion correspondiente: sin la
+-- lectura de `pacientes` el 1213 no aparece.
+--
+-- Por que se aplico igual: la baja lleva @reintentar_en_deadlock, recibe el
+-- 1213 gracias al RESIGNAL y entra en el PRIMER reintento. Cuatro corridas
+-- end-to-end por la aplicacion, las cuatro iguales: 1 de 3 intentos.
+--
+-- Y aca esta lo que le toca a quien escriba el codigo nuevo: ese deadlock
+-- SOLO lo produce quien entra por un UPDATE directo. Un llamador que tome
+-- `pacientes FOR SHARE` primero llega al trigger con el lock ya en su
+-- propia transaccion, el SELECT de adentro no espera a nadie y el ciclo no
+-- puede cerrarse. Respetar el orden no es una formalidad: es la diferencia
+-- entre que la baja de un paciente ande y que muera por deadlock.
+--
+-- Si el endpoint de editar sesion se escribe con un UPDATE del ORM y sin
+-- procedimiento, va a funcionar en las pruebas de a uno y va a empezar a
+-- matar bajas en cuanto haya dos personas trabajando a la vez.
+-- =====================================================================
 
 
 -- ---------------------------------------------------------------------
