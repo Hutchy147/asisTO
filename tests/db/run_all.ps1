@@ -56,7 +56,8 @@ $modulos = @(
     @{ Nombre = "autorizacion";   Script = "$PSScriptRoot\autorizacion\test_evolucion_autoria_respaldada_en_bd.ps1" },
     @{ Nombre = "asignaciones";   Script = "$PSScriptRoot\asignaciones\test_asignaciones_vigencia.ps1" },
     @{ Nombre = "baja";           Script = "$PSScriptRoot\pacientes\test_baja_reactivacion.ps1" },
-    @{ Nombre = "sesiones_baja";  Script = "$PSScriptRoot\sesiones\test_sesiones_paciente_de_baja.ps1" }
+    @{ Nombre = "sesiones_baja";  Script = "$PSScriptRoot\sesiones\test_sesiones_paciente_de_baja.ps1" },
+    @{ Nombre = "graficos";       Script = "$PSScriptRoot\graficos\test_evolucion_series.ps1" }
 )
 
 $todos = @()
