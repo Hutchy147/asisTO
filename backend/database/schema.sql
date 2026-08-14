@@ -842,10 +842,20 @@ BEGIN
   -- Par del chequeo del trigger de INSERT, con el mismo mensaje. Ver alla
   -- el porque; aca cambian dos cosas.
   --
-  -- 1. VA FUERA DEL "IF cambio el horario". Ese IF cubre el solape, que
-  --    solo puede aparecer si se movio dia u hora. Esta regla no: mover la
-  --    sesion a OTRO PACIENTE que esta dado de baja no toca el horario y
-  --    tiene que rechazarse igual.
+  -- 1. CORRE SOLO SI CAMBIA `fecha` O `id_paciente`, que son los dos campos
+  --    de los que depende la regla. No va suelto y tampoco va dentro del IF
+  --    del horario, y las dos cosas se probaron mal antes de quedar asi:
+  --
+  --    - Suelto (primera version, corregida el 2026-08-13 por un hallazgo de
+  --      auditoria): una sesion FUTURA agendada ANTES de la baja quedaba
+  --      congelada. Su fecha ya era posterior a fecha_baja, asi que
+  --      cualquier UPDATE la volvia a evaluar y la rechazaba: no se le podia
+  --      cambiar ni el estado ni las notas. La regla es sobre DONDE cae la
+  --      sesion, no sobre si se la puede seguir administrando.
+  --
+  --    - Dentro del IF del horario: reabre el agujero de mover la sesion a
+  --      otro paciente, porque ese IF no mira `id_paciente`. Auditoria lo
+  --      falso.
   --
   -- 2. ACA EL ORDEN DE LOCKS QUEDA INVERTIDO Y NO HAY FORMA DE EVITARLO.
   --    Un BEFORE UPDATE corre con el lock exclusivo de la fila de sesiones
@@ -866,16 +876,18 @@ BEGIN
   --    transaccion, y este SELECT no espera a nadie. Ver la NOTA PARA LA
   --    ENTREGA 4 al pie de este bloque de triggers.
   -- =====================================================================
-  SELECT activo, fecha_baja INTO v_activo_pac, v_fecha_baja
-    FROM pacientes
-   WHERE id = NEW.id_paciente
-   FOR SHARE;
+  IF NEW.fecha <> OLD.fecha OR NEW.id_paciente <> OLD.id_paciente THEN
+    SELECT activo, fecha_baja INTO v_activo_pac, v_fecha_baja
+      FROM pacientes
+     WHERE id = NEW.id_paciente
+     FOR SHARE;
 
-  IF v_activo_pac = FALSE
-     AND (v_fecha_baja IS NULL OR NEW.fecha > v_fecha_baja) THEN
-    SIGNAL SQLSTATE '45000'
-      SET MESSAGE_TEXT =
-        'El paciente esta dado de baja: solo se pueden cargar sesiones hasta el dia de la baja';
+    IF v_activo_pac = FALSE
+       AND (v_fecha_baja IS NULL OR NEW.fecha > v_fecha_baja) THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+          'El paciente esta dado de baja: solo se pueden cargar sesiones hasta el dia de la baja';
+    END IF;
   END IF;
 
   -- Regla 2 por la puerta de atras: marcar como ausencia una sesion que
@@ -2138,24 +2150,62 @@ BEGIN
   IF v_existe = 0 THEN
     SET p_mensaje = 'El paciente indicado no existe';
   ELSE
+    -- =================================================================
+    -- UNA FILA POR (SESION, OBJETIVO VIVO EN ESA SESION).
+    --
+    -- Reescrito el 2026-08-13 para el modulo de graficos. Antes era un
+    -- JOIN contra `evoluciones`, asi que solo devolvia lo CALIFICADO: una
+    -- sesion donde ese objetivo no se califico no existia en la salida, y
+    -- el grafico no tenia con que distinguir "no se midio" de "no hubo
+    -- sesion". Son cosas distintas y la diferencia es clinica.
+    --
+    -- Ahora el LEFT JOIN devuelve las dos: `valor` NULL es exactamente
+    -- "esa sesion ocurrio y este objetivo no se califico". El llamador no
+    -- tiene que coser dos listas.
+    --
+    -- QUE OBJETIVOS SON SERIE: los que estaban VIVOS al momento de cada
+    -- sesion, no los activos de hoy. Es la misma condicion de
+    -- _conteo_de_objetivos (el denominador historico de H2), y va aca por
+    -- el mismo motivo: si las series salieran de los activos de hoy, una
+    -- sesion de marzo que califico un objetivo archivado en mayo no
+    -- tendria linea a la que pertenecer y el pasado perderia datos.
+    --
+    -- fecha_archivado viaja para que la linea de un objetivo archivado
+    -- pueda TERMINAR donde se archivo, en vez de quedar abierta.
+    --
+    -- LIMITE CONOCIDO, el mismo de H2: si un objetivo se archivo, se
+    -- reactivo y se volvio a archivar, solo sobrevive la ultima
+    -- fecha_archivado, asi que en el primer tramo puede no aparecer como
+    -- vivo. Resolverlo pide una tabla de historial de estados.
+    --
+    -- SEGUNDO LIMITE: un objetivo sin NINGUNA sesion en el periodo no
+    -- aparece. No tiene puntos que dibujar, asi que seria una serie vacia.
+    -- =================================================================
     SELECT
+      s.id                    AS id_sesion,
       s.fecha,
       s.hora_inicio,
       s.estado                AS estado_sesion,
       o.id                    AS id_objetivo,
       o.descripcion           AS objetivo,
       o.activo                AS objetivo_activo,
+      o.fecha_archivado,
       e.valor,
       e.observaciones,
       CONCAT(u.apellido, ', ', u.nombre) AS terapeuta
       FROM sesiones s
-      JOIN evoluciones e             ON e.id_sesion = s.id
-      JOIN objetivos_terapeuticos o  ON o.id = e.id_objetivo
+      JOIN objetivos_terapeuticos o
+        ON o.id_paciente = s.id_paciente
+       AND o.fecha_creacion <= TIMESTAMP(s.fecha, s.hora_inicio)
+       AND (o.activo = TRUE
+            OR o.fecha_archivado > TIMESTAMP(s.fecha, s.hora_inicio))
+      LEFT JOIN evoluciones e        ON e.id_sesion = s.id
+                                    AND e.id_objetivo = o.id
       JOIN terapeutas t              ON t.id = s.id_terapeuta
       JOIN usuarios u                ON u.id = t.id_usuario
      WHERE s.id_paciente = p_id_paciente
        AND s.fecha BETWEEN p_fecha_desde AND p_fecha_hasta
-     ORDER BY s.fecha, s.hora_inicio, o.id;
+     ORDER BY o.id, s.fecha, s.hora_inicio;
 
     SELECT COUNT(*) INTO v_total
       FROM sesiones s
