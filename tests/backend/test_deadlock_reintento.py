@@ -149,6 +149,12 @@ MARCA_LASTRE = 'lastre-deadlock-test'
 
 FECHA_SESION_LIBRE = '2026-12-01'   # sin sesiones del terapeuta 1 en el seed
 
+# Retencion del CUARTO actor del ciclo de tres (el que traba a
+# p_registrar_sesion en `terapeutas` para abrir la ventana). Tiene que cubrir
+# el armado de los otros tres; si se queda corto, las sondas de cola fallan y
+# se ve, que es lo importante: el test no puede pasar sin haber armado.
+SEGUNDOS_DE_RETENCION_CICLO = 10
+
 
 def _buscar_mysql():
     """Mismo criterio que tests/db/lib/TestHelpers.ps1."""
@@ -498,6 +504,27 @@ class BaseDeadlock(unittest.TestCase):
                 'WHERE trx_rows_modified >= 1;')
             lineas = [l for l in proceso.stdout.splitlines() if l.strip()]
             if len(lineas) >= 2 and int(lineas[-1]) >= 1:
+                return True
+            time.sleep(0.1)
+        return False
+
+    def _esperar_transacciones_en_espera(self, cuantas, timeout=30):
+        """
+        Espera a que haya al menos `cuantas` transacciones en LOCK WAIT.
+
+        Sonda para escenarios de mas de dos actores, donde lo que hay que
+        confirmar no es que alguien retenga sino que la COLA se formo en el
+        orden correcto. Sin esto no hay forma de saber si el tercero llego
+        antes o despues del segundo, y de ese orden depende que el ciclo se
+        cierre o no.
+        """
+        inicio = time.time()
+        while time.time() - inicio < timeout:
+            proceso = self._mysql_privilegiado(
+                'SELECT COUNT(*) FROM information_schema.innodb_trx '
+                "WHERE trx_state='LOCK WAIT';")
+            lineas = [l for l in proceso.stdout.splitlines() if l.strip()]
+            if len(lineas) >= 2 and int(lineas[-1]) >= cuantas:
                 return True
             time.sleep(0.1)
         return False
@@ -1015,11 +1042,16 @@ class TestBajaConUpdateDirectoDeSesion(BaseDeadlock):
                 {'p': self.id_paciente, 'd': f'{MARCA_OBJETIVO} archivado de la baja'})
             self.id_objetivo_archivado = db.session.execute(
                 text('SELECT LAST_INSERT_ID()')).scalar()
+            # Fecha libre de sesiones del terapeuta 1 en el seed, y horario que
+            # el ciclo de tres despues se superpone a proposito (10:30-11:30):
+            # esa superposicion es lo que hace que p_registrar_sesion tenga que
+            # LEER esta fila, que es su lado del ciclo.
             db.session.execute(text(
                 'INSERT INTO sesiones (id_terapeuta,id_paciente,fecha,hora_inicio,'
                 'hora_fin,estado,notas) '
-                "VALUES (:t,:p,'2026-06-02','15:00:00','16:00:00','completa',:n)"),
-                {'t': TERAPEUTA, 'p': self.id_paciente, 'n': f'{MARCA_NOTAS} de la baja'})
+                "VALUES (:t,:p,:f,'10:00:00','11:00:00','completa',:n)"),
+                {'t': TERAPEUTA, 'p': self.id_paciente, 'f': FECHA_SESION_LIBRE,
+                 'n': f'{MARCA_NOTAS} de la baja'})
             self.id_sesion = db.session.execute(
                 text('SELECT LAST_INSERT_ID()')).scalar()
             db.session.commit()
@@ -1079,27 +1111,29 @@ class TestBajaConUpdateDirectoDeSesion(BaseDeadlock):
         self.assertFalse(activo)
         self.assertEqual(objetivos_activos, 0)
 
-        # --- el mecanismo, tal como se mide hoy -------------------------
+        # --- el mecanismo en ESTE escenario, que es el de DOS actores ----
         #
-        # MEDIDO el 2026-08-13, y NO es lo que dice la NOTA del schema. La
-        # interaccion real es una ESPERA, no un deadlock: el atacante toma X
-        # sobre la fila de sesiones y S sobre la de pacientes (via el trigger),
-        # la baja pide X sobre esa misma fila de pacientes y se queda esperando
-        # hasta que el atacante confirma. No hay ciclo porque la baja no toca
-        # `sesiones` en ningun momento, asi que el atacante nunca necesita algo
-        # que la baja tenga.
+        # Con solo estos dos no hay ciclo posible: la baja no toca `sesiones`,
+        # asi que el atacante nunca necesita nada que la baja tenga. Lo que hay
+        # es una ESPERA -- el atacante tiene X sobre la fila de sesiones y S
+        # sobre la de pacientes (via el trigger), y la baja se sienta a esperar
+        # esa S -- y termina bien cuando el atacante confirma.
         #
-        # Estas dos aserciones son el canario. Si algun dia dan otra cosa
-        # -- porque la baja pase a escribir en sesiones, o porque el trigger
-        # cambie -- hay que volver a leer la NOTA antes de tocar nada.
+        # OJO: que aca no haya deadlock NO significa que no exista. Con un
+        # tercer actor (p_registrar_sesion) el ciclo se cierra y la victima es
+        # la baja; eso lo prueba
+        # test_la_baja_recibe_el_1213_del_ciclo_de_tres_y_lo_absorbe. Este test
+        # fija el caso de dos actores, que es el mas frecuente en la practica y
+        # cuyo modo de falla es una espera (y un 1205 si esa espera supera
+        # innodb_lock_wait_timeout), no un reintento.
         deadlocks = self._contador_de_deadlocks() - antes
         reintentos = len(self.captura.reintentos_de('baja_paciente'))
         self.assertEqual(
             deadlocks, 0,
-            f'Aparecio un deadlock ({deadlocks}) donde hoy hay una espera limpia. '
-            'La NOTA PARA LA ENTREGA 4 de schema.sql describe justamente ese '
-            'escenario: hay que revisarla con este resultado en la mano. '
-            f'Reintentos registrados: {self.captura.mensajes()}')
+            f'Aparecio un deadlock ({deadlocks}) en el escenario de DOS actores, '
+            'donde hoy hay una espera limpia. Si esto cambia, cambio algo en el '
+            'orden de locks: hay que releer la NOTA PARA LA ENTREGA 4 de '
+            f'schema.sql. Reintentos registrados: {self.captura.mensajes()}')
         self.assertEqual(
             reintentos, 0,
             f'@reintentar_en_deadlock reintento {reintentos} vez/veces la baja. Hoy '
@@ -1114,6 +1148,122 @@ class TestBajaConUpdateDirectoDeSesion(BaseDeadlock):
             f'La baja tardo {duracion:.2f} s: demasiado poco para haber esperado al '
             f'atacante, que retiene {SEGUNDOS_DE_RETENCION} s. Lo mas probable es '
             'que no se hayan cruzado y el escenario no se haya armado.')
+
+    def test_la_baja_recibe_el_1213_del_ciclo_de_tres_y_lo_absorbe(self):
+        """
+        EL escenario de la NOTA PARA LA ENTREGA 4, con sus tres actores.
+
+        La baja no toca `sesiones`, asi que con dos actores no hay ciclo. Con
+        TRES si, y el puente es p_registrar_sesion, que toma `pacientes FOR
+        SHARE` y despues lee `sesiones` para el solape:
+
+            A (UPDATE directo)   tiene X(sesion)     y quiere S(pacientes)
+            B (la baja)          quiere X(pacientes)
+            C (registrar_sesion) tiene S(pacientes)  y quiere S(sesion)
+
+        A queda detras de la X encolada de B --InnoDB no deja que una S nueva
+        se adelante a una X que ya espera--, B detras de la S de C, y C detras
+        de la X de A. Ciclo cerrado, y la victima que elige InnoDB es la baja.
+
+        HACE FALTA UN CUARTO ACTOR PARA ARMARLO. C tiene que quedarse detenido
+        DESPUES de tomar `pacientes` y ANTES de leer el solape, y el unico
+        punto entre esas dos cosas es el `terapeutas FOR UPDATE`. Un retenedor
+        sobre esa fila abre esa ventana; sin el, C pasa de largo y no hay cola.
+
+        EL ORDEN DE LA COLA ES EL TEST. Si A entra antes que B, o B antes que
+        C, no se cierra nada y todo termina bien -- en verde y sin haber
+        probado nada. Por eso cada paso tiene su sonda y su asercion: son
+        cuatro guardas antes de la primera afirmacion sobre el resultado.
+        """
+        from app.services.pacientes_service import baja_paciente
+
+        activo, objetivos_activos = self._estado_del_paciente()
+        self.assertTrue(activo, 'El paciente tiene que arrancar ACTIVO.')
+        self.assertEqual(objetivos_activos, 1)
+
+        # --- D: retiene la fila del terapeuta ---------------------------
+        hilo_d, _ = self._lanzar_atacante(
+            'START TRANSACTION;\n'
+            f'SELECT id FROM terapeutas WHERE id={TERAPEUTA} FOR UPDATE;\n'
+            f'SELECT SLEEP({SEGUNDOS_DE_RETENCION_CICLO});\n'
+            'COMMIT;\n')
+        self.assertTrue(self._esperar_a_que_el_atacante_tenga_el_lock(
+            f'SELECT id FROM terapeutas WHERE id={TERAPEUTA} FOR UPDATE NOWAIT'),
+            'El retenedor de `terapeutas` nunca tomo el lock: sin esa ventana, '
+            'p_registrar_sesion pasa de largo y la cola no se forma.')
+
+        # --- C: p_registrar_sesion, que se traba en terapeutas ----------
+        #     Se superpone a proposito con la sesion del fixture: asi su
+        #     lectura de solape toca justo la fila que despues retiene A.
+        hilo_c, resultado_c = self._lanzar_atacante(
+            f"CALL p_registrar_sesion({TERAPEUTA}, {self.id_paciente}, "
+            f"'{FECHA_SESION_LIBRE}', '10:30:00', '11:30:00', 'incompleta', NULL, @id, @msg);\n"
+            'SELECT IFNULL(@id,\'NULL\'), @msg;\n')
+        self.assertTrue(self._esperar_transacciones_en_espera(1),
+                        'p_registrar_sesion nunca quedo esperando el lock de '
+                        '`terapeutas`: no llego a tomar `pacientes FOR SHARE`.')
+
+        # --- B: la baja, por la aplicacion. Se encola detras de la S de C.
+        #     Se lanza en un hilo para poder meter a A mientras espera.
+        resultado_b = {}
+
+        def correr_baja():
+            with self.app.app_context():
+                try:
+                    resultado_b['paciente'], resultado_b['resumen'] = \
+                        baja_paciente(self.id_paciente)
+                except Exception as error:      # noqa: BLE001 - se reporta abajo
+                    resultado_b['error'] = error
+
+        hilo_b = threading.Thread(target=correr_baja, daemon=True)
+        antes = self._contador_de_deadlocks()
+        hilo_b.start()
+        self.assertTrue(self._esperar_transacciones_en_espera(2),
+                        'La baja no se encolo detras de p_registrar_sesion.')
+
+        # --- A: el UPDATE directo, que cierra el ciclo ------------------
+        hilo_a, _ = self._lanzar_atacante(
+            'START TRANSACTION;\n'
+            f"UPDATE sesiones SET notas='{MARCA_NOTAS} tocada por A' "
+            f'WHERE id={self.id_sesion};\n'
+            'SELECT SLEEP(3);\n'
+            'COMMIT;\n')
+        self.assertTrue(self._esperar_transacciones_en_espera(3),
+                        'El UPDATE directo no llego a encolarse: sin el tercero en '
+                        'la cola no hay ciclo y el resultado de abajo no significa '
+                        'nada.')
+
+        for hilo in (hilo_b, hilo_a, hilo_c, hilo_d):
+            hilo.join(timeout=60)
+
+        # --- lo que se afirma -------------------------------------------
+        self.assertNotIn(
+            'error', resultado_b,
+            'La baja no sobrevivio al deadlock: {}'.format(resultado_b.get('error')))
+        self.assertGreaterEqual(
+            self._contador_de_deadlocks() - antes, 1,
+            'El contador lock_deadlocks no se movio: la cola se formo pero el ciclo '
+            'no se cerro, asi que el reintento de abajo no prueba nada.')
+        reintentos = len(self.captura.reintentos_de('baja_paciente'))
+        self.assertEqual(
+            reintentos, 1,
+            f'Se esperaba exactamente 1 reintento de 3 y hubo {reintentos}. Con 0, la '
+            'victima del ciclo no fue la baja y este test no vigila lo que dice '
+            f'vigilar. Registros: {self.captura.mensajes()}')
+        self.assertFalse(resultado_b['paciente'].activo)
+        activo, objetivos_activos = self._estado_del_paciente()
+        self.assertFalse(activo)
+        self.assertEqual(
+            objetivos_activos, 0,
+            'El reintento corrio pero dejo la baja a medias: quedo un objetivo '
+            'activo sobre un paciente dado de baja.')
+        # C tuvo que terminar rechazada por solape, no por otra cosa: es lo que
+        # confirma que llego a leer `sesiones`, que es su lado del ciclo.
+        salida_c = resultado_c['proceso'].stdout
+        self.assertIn(
+            'se superponen', salida_c,
+            'p_registrar_sesion tenia que rechazar por solape (es la lectura de '
+            f'`sesiones` que la mete en el ciclo). Devolvio: {salida_c!r}')
 
     def test_la_baja_recibe_el_1213_y_lo_absorbe_con_un_reintento(self):
         """
