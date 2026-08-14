@@ -281,5 +281,63 @@ $resultados += Assert-True $modulo "una_sesion_futura_legitima_se_puede_cerrar_t
     "La sesion agendada antes de la baja se puede marcar como ausencia" `
     "CONGELADA: la sesion se agendo cuando el paciente estaba activo (legitima) y tras la baja no se le puede cambiar ni el estado, porque el chequeo del trigger de UPDATE corre aunque no se toquen ni la fecha ni el paciente. Queda una fila futura de un paciente de baja que nadie puede cerrar. err=$($rCerrar.StdErr.Trim())"
 
+# --- La condicion angosta, fijada por los dos lados ---------------------
+#
+# La correccion acordada es que el chequeo corra SOLO si cambia `fecha` o
+# cambia `id_paciente`. Estos casos fijan las dos mitades de esa condicion,
+# porque una correccion se puede pasar de largo tan facil como quedarse corta:
+#
+#   - de menos: si vuelve a correr siempre, la sesion queda congelada otra vez
+#     (los dos primeros casos);
+#   - de mas: si se apaga para todo UPDATE que no toque el horario, vuelve el
+#     agujero de mover la sesion a otro paciente (ese caso ya esta arriba) o el
+#     de moverla a una fecha posterior (el ultimo de aca).
+#
+# Los que hoy estan en rojo se ponen en verde solos cuando se aplique.
+
+$rNotas = Invoke-Sql -Database $Database -Sql @"
+UPDATE sesiones SET notas = 'cerrada despues de la baja' WHERE id = $idFutura;
+"@
+$resultados += Assert-True $modulo "update_de_notas_sobre_sesion_posterior_a_la_baja_se_acepta" `
+    ($rNotas.ExitCode -eq 0) `
+    "Escribir la nota de una sesion ya agendada no es cargar una sesion nueva" `
+    "Rechazado: no se puede ni escribir la nota de una sesion agendada antes de la baja. err=$($rNotas.StdErr.Trim())"
+
+# Reescribir la MISMA fecha no es cambiarla: con `NEW.fecha <> OLD.fecha` esto
+# no dispara el chequeo. Si alguien implementara la condicion mirando si la
+# columna aparece en el SET en vez de si el valor cambio, este caso lo agarra.
+$rMismaFecha = Invoke-Sql -Database $Database -Sql @"
+UPDATE sesiones SET fecha = fecha, estado = 'completa' WHERE id = $idFutura;
+"@
+$resultados += Assert-True $modulo "update_que_reescribe_la_misma_fecha_se_acepta" `
+    ($rMismaFecha.ExitCode -eq 0) `
+    "Reescribir el mismo valor no cuenta como cambio de fecha" `
+    "Rechazado un UPDATE que deja la fecha igual: la condicion esta mirando si la columna se toca, no si el valor cambia. err=$($rMismaFecha.StdErr.Trim())"
+
+# La salida de la sesion congelada: moverla a una fecha valida. Aca la fecha SI
+# cambia, asi que el chequeo corre, y tiene que aceptar porque el destino esta
+# dentro del periodo.
+$rHaciaValida = Invoke-Sql -Database $Database -Sql @"
+UPDATE sesiones SET fecha = DATE_SUB('$(Get-ScalarValue $Database "SELECT fecha_baja FROM pacientes WHERE id=$pacFutura;")', INTERVAL 2 DAY)
+ WHERE id = $idFutura;
+"@
+$resultados += Assert-True $modulo "update_que_mueve_una_sesion_posterior_hacia_una_fecha_valida_se_acepta" `
+    ($rHaciaValida.ExitCode -eq 0) `
+    "Mover la sesion a una fecha anterior a la baja se acepta: es la salida para una fila que quedo del lado equivocado" `
+    "Rechazado el movimiento hacia una fecha valida: $($rHaciaValida.StdErr.Trim())"
+
+# Y el otro lado: de una fecha invalida a otra invalida sigue rechazado.
+$fechaBajaFut = Get-ScalarValue $Database "SELECT fecha_baja FROM pacientes WHERE id=$pacFutura;"
+$null = Invoke-Sql -Database $Database -Sql @"
+UPDATE sesiones SET fecha = DATE_ADD('$fechaBajaFut', INTERVAL 20 DAY) WHERE id = $idFutura;
+"@
+$rEntreInvalidas = Invoke-Sql -Database $Database -Sql @"
+UPDATE sesiones SET fecha = DATE_ADD('$fechaBajaFut', INTERVAL 25 DAY) WHERE id = $idFutura;
+"@
+$resultados += Assert-True $modulo "update_que_mueve_la_fecha_entre_dos_posteriores_a_la_baja_es_rechazado" `
+    ($rEntreInvalidas.ExitCode -ne 0 -and $rEntreInvalidas.StdErr -match [regex]::Escape($MENSAJE_ESPERADO)) `
+    "Mover una sesion de una fecha posterior a otra posterior sigue rechazado" `
+    "ACEPTADO: se movio la fecha entre dos valores posteriores a la baja. La condicion se paso de angosta. exit=$($rEntreInvalidas.ExitCode) err=$($rEntreInvalidas.StdErr.Trim())"
+
 Write-ResultsTable $resultados
 return $resultados
