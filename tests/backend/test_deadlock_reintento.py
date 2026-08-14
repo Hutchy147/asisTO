@@ -969,5 +969,223 @@ class TestControlSinDecorador(BaseDeadlock):
                          'La transaccion abortada por deadlock dejo filas escritas.')
 
 
+class TestBajaConUpdateDirectoDeSesion(BaseDeadlock):
+    """
+    Vigila la premisa de la NOTA PARA LA ENTREGA 4 de schema.sql.
+
+    Esa nota decide poner el chequeo de baja en los DOS triggers de sesiones
+    sabiendo que en el de UPDATE el orden de locks queda invertido
+    (sesiones -> pacientes), y lo justifica con una medicion: que un UPDATE
+    directo concurrente con una baja produce un 1213 y que la baja lo absorbe
+    con un reintento. Si esa interaccion cambia, la justificacion de la
+    decision cambia con ella, y hasta hoy no habia nada que la mirara.
+
+    LA GUARDA CONTRA EL BANCO SUCIO ES LA MITAD DEL TEST. El escenario tiene
+    una forma de "salir bien" sin haber probado nada: si el paciente ya
+    estaba dado de baja de una corrida anterior, la baja contesta "ya estaba
+    dado de baja" en el primer IF, no toma ningun lock, no se cruza con
+    nadie y termina en cero reintentos y cero deadlocks -- que es justo el
+    resultado que uno quiere ver. Por eso el paciente se crea en cada setUp y
+    se afirma su estado ANTES del ataque, y por eso se exige que la baja haya
+    arrastrado el objetivo: un resultado mejor de lo esperado es lo primero
+    que hay que desconfiar.
+    """
+
+    def setUp(self):
+        super().setUp()
+        with self.app.app_context():
+            db.session.execute(text(
+                'INSERT INTO pacientes (id_usuario,nombre,apellido,fecha_nacimiento,'
+                'nro_historia,activo,fecha_alta) '
+                "VALUES (NULL,'Baja','UpdateDirecto','2015-01-01',:hc,TRUE,CURRENT_DATE)"),
+                {'hc': f'{MARCA_HISTORIA}-BAJA'})
+            self.id_paciente = db.session.execute(
+                text('SELECT LAST_INSERT_ID()')).scalar()
+            db.session.execute(text(
+                'INSERT INTO objetivos_terapeuticos (id_paciente,descripcion,activo) '
+                'VALUES (:p,:d,TRUE)'),
+                {'p': self.id_paciente, 'd': f'{MARCA_OBJETIVO} de la baja'})
+            self.id_objetivo_activo = db.session.execute(
+                text('SELECT LAST_INSERT_ID()')).scalar()
+            # Uno archivado: es lo que el atacante desarchiva para pedir
+            # `pacientes` en exclusiva y cerrar el ciclo. Ver el test del 1213.
+            db.session.execute(text(
+                'INSERT INTO objetivos_terapeuticos (id_paciente,descripcion,activo) '
+                'VALUES (:p,:d,FALSE)'),
+                {'p': self.id_paciente, 'd': f'{MARCA_OBJETIVO} archivado de la baja'})
+            self.id_objetivo_archivado = db.session.execute(
+                text('SELECT LAST_INSERT_ID()')).scalar()
+            db.session.execute(text(
+                'INSERT INTO sesiones (id_terapeuta,id_paciente,fecha,hora_inicio,'
+                'hora_fin,estado,notas) '
+                "VALUES (:t,:p,'2026-06-02','15:00:00','16:00:00','completa',:n)"),
+                {'t': TERAPEUTA, 'p': self.id_paciente, 'n': f'{MARCA_NOTAS} de la baja'})
+            self.id_sesion = db.session.execute(
+                text('SELECT LAST_INSERT_ID()')).scalar()
+            db.session.commit()
+
+    def _estado_del_paciente(self):
+        with self.app.app_context():
+            fila = db.session.execute(text(
+                'SELECT activo, (SELECT COUNT(*) FROM objetivos_terapeuticos '
+                ' WHERE id_paciente = p.id AND activo = TRUE) '
+                'FROM pacientes p WHERE p.id = :p'),
+                {'p': self.id_paciente}).first()
+            db.session.rollback()
+            return (bool(fila[0]), int(fila[1]))
+
+    def test_la_baja_sobrevive_a_un_update_directo_sobre_sus_sesiones(self):
+        from app.services.pacientes_service import baja_paciente
+
+        # --- guarda 1: el escenario arranca donde tiene que arrancar -----
+        activo, objetivos_activos = self._estado_del_paciente()
+        self.assertTrue(activo,
+                        'El paciente de este test tiene que arrancar ACTIVO. Si no lo '
+                        'esta, la baja sale por el primer IF sin tomar ningun lock y '
+                        'el resultado no significa nada.')
+        self.assertEqual(objetivos_activos, 1,
+                         'El paciente tiene que arrancar con 1 objetivo activo: es lo '
+                         'que despues prueba que la baja hizo su trabajo de verdad.')
+
+        atacante = (
+            'START TRANSACTION;\n'
+            f'INSERT INTO auditoria_accesos (id_usuario,email,resultado) VALUES {self._lastre()};\n'
+            f"UPDATE sesiones SET notas='{MARCA_NOTAS} tocada por el atacante' "
+            f'WHERE id={self.id_sesion};\n'
+            f'SELECT SLEEP({SEGUNDOS_DE_RETENCION});\n'
+            'COMMIT;\n'
+        )
+        antes = self._contador_de_deadlocks()
+        hilo, _ = self._lanzar_atacante(atacante)
+
+        # --- guarda 2: el atacante retiene de verdad antes de disparar ---
+        self.assertTrue(self._esperar_a_que_el_atacante_tenga_el_lock(
+            f'SELECT id FROM sesiones WHERE id={self.id_sesion} FOR UPDATE NOWAIT'))
+
+        arranque = time.time()
+        with self.app.app_context():
+            paciente, resumen = baja_paciente(self.id_paciente)
+        duracion = time.time() - arranque
+        hilo.join(timeout=30)
+
+        # --- lo que importa: la baja quedo bien -------------------------
+        self.assertFalse(paciente.activo,
+                         'El paciente tenia que quedar dado de baja.')
+        self.assertEqual(
+            resumen['objetivos_archivados'], 1,
+            'La baja tenia que arrastrar el objetivo activo. Si archivo 0, no hizo '
+            f'nada y el resto del test no prueba nada: {resumen}')
+        activo, objetivos_activos = self._estado_del_paciente()
+        self.assertFalse(activo)
+        self.assertEqual(objetivos_activos, 0)
+
+        # --- el mecanismo, tal como se mide hoy -------------------------
+        #
+        # MEDIDO el 2026-08-13, y NO es lo que dice la NOTA del schema. La
+        # interaccion real es una ESPERA, no un deadlock: el atacante toma X
+        # sobre la fila de sesiones y S sobre la de pacientes (via el trigger),
+        # la baja pide X sobre esa misma fila de pacientes y se queda esperando
+        # hasta que el atacante confirma. No hay ciclo porque la baja no toca
+        # `sesiones` en ningun momento, asi que el atacante nunca necesita algo
+        # que la baja tenga.
+        #
+        # Estas dos aserciones son el canario. Si algun dia dan otra cosa
+        # -- porque la baja pase a escribir en sesiones, o porque el trigger
+        # cambie -- hay que volver a leer la NOTA antes de tocar nada.
+        deadlocks = self._contador_de_deadlocks() - antes
+        reintentos = len(self.captura.reintentos_de('baja_paciente'))
+        self.assertEqual(
+            deadlocks, 0,
+            f'Aparecio un deadlock ({deadlocks}) donde hoy hay una espera limpia. '
+            'La NOTA PARA LA ENTREGA 4 de schema.sql describe justamente ese '
+            'escenario: hay que revisarla con este resultado en la mano. '
+            f'Reintentos registrados: {self.captura.mensajes()}')
+        self.assertEqual(
+            reintentos, 0,
+            f'@reintentar_en_deadlock reintento {reintentos} vez/veces la baja. Hoy '
+            'no deberia hacer falta ningun reintento porque no hay deadlock: si lo '
+            'hubo, cambio la interaccion.')
+
+        # La espera es la evidencia de que se cruzaron: sin contencion la baja
+        # tarda decimas. No se afirma un numero exacto -- eso seria medir la
+        # maquina -- sino que haya esperado al atacante.
+        self.assertGreaterEqual(
+            duracion, SEGUNDOS_DE_RETENCION * 0.5,
+            f'La baja tardo {duracion:.2f} s: demasiado poco para haber esperado al '
+            f'atacante, que retiene {SEGUNDOS_DE_RETENCION} s. Lo mas probable es '
+            'que no se hayan cruzado y el escenario no se haya armado.')
+
+    def test_la_baja_recibe_el_1213_y_lo_absorbe_con_un_reintento(self):
+        """
+        El escenario que SI arma un ciclo con la baja, y que la NOTA del schema
+        atribuye al UPDATE de sesiones.
+
+        El ciclo no puede pasar por `sesiones` -- la baja no las toca, asi que
+        nunca necesita nada que un UPDATE de sesiones tenga --. Donde si pasa es
+        por `objetivos_terapeuticos`, y por una inversion que ya existia antes
+        del commit de la regla de baja: los triggers de objetivos toman
+        `pacientes FOR UPDATE` DESPUES de la fila de objetivos, cuando la fila
+        queda ACTIVA.
+
+            atacante: X sobre un objetivo ACTIVO  ->  quiere pacientes
+            baja:     X sobre pacientes           ->  quiere ese objetivo
+
+        EL LASTRE ES LO QUE DECIDE QUIEN MUERE. InnoDB elige como victima a la
+        transaccion que menos trabajo hizo. Sin las 200 filas de lastre el
+        atacante es mas liviano y el 1213 se lo lleva EL, con lo cual la baja
+        termina bien sin haber reintentado nada y el test pasaria sin haber
+        probado lo que dice. Con lastre, la victima es la baja, que es el caso
+        que hay que vigilar.
+        """
+        from app.services.pacientes_service import baja_paciente
+
+        activo, objetivos_activos = self._estado_del_paciente()
+        self.assertTrue(activo, 'El paciente tiene que arrancar ACTIVO.')
+        self.assertEqual(objetivos_activos, 1)
+
+        sql = self._atacante_de_deadlock(
+            f'SELECT id FROM objetivos_terapeuticos WHERE id={self.id_objetivo_activo} FOR UPDATE;',
+            f'UPDATE objetivos_terapeuticos SET activo=TRUE WHERE id={self.id_objetivo_archivado};')
+        antes = self._contador_de_deadlocks()
+        hilo, _ = self._lanzar_atacante(sql)
+        self.assertTrue(self._esperar_a_que_el_atacante_tenga_el_lock(
+            f'SELECT id FROM objetivos_terapeuticos WHERE id={self.id_objetivo_activo} '
+            'FOR UPDATE NOWAIT'))
+
+        with self.app.app_context():
+            paciente, resumen = baja_paciente(self.id_paciente)
+        hilo.join(timeout=30)
+
+        # Las tres cosas juntas, que es lo que distingue este test de uno que
+        # pasa sin haber probado nada: hubo un deadlock NUEVO, el decorador
+        # REINTENTO, y la baja quedo bien y una sola vez.
+        self.assertGreaterEqual(
+            self._contador_de_deadlocks() - antes, 1,
+            'El contador lock_deadlocks no se movio: no hubo ningun deadlock, asi '
+            'que el reintento que se afirma abajo no probaria nada.')
+        reintentos = len(self.captura.reintentos_de('baja_paciente'))
+        self.assertEqual(
+            reintentos, 1,
+            f'Se esperaba exactamente 1 reintento de 3 y hubo {reintentos}. Con 0, la '
+            'victima del deadlock fue el atacante y no la baja -- el escenario no '
+            'probo lo que dice. Registros: {}'.format(self.captura.mensajes()))
+        self.assertFalse(paciente.activo)
+        # Archiva 2, no 1, y el motivo es parte del escenario: el deadlock mata
+        # a la baja, el atacante termina su UPDATE --que DESARCHIVA el segundo
+        # objetivo-- y recien entonces corre el reintento, que ya encuentra dos
+        # activos. Se afirma >= 1 y no un numero exacto porque lo que importa es
+        # que el reintento hizo el trabajo completo sobre el estado que
+        # encontro, no cuantas filas habia.
+        self.assertGreaterEqual(
+            resumen['objetivos_archivados'], 1,
+            f'La baja no archivo nada tras el reintento: {resumen}')
+        activo, objetivos_activos = self._estado_del_paciente()
+        self.assertFalse(activo)
+        self.assertEqual(
+            objetivos_activos, 0,
+            'Quedo un objetivo activo sobre un paciente dado de baja: el reintento '
+            'corrio pero dejo la operacion a medias.')
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
