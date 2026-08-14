@@ -122,6 +122,26 @@ export function reactivarPaciente(idPaciente) {
 }
 
 /**
+ * Serie de evolución del paciente, para los gráficos de progreso.
+ * -> { paciente, periodo: {desde, hasta, completo}, objetivos: [...],
+ *      total_puntos, total_calificados, mensaje }
+ *
+ * Cada objetivo trae sus `puntos`, uno por sesión del período. Un punto con
+ * `valor: null` significa "esa sesión ocurrió y este objetivo no se
+ * calificó", que NO es lo mismo que que no haya habido sesión: por eso
+ * viajan los dos en la misma lista y no en dos.
+ *
+ * Las series son los objetivos que estaban vivos en cada sesión, no los
+ * activos de hoy. Si fueran los de hoy, una sesión de marzo que calificó un
+ * objetivo archivado en mayo no tendría línea a la que pertenecer.
+ *
+ * Sin `desde`/`hasta` devuelve el tratamiento entero.
+ */
+export function obtenerEvolucionDePaciente(idPaciente, { desde, hasta } = {}) {
+  return get(`/pacientes/${idPaciente}/evolucion${construirQuery({ desde, hasta })}`);
+}
+
+/**
  * Historial completo de sesiones del paciente.
  * -> { paciente, sesiones: [...], total }
  *

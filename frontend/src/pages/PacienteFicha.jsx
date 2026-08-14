@@ -16,6 +16,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import AccountFlag from '../components/data/AccountFlag.jsx';
 import DataTable from '../components/data/DataTable.jsx';
 import GoalMeter from '../components/data/GoalMeter.jsx';
+import GraficoEvolucion from '../components/data/GraficoEvolucion.jsx';
 import SesionEstadoChip from '../components/data/SesionEstadoChip.jsx';
 import ModalCargarEvolucion from '../components/evoluciones/ModalCargarEvolucion.jsx';
 import AppLayout from '../components/layout/AppLayout.jsx';
@@ -27,7 +28,8 @@ import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.j
 import { usePeticion } from '../hooks/usePeticion.js';
 import { archivarObjetivo, listarObjetivosDePaciente } from '../services/objetivosService.js';
 import {
-  darDeBajaPaciente, listarSesionesDePaciente, obtenerPaciente, reactivarPaciente,
+  darDeBajaPaciente, listarSesionesDePaciente, obtenerEvolucionDePaciente,
+  obtenerPaciente, reactivarPaciente,
 } from '../services/pacientesService.js';
 import { formatearFecha, formatearMes, textoEdad } from '../utils/fechas.js';
 
@@ -88,6 +90,7 @@ export default function PacienteFicha() {
 
   const objetivos = usePeticion(() => listarObjetivosDePaciente(id), [id]);
   const sesiones = usePeticion(() => listarSesionesDePaciente(id), [id]);
+  const evolucion = usePeticion(() => obtenerEvolucionDePaciente(id), [id]);
 
   const [pestania, setPestania] = useState('objetivos');
   const [modalObjetivo, setModalObjetivo] = useState(null); // null | { objetivo? }
@@ -320,7 +323,64 @@ export default function PacienteFicha() {
             </Box>
           }
         />
+        <Tab value="progreso" label="Progreso" />
       </Tabs>
+
+      {/* --- Pestaña Progreso --- */}
+      {pestania === 'progreso' && (
+        <>
+          {evolucion.cargando && <Cargando texto="Cargando la evolución..." />}
+          {evolucion.error && (
+            <EstadoError error={evolucion.error} onReintentar={evolucion.recargar} />
+          )}
+          {evolucion.datos && !evolucion.cargando && !evolucion.error && (
+            <Seccion
+              titulo="Evolución por objetivo"
+              descripcion={
+                evolucion.datos.periodo.completo
+                  ? 'Todo el tratamiento. Cada objetivo tiene su propio gráfico: no se promedian entre sí.'
+                  : `Del ${formatearFecha(evolucion.datos.periodo.desde)} al ${formatearFecha(evolucion.datos.periodo.hasta)}.`
+              }
+            >
+              {evolucion.datos.objetivos.length === 0 ? (
+                <EstadoVacio
+                  plano
+                  titulo="Todavía no hay nada que graficar"
+                  descripcion={`El gráfico se arma con las calificaciones que se cargan sesión a sesión. Cuando ${paciente.nombre} tenga objetivos y sesiones registradas, su evolución va a aparecer acá.`}
+                />
+              ) : (
+                <Box sx={{ p: 2.25, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {/* Referencia de las marcas del eje. Sin esto, una marca
+                      de color en el eje es un adorno que nadie sabe leer. */}
+                  <Typography variant="body2" color="text.secondary">
+                    La línea une calificaciones consecutivas y se corta donde hubo
+                    una sesión en la que ese objetivo no se calificó. Esas sesiones
+                    quedan marcadas sobre el eje: en ámbar cuando se trabajó y no se
+                    calificó, en ladrillo cuando fue una ausencia.
+                  </Typography>
+
+                  {evolucion.datos.objetivos.map((serie) => (
+                    <GraficoEvolucion
+                      key={serie.id}
+                      serie={serie}
+                      titulo={
+                        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mb: 0.5 }}>
+                          <Typography variant="body1" className="texto-libre" sx={{ flex: 1 }}>
+                            {serie.descripcion}
+                          </Typography>
+                          {!serie.activo && (
+                            <Chip size="small" label="Archivado" />
+                          )}
+                        </Box>
+                      }
+                    />
+                  ))}
+                </Box>
+              )}
+            </Seccion>
+          )}
+        </>
+      )}
 
       {/* --- Pestaña Objetivos --- */}
       {pestania === 'objetivos' && (

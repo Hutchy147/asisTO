@@ -9,6 +9,7 @@
 # terapeuta logueado, y que el paciente tenga algun objetivo activo contra
 # el cual calificar.
 
+import datetime as dt
 import logging
 
 from sqlalchemy import text
@@ -16,11 +17,113 @@ from sqlalchemy import text
 from app import db
 from app.models import Evolucion, ObjetivoTerapeutico, Sesion
 from app.models.evolucion import VALOR_MAXIMO, VALOR_MINIMO
-from app.services.sesiones_service import obtener_sesion, terapeuta_actual
+from app.services.pacientes_service import obtener_paciente
+from app.services.sesiones_service import (
+    obtener_sesion, resolver_rango, terapeuta_actual,
+)
 from app.utils.db import reintentar_en_deadlock
 from app.utils.errors import ErrorAplicacion
 
 logger = logging.getLogger(__name__)
+
+
+def _resolver_periodo(desde, hasta, paciente):
+    """
+    Rango del historial de evolucion.
+
+    Sin fechas devuelve el TRATAMIENTO ENTERO —de `fecha_alta` a hoy— y ese
+    caso NO paga el tope de 366 dias. El tope existe para que nadie pida
+    "1900 a 2100"; recortar el default en cambio dejaria el grafico a medias
+    sin decirlo, que es peor que negarse. El default esta acotado por la
+    realidad del paciente, no por lo que pida el llamador.
+
+    Con fechas explicitas se aplica la misma validacion que
+    `GET /api/sesiones`: rango invertido y rango excesivo son errores, no
+    listas vacias. Se reusa `resolver_rango` para no tener dos versiones de
+    la misma regla.
+    """
+    if not desde and not hasta:
+        return paciente.fecha_alta, dt.date.today(), True
+
+    return (*resolver_rango(desde, hasta), False)
+
+
+def evolucion_de_paciente(id_paciente, desde=None, hasta=None):
+    """
+    Serie de evolucion del paciente, lista para graficar.
+
+    Devuelve UNA serie por objetivo que estuvo vivo en el periodo, con un
+    punto por cada sesion de ese periodo. `valor: null` en un punto significa
+    "esa sesion ocurrio y este objetivo no se califico", que es distinto de
+    que no haya habido sesion — la diferencia es clinica y por eso el
+    procedimiento devuelve las dos cosas en una sola consulta.
+
+    Incluye a los pacientes dados de baja: es lectura de historia clinica.
+    """
+    paciente = obtener_paciente(id_paciente, incluir_inactivos=True)
+    fecha_desde, fecha_hasta, completo = _resolver_periodo(desde, hasta, paciente)
+
+    filas = db.session.execute(
+        text('CALL p_evolucion_paciente(:id, :desde, :hasta, @p_mensaje)'),
+        {'id': paciente.id, 'desde': fecha_desde, 'hasta': fecha_hasta},
+    ).all()
+
+    mensaje = db.session.execute(text('SELECT @p_mensaje')).scalar()
+
+    # Las filas vienen ordenadas por objetivo y fecha, asi que agrupar es
+    # recorrer una vez. El orden lo fija el procedimiento y no se reordena
+    # aca: si se reordenara, el criterio quedaria en dos lugares.
+    series = []
+    por_objetivo = {}
+    calificados = 0
+
+    for fila in filas:
+        (id_sesion, fecha, hora_inicio, estado_sesion, id_objetivo, descripcion,
+         objetivo_activo, fecha_archivado, valor, observaciones, terapeuta) = fila
+
+        serie = por_objetivo.get(id_objetivo)
+        if serie is None:
+            serie = {
+                'id': int(id_objetivo),
+                'descripcion': descripcion,
+                'activo': bool(objetivo_activo),
+                # Con que fecha termina la linea de un objetivo archivado.
+                # Sin esto la serie quedaria abierta como si siguiera vigente.
+                'fecha_archivado': fecha_archivado.isoformat() if fecha_archivado else None,
+                'puntos': [],
+            }
+            por_objetivo[id_objetivo] = serie
+            series.append(serie)
+
+        if valor is not None:
+            calificados += 1
+
+        serie['puntos'].append({
+            'id_sesion': int(id_sesion),
+            'fecha': fecha.isoformat(),
+            # hora_inicio llega como timedelta desde el driver
+            'hora_inicio': str(hora_inicio),
+            'estado_sesion': estado_sesion,
+            # null = la sesion ocurrio y este objetivo no se califico
+            'valor': int(valor) if valor is not None else None,
+            'observaciones': observaciones,
+            'terapeuta': terapeuta,
+        })
+
+    return {
+        'paciente': paciente.to_dict_clinico(),
+        'periodo': {
+            'desde': fecha_desde.isoformat() if fecha_desde else None,
+            'hasta': fecha_hasta.isoformat() if fecha_hasta else None,
+            # Para que la interfaz pueda decir "todo el tratamiento" en vez
+            # de dibujar dos fechas que el usuario no eligio.
+            'completo': completo,
+        },
+        'objetivos': series,
+        'total_puntos': len(filas),
+        'total_calificados': calificados,
+        'mensaje': mensaje,
+    }
 
 
 def listar_por_sesion(id_sesion):

@@ -7,6 +7,7 @@ from app.services.pacientes_service import (
     alta_paciente, baja_paciente, editar_paciente, listar_pacientes,
     obtener_detalle, reactivar_paciente,
 )
+from app.services.evoluciones_service import evolucion_de_paciente
 from app.services.sesiones_service import listar_por_paciente as listar_sesiones_de_paciente
 from app.utils.security import requiere_rol
 
@@ -101,6 +102,25 @@ def reactivacion(id_paciente):
         'paciente': paciente.to_dict_clinico(),
         'mensaje': mensaje,
     }), 200
+
+
+@pacientes_bp.get('/pacientes/<int:id_paciente>/evolucion')
+@requiere_rol('terapeuta')
+def evolucion(id_paciente):
+    """
+    Serie de evolución del paciente, para el gráfico de progreso.
+
+    Vive en este blueprint por el mismo motivo que el historial de sesiones:
+    el recurso es "la evolución de este paciente", que es donde alguien la va
+    a buscar. La lógica sigue estando en evoluciones_service.
+
+    Sin `desde`/`hasta` devuelve el tratamiento entero.
+    """
+    return jsonify(evolucion_de_paciente(
+        id_paciente,
+        desde=request.args.get('desde'),
+        hasta=request.args.get('hasta'),
+    )), 200
 
 
 @pacientes_bp.get('/pacientes/<int:id_paciente>/sesiones')
