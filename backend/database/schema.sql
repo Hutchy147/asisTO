@@ -956,32 +956,81 @@ END$$
 -- procedimiento que tome `pacientes FOR SHARE` ANTES que `terapeutas`,
 -- como hace p_registrar_sesion. No es una preferencia de estilo.
 --
--- Por que. Los triggers de arriba leen `pacientes` para decidir si la
--- sesion cae despues de la baja. En el INSERT eso no cuesta nada: el
--- trigger corre antes de que exista la fila, asi que el orden queda
--- pacientes -> terapeutas -> sesiones, el canonico. En el UPDATE es
--- distinto y no se puede arreglar desde el trigger: un BEFORE UPDATE corre
--- con el lock exclusivo de la fila YA tomado, o sea sesiones -> pacientes.
+-- POR QUE. Los triggers de arriba leen `pacientes` para decidir si la sesion
+-- cae despues de la baja. En el INSERT eso no cuesta nada: el trigger corre
+-- antes de que exista la fila, asi que el orden queda
+-- pacientes -> terapeutas -> sesiones, el canonico. En el UPDATE es distinto
+-- y no se puede arreglar desde el trigger: un BEFORE UPDATE corre con el lock
+-- exclusivo de la fila YA tomado, o sea sesiones -> pacientes, invertido.
 --
--- Medido, no deducido: un UPDATE directo sobre `sesiones` concurrente con
--- una baja del mismo paciente PRODUCE UN DEADLOCK (errno 1213), y InnoDB
--- elige como victima a la baja. Con la falsacion correspondiente: sin la
--- lectura de `pacientes` el 1213 no aparece.
+-- QUE ABRE ESA INVERSION, medido por las dos terminales y reescrito el
+-- 2026-08-14 con el cuadro completo. Son DOS modos de falla distintos y el
+-- que mas se va a ver NO es el deadlock.
+--
+-- ---------------------------------------------------------------------
+-- MODO 1 — ESPERA. Dos actores. Es el caso FRECUENTE.
+-- ---------------------------------------------------------------------
+-- Alguien edita una sesion mientras se da una baja del mismo paciente, y no
+-- hay nadie registrando una sesion en el medio. NO hay ciclo y NO hay
+-- deadlock: hay espera. El que edita toma la fila de `sesiones` y pide
+-- `pacientes`; la baja nunca toca `sesiones`, asi que el que edita no
+-- necesita nada que la baja tenga, y la cola se resuelve sola.
+--
+-- Medido: la baja ESPERA 19,18 s con un retenedor de 20 s, y completa. Cero
+-- deadlocks. Verificado ademas en performance_schema.data_locks.
+--
+-- EL RIESGO DE ESTE MODO NO ES EL 1213, ES EL 1205: si la espera supera
+-- `innodb_lock_wait_timeout`, la baja recibe lock wait timeout. El decorador
+-- tambien lo reintenta, pero si el que retiene sigue ahi los tres intentos se
+-- agotan y LA BAJA FALLA. Una transaccion larga sobre `sesiones` es, por si
+-- sola, suficiente para voltear una baja.
+--
+-- ---------------------------------------------------------------------
+-- MODO 2 — DEADLOCK. Tres actores en el ciclo, y un cuarto para montarlo.
+-- ---------------------------------------------------------------------
+--   A  UPDATE directo        tiene X(sesion)     y quiere S(pacientes)
+--   B  la baja                                     quiere X(pacientes)
+--   C  p_registrar_sesion    tiene S(pacientes)  y quiere S(sesion), por el
+--                                                 chequeo de solape
+--
+-- A queda detras de la X ENCOLADA de B —InnoDB no deja que una S nueva se
+-- adelante a una X que ya espera—, B detras de la S de C, y C detras de la X
+-- de A. `delta lock_deadlocks = 1`, ERROR 1213, y la victima que elige InnoDB
+-- es LA BAJA.
+--
+-- HACE FALTA UN CUARTO ACTOR PARA ARMARLO, y por eso no aparece solo: C tiene
+-- que quedarse detenido DESPUES de tomar `pacientes` y ANTES de leer el
+-- solape, y el unico punto entre esas dos cosas es el `terapeutas FOR
+-- UPDATE`. Alguien reteniendo esa fila abre la ventana. Sin el, C pasa de
+-- largo y la cola no se forma.
+--
+-- Y SOLO LO ABRE UN UPDATE QUE MUEVA `fecha` O `id_paciente`, porque el
+-- chequeo de arriba corre solo en ese caso: un UPDATE de notas, estado u
+-- hora no lee `pacientes` y no participa del ciclo. Medido de los dos lados:
+-- SET notas -> sin deadlock; SET fecha -> 1213 con la baja como victima.
 --
 -- Por que se aplico igual: la baja lleva @reintentar_en_deadlock, recibe el
 -- 1213 gracias al RESIGNAL y entra en el PRIMER reintento. Cuatro corridas
--- end-to-end por la aplicacion, las cuatro iguales: 1 de 3 intentos.
+-- end-to-end por la aplicacion, las cuatro iguales: 1 de 3 intentos. El
+-- deadlock es el modo BENIGNO de los dos: se reintenta y entra.
 --
--- Y aca esta lo que le toca a quien escriba el codigo nuevo: ese deadlock
--- SOLO lo produce quien entra por un UPDATE directo. Un llamador que tome
--- `pacientes FOR SHARE` primero llega al trigger con el lock ya en su
--- propia transaccion, el SELECT de adentro no espera a nadie y el ciclo no
--- puede cerrarse. Respetar el orden no es una formalidad: es la diferencia
--- entre que la baja de un paciente ande y que muera por deadlock.
+-- ---------------------------------------------------------------------
+-- LO QUE LE TOCA A QUIEN ESCRIBA EL CODIGO NUEVO
+-- ---------------------------------------------------------------------
+-- Los dos modos los produce lo mismo: entrar por un UPDATE directo. Un
+-- llamador que tome `pacientes FOR SHARE` PRIMERO llega al trigger con el
+-- lock ya en su propia transaccion, el SELECT de adentro no espera a nadie,
+-- y evita el ciclo de tres Y la espera del modo 1.
 --
 -- Si el endpoint de editar sesion se escribe con un UPDATE del ORM y sin
 -- procedimiento, va a funcionar en las pruebas de a uno y va a empezar a
--- matar bajas en cuanto haya dos personas trabajando a la vez.
+-- frenar bajas —y a voltear alguna por 1205— en cuanto haya dos personas
+-- trabajando a la vez.
+--
+-- Un error de metodo que quedo a la vista y conviene no repetir: las dos
+-- terminales probaron las combinaciones de DOS actores, no encontraron ciclo
+-- y generalizaron a "no hay ciclo". El tercero lo cierra. Con locks, no
+-- haberlo encontrado con N actores no dice nada sobre N+1.
 -- =====================================================================
 
 
