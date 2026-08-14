@@ -1079,10 +1079,27 @@ class TestBajaConUpdateDirectoDeSesion(BaseDeadlock):
                          'El paciente tiene que arrancar con 1 objetivo activo: es lo '
                          'que despues prueba que la baja hizo su trabajo de verdad.')
 
+        # EL ATACANTE TIENE QUE MOVER `fecha` O `id_paciente`. NO ES UN DETALLE
+        # Y NO SE PUEDE SIMPLIFICAR A `SET notas`.
+        #
+        # Desde el 2026-08-13 (commit 9e42b68) el trigger de UPDATE lee
+        # `pacientes` SOLO si cambia la fecha o el paciente:
+        #
+        #     IF NEW.fecha <> OLD.fecha OR NEW.id_paciente <> OLD.id_paciente
+        #
+        # Con `SET notas` esa lectura no ocurre, el atacante nunca toma la S
+        # sobre la fila de `pacientes`, la baja no espera a nadie y este test
+        # pasa en verde sin haber probado nada -- que es el patron que este
+        # proyecto ya vio cuatro veces. Este test estuvo escrito asi y se puso
+        # en rojo cuando entro la condicion angosta: el rojo era correcto.
+        #
+        # Si alguna vez hay que "simplificar" este atacante, la unica variante
+        # valida es cambiar `fecha` por `id_paciente`. Cualquier otra columna
+        # apaga el escenario entero.
         atacante = (
             'START TRANSACTION;\n'
             f'INSERT INTO auditoria_accesos (id_usuario,email,resultado) VALUES {self._lastre()};\n'
-            f"UPDATE sesiones SET notas='{MARCA_NOTAS} tocada por el atacante' "
+            'UPDATE sesiones SET fecha = DATE_ADD(fecha, INTERVAL 1 DAY) '
             f'WHERE id={self.id_sesion};\n'
             f'SELECT SLEEP({SEGUNDOS_DE_RETENCION});\n'
             'COMMIT;\n'
@@ -1222,9 +1239,21 @@ class TestBajaConUpdateDirectoDeSesion(BaseDeadlock):
                         'La baja no se encolo detras de p_registrar_sesion.')
 
         # --- A: el UPDATE directo, que cierra el ciclo ------------------
+        #
+        # MUEVE LA FECHA A PROPOSITO, y no es intercambiable por `SET notas`:
+        # desde el commit 9e42b68 el trigger lee `pacientes` solo si cambia
+        # `fecha` o `id_paciente`, y esa lectura es justamente el lado de A en
+        # el ciclo. Con `SET notas` A no pide nada sobre `pacientes`, no hay
+        # tercer eslabon y el test termina en verde sin haber armado nada.
+        #
+        # El orden dentro del trigger es lo que hace que esto funcione: el
+        # chequeo de baja va ANTES del `IF cambio el horario`, asi que A se
+        # bloquea pidiendo `pacientes` y nunca llega a pedir `terapeutas`
+        # --que lo tiene el retenedor--. Si algun dia se invierten esos dos
+        # bloques, A se traba en el lugar equivocado y el ciclo no se forma.
         hilo_a, _ = self._lanzar_atacante(
             'START TRANSACTION;\n'
-            f"UPDATE sesiones SET notas='{MARCA_NOTAS} tocada por A' "
+            'UPDATE sesiones SET fecha = DATE_ADD(fecha, INTERVAL 1 DAY) '
             f'WHERE id={self.id_sesion};\n'
             'SELECT SLEEP(3);\n'
             'COMMIT;\n')
