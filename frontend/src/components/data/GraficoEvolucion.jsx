@@ -36,10 +36,24 @@ const Y_EJE = PISO_ESCALA + SEPARACION_EJE;
 
 // Banda propia de las marcas, debajo del eje. No se superpone con nada.
 const BANDA_ARRIBA = Y_EJE + 6;
-const BANDA_ALTO = 9;
 
-const ALTO = BANDA_ARRIBA + BANDA_ALTO + 22;
+// Las marcas del MISMO DIA se APILAN, no se superponen. Un paciente puede
+// tener dos sesiones el mismo dia —medido en datos reales: cinco fechas asi
+// en el paciente 1— y dos marcas en la misma x se dibujaban una sobre la
+// otra. El conteo visible quedaba corto y, peor, si una era ausencia y la
+// otra no, un color TAPABA al otro y la ausencia desaparecia. Eso es
+// informacion clinica oculta, no un problema de densidad.
+const ALTURA_MARCA = 7;
+const SEPARACION_MARCA = 3;
+
 const RADIO_PUNTO = 4;
+
+/** Alto total del SVG, que depende de cuantas marcas haya que apilar. */
+function altoTotal(maxApilado) {
+  const banda = Math.max(1, maxApilado) * ALTURA_MARCA
+    + Math.max(0, maxApilado - 1) * SEPARACION_MARCA;
+  return BANDA_ARRIBA + banda + 22;
+}
 
 /** Y del escalón. El 5 arriba y el 1 abajo, como se lee una escala. */
 function yDeValor(valor) {
@@ -86,6 +100,26 @@ function tramosEntreCalificaciones(puntos) {
   return tramos;
 }
 
+/** Una entrada del conteo al pie, con el color de su marca al lado. */
+function Conteo({ color, cantidad, texto }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+      <Box
+        sx={(t) => ({
+          width: 9,
+          height: 9,
+          borderRadius: '2px',
+          backgroundColor: typeof color === 'function' ? color(t) : color,
+          flex: 'none',
+        })}
+      />
+      <Typography variant="body2" color="text.secondary">
+        <strong>{cantidad}</strong> {texto}
+      </Typography>
+    </Box>
+  );
+}
+
 export default function GraficoEvolucion({ serie, titulo }) {
   const tema = useTheme();
   const puntos = serie?.puntos ?? [];
@@ -130,6 +164,21 @@ export default function GraficoEvolucion({ serie, titulo }) {
   const calificados = puntos.filter((p) => p.valor !== null && p.valor !== undefined);
   const sinCalificar = puntos.filter((p) => p.valor === null || p.valor === undefined);
   const tramos = tramosEntreCalificaciones(puntos);
+
+  const ausencias = sinCalificar.filter((p) => p.estado_sesion === 'ausencia');
+  const trabajadasSinCalificar = sinCalificar.length - ausencias.length;
+
+  // Se agrupa por FECHA y no por x: son la misma cosa —la x sale de la
+  // fecha— pero comparar fechas es exacto y comparar floats no.
+  const nivelPorPunto = new Map();
+  const ocupadosPorFecha = new Map();
+  sinCalificar.forEach((punto) => {
+    const nivel = ocupadosPorFecha.get(punto.fecha) ?? 0;
+    nivelPorPunto.set(punto.id_sesion, nivel);
+    ocupadosPorFecha.set(punto.fecha, nivel + 1);
+  });
+  const maxApilado = Math.max(1, ...ocupadosPorFecha.values());
+  const ALTO = altoTotal(maxApilado);
 
   // La línea de un objetivo archivado TERMINA donde se archivó. Sin esto
   // quedaría abierta, como si siguiera vigente.
@@ -249,9 +298,12 @@ export default function GraficoEvolucion({ serie, titulo }) {
           <line
             key={`sc-${punto.id_sesion}`}
             x1={xDeFecha(punto.fecha)}
-            y1={BANDA_ARRIBA}
+            y1={BANDA_ARRIBA
+              + nivelPorPunto.get(punto.id_sesion) * (ALTURA_MARCA + SEPARACION_MARCA)}
             x2={xDeFecha(punto.fecha)}
-            y2={BANDA_ARRIBA + BANDA_ALTO}
+            y2={BANDA_ARRIBA
+              + nivelPorPunto.get(punto.id_sesion) * (ALTURA_MARCA + SEPARACION_MARCA)
+              + ALTURA_MARCA}
             stroke={
               punto.estado_sesion === 'ausencia'
                 ? tema.palette.sesionEstado.ausencia.fg
@@ -294,6 +346,35 @@ export default function GraficoEvolucion({ serie, titulo }) {
             {formatearFecha(fechaArchivado ?? puntos[puntos.length - 1].fecha)}
           </text>
         )}
+      </Box>
+
+      {/* Conteo explícito de cada categoría. El número no puede depender de
+          que alguien cuente marcas de 1 px: apiladas o no, la cantidad se
+          lee acá. */}
+      <Box
+        sx={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 2,
+          mt: 0.5,
+          pl: `${(MARGEN.izquierda / ANCHO) * 100}%`,
+        }}
+      >
+        <Conteo
+          color={archivado ? 'text.secondary' : 'primary.main'}
+          cantidad={calificados.length}
+          texto="calificaciones"
+        />
+        <Conteo
+          color={(t) => t.palette.sesionEstado.incompleta.fg}
+          cantidad={trabajadasSinCalificar}
+          texto="sesiones sin calificar este objetivo"
+        />
+        <Conteo
+          color={(t) => t.palette.sesionEstado.ausencia.fg}
+          cantidad={ausencias.length}
+          texto="ausencias"
+        />
       </Box>
 
       {calificados.length === 0 && (
