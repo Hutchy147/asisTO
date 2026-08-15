@@ -106,11 +106,21 @@ INSERT INTO pacientes
   (13, NULL, 'Emilia',    'Paz',       '2017-03-30', 'Hipotonia leve. Trabajo de fuerza y estabilidad postural.',               'HC-0013', TRUE, '2026-05-25'),
   (14, NULL, 'Ciro',      'Maldonado', '2012-08-17', 'Trastorno del desarrollo de la coordinacion.',                            'HC-0014', TRUE, '2026-06-01'),
   (15, 13,   'Andrea',    'Suarez',    '1988-12-02', 'Artritis reumatoidea. Proteccion articular y adaptaciones.',              'HC-0015', TRUE, '2026-06-08'),
-  -- Paciente DADO DE BAJA: no aparece en el listado, pero su historia
-  -- clinica sigue existiendo. Sirve para probar ese estado.
-  (16, NULL, 'Ignacio',   'Rivas',     '2011-04-25', 'Alta por cumplimiento de objetivos.',                                     'HC-0016', FALSE, '2026-02-02');
-
-UPDATE pacientes SET fecha_baja = '2026-05-29' WHERE id = 16;
+  -- Paciente DADO DE BAJA, y CON HISTORIA: sesiones, evoluciones, objetivos
+  -- archivados y una asignacion cerrada. Ver el bloque "HISTORIA DEL
+  -- PACIENTE 16" mas abajo.
+  --
+  -- ENTRA ACTIVO Y SE DA DE BAJA AL FINAL DEL ARCHIVO. No es un rodeo: los
+  -- triggers rechazan crear objetivos y abrir asignaciones sobre un paciente
+  -- dado de baja, y la regla 4 rechaza calificar un objetivo archivado. El
+  -- orden del seed es el orden real de los hechos.
+  --
+  -- Hasta el 2026-08-15 este paciente entraba ya inactivo y sin nada colgando,
+  -- asi que el estado "dado de baja" existia pero no se podia MOSTRAR: la
+  -- ficha en modo lectura salia vacia y el grafico de evolucion tambien. El
+  -- caso interesante no era demostrable en la base de la demo.
+  (16, NULL, 'Ignacio',   'Rivas',     '2011-04-25', 'Alta por cumplimiento de objetivos.',                                     'HC-0016', TRUE,
+   DATE_SUB(CURDATE(), INTERVAL 150 DAY));
 
 
 -- =====================================================================
@@ -356,6 +366,125 @@ DELIMITER ;
 
 CALL p_generar_demo();
 DROP PROCEDURE p_generar_demo;
+
+
+-- =====================================================================
+-- HISTORIA DEL PACIENTE 16 — el que despues queda dado de baja
+--
+-- DATOS SINTETICOS. Ignacio Rivas es un paciente ficticio de este archivo;
+-- las conductas, las observaciones y las fechas son inventadas para el seed.
+--
+-- POR QUE ESTA SEPARADO DE LA GENERACION DE ARRIBA: esa recorre los
+-- pacientes 1..15 y les arma la agenda de las ultimas 7 semanas. Este
+-- tratamiento TERMINO, asi que su historia va en una ventana anterior —de
+-- 140 a 91 dias atras— y no se cruza con esa agenda. Al no compartir ninguna
+-- fecha con ella, no puede violar la regla 6 ni la UNIQUE de paciente por
+-- franja, sin importar que franja use.
+--
+-- EL ORDEN DE ESTE BLOQUE ES LA PARTE FRAGIL, y esta impuesto por los
+-- triggers, no por gusto:
+--   1. objetivos ACTIVOS  (un objetivo no se puede crear sobre un paciente
+--      dado de baja, ni calificar si esta archivado)
+--   2. sesiones y evoluciones
+--   3. asignacion, que se cierra el dia de la baja
+--   4. archivado de los objetivos
+--   5. la baja del paciente, al final
+-- Invertir cualquiera de los pasos hace fallar la carga, no la degrada en
+-- silencio. El seed es, en ese sentido, una prueba de que las reglas estan.
+-- =====================================================================
+
+-- 1. Tres objetivos, creados poco despues del alta.
+INSERT INTO objetivos_terapeuticos (id_paciente, descripcion, activo, fecha_creacion) VALUES
+  (16, 'Recuperar la fuerza de prension en la mano derecha', TRUE,
+   TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 145 DAY), '09:00:00')),
+  (16, 'Retomar la escritura sostenida durante quince minutos', TRUE,
+   TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 145 DAY), '09:15:00')),
+  (16, 'Vestirse y calzarse de forma autonoma antes de salir', TRUE,
+   TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 145 DAY), '09:30:00'));
+
+-- 2. Ocho sesiones semanales con la terapeuta 2, en una franja que la agenda
+--    generada no usa en esas fechas porque no llega hasta ahi.
+--
+--    Dos sesiones caen EL MISMO DIA (la de 140 y una segunda a las 18:00):
+--    es el caso que hace visible el apilado de marcas del grafico, y ocurre
+--    de verdad —un paciente puede tener dos turnos el mismo dia—.
+INSERT INTO sesiones (id_terapeuta, id_paciente, fecha, hora_inicio, hora_fin, estado, notas) VALUES
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL 140 DAY), '17:00:00', '18:00:00', 'completa',
+   'Primera sesion. Se toma linea de base de fuerza y escritura.'),
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL 140 DAY), '18:00:00', '19:00:00', 'incompleta',
+   'Segundo turno del mismo dia. Se corto antes por cansancio.'),
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL 133 DAY), '17:00:00', '18:00:00', 'completa',
+   'Trabajo de prension con masa y pinzas.'),
+  -- Este dia tiene DOS sesiones y una es ausencia: es el caso que hace
+  -- visible por que las marcas se apilan. Si se superpusieran, el ambar de
+  -- la sesion trabajada taparia el ladrillo de la ausencia —o al reves— y
+  -- una ausencia desapareceria del grafico. Eso es informacion clinica
+  -- oculta, no una molestia de densidad.
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL 126 DAY), '17:00:00', '18:00:00', 'ausencia',
+   'La familia aviso el dia anterior.'),
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL 126 DAY), '18:00:00', '19:00:00', 'completa',
+   'Se recupero el turno mas tarde. No se llego a calificar.'),
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL 119 DAY), '17:00:00', '18:00:00', 'completa',
+   'Retoma el trazo con apoyo verbal.'),
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL 112 DAY), '17:00:00', '18:00:00', 'completa',
+   'Practica de vestido con prendas propias.'),
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL 105 DAY), '17:00:00', '18:00:00', 'ausencia',
+   'No asistio, sin aviso.'),
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL  98 DAY), '17:00:00', '18:00:00', 'completa',
+   'Escritura sostenida sin recordatorios.'),
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL  91 DAY), '17:00:00', '18:00:00', 'completa',
+   'Cierre del tratamiento. Se repasan los tres objetivos.');
+
+-- 3. Evoluciones. NO se califican todos los objetivos en todas las sesiones
+--    —que es lo habitual— asi que el grafico queda con tramos punteados, que
+--    es justamente lo que hay que poder mirar. Las dos ausencias no llevan
+--    evolucion: la regla 2 lo impide.
+INSERT INTO evoluciones (id_sesion, id_objetivo, valor, observaciones)
+SELECT s.id, o.id, x.valor, x.obs
+  FROM (
+    SELECT 140 AS dias, '17:00:00' AS hora, 1 AS n_obj, 1 AS valor,
+           'Prension debil, sin sostener el agarre.' AS obs
+    UNION ALL SELECT 140, '17:00:00', 2, 1, 'No sostiene el trazo mas de dos minutos.'
+    UNION ALL SELECT 133, '17:00:00', 1, 2, 'Sostiene el agarre con apoyo.'
+    UNION ALL SELECT 119, '17:00:00', 2, 2, 'Trazo mas firme, con recordatorios.'
+    UNION ALL SELECT 112, '17:00:00', 3, 2, 'Se calza solo, con ayuda para el cierre.'
+    UNION ALL SELECT  98, '17:00:00', 1, 4, 'Prension funcional en actividades largas.'
+    UNION ALL SELECT  98, '17:00:00', 2, 4, 'Quince minutos sostenidos sin recordatorio.'
+    UNION ALL SELECT  91, '17:00:00', 1, 5, 'Objetivo alcanzado.'
+    UNION ALL SELECT  91, '17:00:00', 2, 5, 'Objetivo alcanzado.'
+    UNION ALL SELECT  91, '17:00:00', 3, 4, 'Autonomo salvo cordones.'
+  ) AS x
+  JOIN sesiones s
+    ON s.id_paciente = 16
+   AND s.fecha = DATE_SUB(CURDATE(), INTERVAL x.dias DAY)
+   AND s.hora_inicio = x.hora
+  JOIN (
+    SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS n
+      FROM objetivos_terapeuticos WHERE id_paciente = 16
+  ) AS o ON o.n = x.n_obj;
+
+-- 4. Asignacion cerrada el dia de la baja: esa terapeuta lo atendio y ya no.
+INSERT INTO asignaciones (id_terapeuta, id_paciente, fecha_desde, fecha_hasta) VALUES
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL 150 DAY), DATE_SUB(CURDATE(), INTERVAL 90 DAY));
+
+-- 5. Archivado de los objetivos. Son DOS updates y el segundo no sobra: el
+--    primero archiva y el trigger le pone a fecha_archivado el NOW() de la
+--    carga; el segundo la fija en el dia de la baja. Con activo pasando de
+--    FALSE a FALSE ninguna rama del trigger se dispara, asi que el valor
+--    queda como se escribe y el fixture no cambia de contenido en cada carga.
+UPDATE objetivos_terapeuticos
+   SET activo = FALSE
+ WHERE id_paciente = 16 AND activo = TRUE;
+
+UPDATE objetivos_terapeuticos
+   SET fecha_archivado = TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 90 DAY), '12:00:00')
+ WHERE id_paciente = 16;
+
+-- 6. Y recien ahora, la baja.
+UPDATE pacientes
+   SET activo = FALSE,
+       fecha_baja = DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+ WHERE id = 16;
 
 
 -- =====================================================================
