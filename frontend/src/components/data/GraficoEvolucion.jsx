@@ -4,11 +4,9 @@
 // librería, y es una decisión: el eje Y de este proyecto no es numérico
 // sino las cinco palabras de la escala, y toda librería de gráficos empuja
 // hacia ejes numéricos —ticks intermedios, decimales, interpolación— que
-// acá son exactamente lo que no puede aparecer. Con cinco posiciones fijas
-// y una serie, el SVG es más corto que la configuración que haría falta
-// para domar una librería.
+// acá son exactamente lo que no puede aparecer.
 //
-// El componente dibuja UNA serie. Varias objetivos = varios gráficos, que
+// El componente dibuja UNA serie. Varios objetivos = varios gráficos, que
 // es la decisión de producto: promediar "No logrado" con "Logrado" entre
 // objetivos que miden cosas distintas da un número sin significado clínico.
 
@@ -22,21 +20,70 @@ import { formatearFecha } from '../../utils/fechas.js';
 // Sistema de coordenadas interno del SVG. El viewBox lo escala solo, así
 // que estos números son proporciones, no píxeles en pantalla.
 const ANCHO = 720;
-const MARGEN = { arriba: 14, derecha: 18, abajo: 38, izquierda: 104 };
+const MARGEN = { arriba: 14, derecha: 18, izquierda: 104 };
 const PASO_Y = 42; // separación entre los cinco escalones
-const ALTO = MARGEN.arriba + PASO_Y * (ESCALA_VALORES.length - 1) + MARGEN.abajo;
 
-const RADIO_PUNTO = 4.5;
+// Y de la fila más baja de la escala ("No logrado").
+const PISO_ESCALA = MARGEN.arriba + PASO_Y * (ESCALA_VALORES.length - 1);
+
+// SEPARACIÓN ENTRE LA ESCALA Y EL EJE, y es una corrección de un defecto
+// real: antes el eje X se dibujaba justo en la Y de "No logrado", así que
+// las marcas de sesión sin calificar arrancaban sobre esa fila y se leían
+// como calificaciones de "No logrado" — la lectura más dañina posible.
+// Ninguna marca puede quedar alineada con una fila de palabra.
+const SEPARACION_EJE = 26;
+const Y_EJE = PISO_ESCALA + SEPARACION_EJE;
+
+// Banda propia de las marcas, debajo del eje. No se superpone con nada.
+const BANDA_ARRIBA = Y_EJE + 6;
+const BANDA_ALTO = 9;
+
+const ALTO = BANDA_ARRIBA + BANDA_ALTO + 22;
+const RADIO_PUNTO = 4;
 
 /** Y del escalón. El 5 arriba y el 1 abajo, como se lee una escala. */
 function yDeValor(valor) {
-  const maximo = ESCALA_VALORES.length;
-  return MARGEN.arriba + (maximo - valor) * PASO_Y;
+  return MARGEN.arriba + (ESCALA_VALORES.length - valor) * PASO_Y;
 }
 
 /** Fecha ISO a milisegundos, para posicionar en el eje. */
 function tiempo(iso) {
   return new Date(`${iso}T00:00:00`).getTime();
+}
+
+/**
+ * Tramos entre calificaciones CONSECUTIVAS.
+ *
+ * La línea une siempre: cortarla donde hubo una sesión sin calificar
+ * dejaba el gráfico sin trayectoria, que es para lo único que existe. Con
+ * 3 o 4 objetivos por paciente, que una sesión no califique un objetivo
+ * dado es el caso NORMAL, no la excepción — medido sobre el paciente 1:
+ * ~40 puntos de sesión y solo dos segmentos unidos en todo el tratamiento.
+ *
+ * Lo que se conserva es la señal: el tramo va PUNTEADO cuando en el medio
+ * hubo sesiones sin calificar, y SÓLIDO cuando las dos calificaciones son
+ * de sesiones consecutivas. Se lee la trayectoria sin afirmar que se midió
+ * lo que no se midió.
+ */
+function tramosEntreCalificaciones(puntos) {
+  const tramos = [];
+  let anterior = null;
+  let huecosDesdeElAnterior = 0;
+
+  puntos.forEach((punto) => {
+    const calificado = punto.valor !== null && punto.valor !== undefined;
+    if (!calificado) {
+      if (anterior) huecosDesdeElAnterior += 1;
+      return;
+    }
+    if (anterior) {
+      tramos.push({ desde: anterior, hasta: punto, punteado: huecosDesdeElAnterior > 0 });
+    }
+    anterior = punto;
+    huecosDesdeElAnterior = 0;
+  });
+
+  return tramos;
 }
 
 export default function GraficoEvolucion({ serie, titulo }) {
@@ -55,42 +102,38 @@ export default function GraficoEvolucion({ serie, titulo }) {
   const opacidadSerie = archivado ? 0.55 : 1;
 
   const tiempos = puntos.map((p) => tiempo(p.fecha));
+  const fechaArchivado = serie.fecha_archivado
+    ? serie.fecha_archivado.slice(0, 10)
+    : null;
+
   const desde = Math.min(...tiempos);
-  const hasta = Math.max(...tiempos);
+  // El dominio del eje incluye `fecha_archivado`. Sin esto la marca de
+  // cierre quedaba SIEMPRE afuera y no se dibujaba nunca: un objetivo se
+  // archiva después de su última sesión calificada, por definición. El
+  // gráfico mostraba una línea que "terminaba" por falta de puntos, que no
+  // es lo mismo que terminar porque el objetivo se cerró. Encontrado
+  // mirando la ficha de un paciente dado de baja con datos reales.
+  const hasta = Math.max(
+    ...tiempos,
+    fechaArchivado ? tiempo(fechaArchivado) : -Infinity,
+  );
   const anchoUtil = ANCHO - MARGEN.izquierda - MARGEN.derecha;
 
   // Eje X de TIEMPO REAL, no de posición en la lista. Es lo que hace que
   // dos calificaciones separadas por una semana y por seis meses no se
-  // vean igual. Con un solo punto (o todos el mismo día) no hay rango: se
-  // centra en vez de dividir por cero.
+  // vean igual. Con un solo punto no hay rango: se centra.
   const xDeFecha = (iso) => {
     if (hasta === desde) return MARGEN.izquierda + anchoUtil / 2;
     return MARGEN.izquierda + ((tiempo(iso) - desde) / (hasta - desde)) * anchoUtil;
   };
 
-  // La línea une mediciones CONSECUTIVAS en la secuencia de sesiones. Si
-  // entre dos calificaciones hubo una sesión sin calificar este objetivo,
-  // la línea se corta: unirlas afirmaría una trayectoria que nadie midió.
-  const tramos = [];
-  let tramo = [];
-  puntos.forEach((punto) => {
-    if (punto.valor === null || punto.valor === undefined) {
-      if (tramo.length > 0) tramos.push(tramo);
-      tramo = [];
-      return;
-    }
-    tramo.push(punto);
-  });
-  if (tramo.length > 0) tramos.push(tramo);
-
+  const calificados = puntos.filter((p) => p.valor !== null && p.valor !== undefined);
   const sinCalificar = puntos.filter((p) => p.valor === null || p.valor === undefined);
-  const calificados = puntos.length - sinCalificar.length;
+  const tramos = tramosEntreCalificaciones(puntos);
 
   // La línea de un objetivo archivado TERMINA donde se archivó. Sin esto
   // quedaría abierta, como si siguiera vigente.
-  const xArchivado = serie.fecha_archivado
-    ? xDeFecha(serie.fecha_archivado.slice(0, 10))
-    : null;
+  const xArchivado = fechaArchivado ? xDeFecha(fechaArchivado) : null;
   const archivadoEnRango =
     xArchivado !== null
     && xArchivado >= MARGEN.izquierda
@@ -98,14 +141,12 @@ export default function GraficoEvolucion({ serie, titulo }) {
 
   // El resumen accesible describe LOS DATOS, no repite el texto del
   // objetivo: ese ya está como encabezado al lado del gráfico y meterlo
-  // acá haría que un lector de pantalla lo anuncie dos veces. Por eso
-  // este componente no renderiza `descripcion` en ningún lado — el que la
-  // muestra es el llamador, con su `texto-libre` puesto.
-  const resumen = calificados === 0
+  // acá haría que un lector de pantalla lo anuncie dos veces.
+  const resumen = calificados.length === 0
     ? 'Sin calificaciones en el período.'
-    : `${calificados} calificación(es) en el período, de "${
-      etiquetaDeValor(tramos[0]?.[0]?.valor)}" a "${
-      etiquetaDeValor(tramos[tramos.length - 1]?.slice(-1)[0]?.valor)}".`;
+    : `${calificados.length} calificación(es) en el período, de "${
+      etiquetaDeValor(calificados[0].valor)}" a "${
+      etiquetaDeValor(calificados[calificados.length - 1].valor)}".`;
 
   return (
     <Box sx={{ mb: 1 }}>
@@ -149,30 +190,75 @@ export default function GraficoEvolucion({ serie, titulo }) {
             x1={xArchivado}
             y1={MARGEN.arriba - 6}
             x2={xArchivado}
-            y2={ALTO - MARGEN.abajo + 6}
+            y2={PISO_ESCALA + 6}
             stroke={tema.palette.text.secondary}
             strokeWidth="1.5"
             strokeDasharray="4 3"
           />
         )}
 
-        {/* Sesiones donde este objetivo NO se calificó. Van como marca en
-            el eje y no como punto en la trama: no hay valor que ubicar.
-            Distinguir la ausencia del resto importa — en una ausencia no
-            se podía calificar, en una sesión trabajada sí y no se hizo. */}
+        {/* Los tramos. Punteado = hubo sesiones sin calificar en el medio. */}
+        <g opacity={opacidadSerie}>
+          {tramos.map((tramo) => (
+            <line
+              key={`t-${tramo.desde.id_sesion}-${tramo.hasta.id_sesion}`}
+              x1={xDeFecha(tramo.desde.fecha)}
+              y1={yDeValor(tramo.desde.valor)}
+              x2={xDeFecha(tramo.hasta.fecha)}
+              y2={yDeValor(tramo.hasta.valor)}
+              stroke={colorLinea}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeDasharray={tramo.punteado ? '5 4' : undefined}
+            />
+          ))}
+
+          {calificados.map((punto) => (
+            <circle
+              key={`p-${punto.id_sesion}`}
+              cx={xDeFecha(punto.fecha)}
+              cy={yDeValor(punto.valor)}
+              r={RADIO_PUNTO}
+              fill={colorLinea}
+              stroke={tema.palette.superficie.tarjeta}
+              strokeWidth="1.5"
+            >
+              <title>
+                {`${formatearFecha(punto.fecha)} — ${etiquetaDeValor(punto.valor)}`}
+                {punto.terapeuta ? ` — ${punto.terapeuta}` : ''}
+              </title>
+            </circle>
+          ))}
+        </g>
+
+        {/* Eje X, SEPARADO de la fila más baja de la escala */}
+        <line
+          x1={MARGEN.izquierda}
+          y1={Y_EJE}
+          x2={ANCHO - MARGEN.derecha}
+          y2={Y_EJE}
+          stroke={tema.palette.superficie.bordeFuerte}
+          strokeWidth="1"
+        />
+
+        {/* Banda de sesiones sin calificar, DEBAJO del eje y en su propia
+            franja. Poco peso visual a propósito: son muchas —la mayoría de
+            las sesiones no califican un objetivo dado— y si pesaran como
+            los puntos taparían la serie, que es lo que hay que leer. */}
         {sinCalificar.map((punto) => (
           <line
             key={`sc-${punto.id_sesion}`}
             x1={xDeFecha(punto.fecha)}
-            y1={ALTO - MARGEN.abajo}
+            y1={BANDA_ARRIBA}
             x2={xDeFecha(punto.fecha)}
-            y2={ALTO - MARGEN.abajo + 7}
+            y2={BANDA_ARRIBA + BANDA_ALTO}
             stroke={
               punto.estado_sesion === 'ausencia'
                 ? tema.palette.sesionEstado.ausencia.fg
                 : tema.palette.sesionEstado.incompleta.fg
             }
-            strokeWidth="2"
+            strokeWidth="1"
+            opacity="0.6"
           >
             <title>
               {`${formatearFecha(punto.fecha)} — ${
@@ -183,56 +269,12 @@ export default function GraficoEvolucion({ serie, titulo }) {
           </line>
         ))}
 
-        {/* Los tramos de línea, uno por racha de mediciones consecutivas */}
-        <g opacity={opacidadSerie}>
-          {tramos.map((segmento) => (
-            <polyline
-              key={`t-${segmento[0].id_sesion}`}
-              fill="none"
-              stroke={colorLinea}
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              points={segmento
-                .map((p) => `${xDeFecha(p.fecha)},${yDeValor(p.valor)}`)
-                .join(' ')}
-            />
-          ))}
-
-          {puntos
-            .filter((p) => p.valor !== null && p.valor !== undefined)
-            .map((punto) => (
-              <circle
-                key={`p-${punto.id_sesion}`}
-                cx={xDeFecha(punto.fecha)}
-                cy={yDeValor(punto.valor)}
-                r={RADIO_PUNTO}
-                fill={colorLinea}
-                stroke={tema.palette.superficie.tarjeta}
-                strokeWidth="1.5"
-              >
-                <title>
-                  {`${formatearFecha(punto.fecha)} — ${etiquetaDeValor(punto.valor)}`}
-                  {punto.terapeuta ? ` — ${punto.terapeuta}` : ''}
-                </title>
-              </circle>
-            ))}
-        </g>
-
-        {/* Eje X: primera y última fecha. Poner una etiqueta por sesión las
-            amontona y no agrega nada; la fecha exacta de cada punto está en
-            su tooltip. */}
-        <line
-          x1={MARGEN.izquierda}
-          y1={ALTO - MARGEN.abajo}
-          x2={ANCHO - MARGEN.derecha}
-          y2={ALTO - MARGEN.abajo}
-          stroke={tema.palette.superficie.bordeFuerte}
-          strokeWidth="1"
-        />
+        {/* Fechas: primera y última. Una etiqueta por sesión las amontona y
+            no agrega nada; la fecha exacta de cada punto está en su
+            tooltip. */}
         <text
           x={MARGEN.izquierda}
-          y={ALTO - 10}
+          y={ALTO - 4}
           fontSize="12"
           fill={tema.palette.text.secondary}
         >
@@ -241,17 +283,20 @@ export default function GraficoEvolucion({ serie, titulo }) {
         {hasta !== desde && (
           <text
             x={ANCHO - MARGEN.derecha}
-            y={ALTO - 10}
+            y={ALTO - 4}
             textAnchor="end"
             fontSize="12"
             fill={tema.palette.text.secondary}
           >
-            {formatearFecha(puntos[puntos.length - 1].fecha)}
+            {/* El extremo derecho es la fecha de archivado cuando la hay:
+                es la que fija el dominio del eje. Poner la última sesión
+                mentiría sobre dónde termina el gráfico. */}
+            {formatearFecha(fechaArchivado ?? puntos[puntos.length - 1].fecha)}
           </text>
         )}
       </Box>
 
-      {calificados === 0 && (
+      {calificados.length === 0 && (
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
           Hubo {puntos.length} sesión(es) en el período y este objetivo no se
           calificó en ninguna.
