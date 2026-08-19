@@ -9,7 +9,6 @@
 # terapeuta logueado, y que el paciente tenga algun objetivo activo contra
 # el cual calificar.
 
-import datetime as dt
 import logging
 
 from sqlalchemy import text
@@ -31,11 +30,36 @@ def _resolver_periodo(desde, hasta, paciente):
     """
     Rango del historial de evolucion.
 
-    Sin fechas devuelve el TRATAMIENTO ENTERO —de `fecha_alta` a hoy— y ese
-    caso NO paga el tope de 366 dias. El tope existe para que nadie pida
-    "1900 a 2100"; recortar el default en cambio dejaria el grafico a medias
-    sin decirlo, que es peor que negarse. El default esta acotado por la
-    realidad del paciente, no por lo que pida el llamador.
+    Sin fechas devuelve el TRATAMIENTO ENTERO y ese caso NO paga el tope de
+    366 dias. El tope existe para que nadie pida "1900 a 2100"; recortar el
+    default en cambio dejaria el grafico a medias sin decirlo, que es peor
+    que negarse. El default esta acotado por la realidad del paciente, no
+    por lo que pida el llamador.
+
+    "Tratamiento entero" son sus SESIONES, no el almanaque. Hasta el
+    2026-08-19 esto devolvia `fecha_alta -> date.today()`, que decia una cosa
+    en el docstring y hacia otra: las dos mitades solo coinciden mientras
+    ninguna sesion caiga fuera de ese rango. Una terapeuta ocupacional
+    externa agendo una sesion para dos dias despues y le cargo la evolucion
+    en el acto; para un paciente dado de alta ese mismo dia la ventana media
+    UN dia, la sesion quedaba afuera, y con ella TODA la serie —las series
+    salen del FROM sesiones del procedimiento—. La ficha le contesto
+    "Todavia no hay nada que graficar" con el dato guardado. El borde de
+    abajo tenia el mismo defecto al reves: una sesion cargada con fecha
+    anterior al alta tampoco entraba.
+
+    Por eso los dos extremos salen de MIN/MAX de las sesiones del paciente,
+    ensanchados hasta `fecha_alta` para que un paciente sin ninguna sesion
+    siga teniendo un periodo con sentido en vez de dos None. Se eligio esto
+    y no "sin tope" justamente para que el default siga acotado por los
+    datos del paciente: sin tope, la ventana pasaria a depender del
+    almanaque y no de su tratamiento, que es lo contrario del contrato.
+
+    Sobre el tope de 366 dias: el default sigue sin pagarlo, a proposito. La
+    diferencia es que ahora no puede crecer sola —lo maximo que abarca es de
+    la primera a la ultima sesion que el paciente REALMENTE tiene—, asi que
+    un tratamiento largo se grafica entero y no hay forma de pedir un siglo
+    por esta puerta. Con fechas explicitas el tope se aplica igual.
 
     Con fechas explicitas se aplica la misma validacion que
     `GET /api/sesiones`: rango invertido y rango excesivo son errores, no
@@ -43,7 +67,18 @@ def _resolver_periodo(desde, hasta, paciente):
     la misma regla.
     """
     if not desde and not hasta:
-        return paciente.fecha_alta, dt.date.today(), True
+        # Una sola consulta para los dos extremos. MIN/MAX siempre devuelven
+        # una fila: sin sesiones son (None, None), no un resultado vacio.
+        primera, ultima = (
+            db.session.query(db.func.min(Sesion.fecha), db.func.max(Sesion.fecha))
+            .filter(Sesion.id_paciente == paciente.id)
+            .one()
+        )
+
+        fecha_desde = min(paciente.fecha_alta, primera) if primera else paciente.fecha_alta
+        fecha_hasta = max(paciente.fecha_alta, ultima) if ultima else paciente.fecha_alta
+
+        return fecha_desde, fecha_hasta, True
 
     return (*resolver_rango(desde, hasta), False)
 
