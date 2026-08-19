@@ -15,6 +15,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\..\lib\TestHelpers.ps1"
+. "$PSScriptRoot\..\lib\BaseDescartable.ps1"
 
 # Sin -TestDbName explicito, el nombre sale del rol de la terminal. Ver
 # Get-NombreBaseDePrueba: nombres fijos = dos terminales pisandose.
@@ -23,9 +24,21 @@ if (-not $PSBoundParameters.ContainsKey('TestDbName')) {
         -EjemploExplicito '.\build_test_db.ps1 -TestDbName mi_base'
 }
 
-if ($TestDbName -ieq "asisto") {
-    throw "No se permite usar 'asisto' como base de pruebas: es la base real de Terminal 1."
-}
+# ESTE SCRIPT TAMBIEN DESTRUYE: schema.sql arranca con DROP DATABASE, asi que
+# reconstruir sobre una base que ya existe la borra entera. Va con el mismo
+# permiso que el teardown.
+#
+# Se saco de aca el `if ($TestDbName -ieq "asisto") { throw }` por el mismo
+# motivo que en teardown_test_db.ps1: una excepcion con un nombre adentro solo
+# protege a los nombres que alguien se acordo de escribir.
+#
+# La regla queda coherente sin necesidad de nombrar a nadie:
+#   - la base NO existe  -> se crea (no hay nada que destruir, y todavia no
+#                           puede tener marca)
+#   - existe CON marca   -> la creo este script: se respalda y se rehace
+#   - existe SIN marca   -> no es nuestra. No se toca.
+Assert-BaseBorrable -Database $TestDbName
+$null = Invoke-RespaldoDeBase -Database $TestDbName -Motivo "build_test_db.ps1 (rehace la base)"
 
 $repoRoot = (Resolve-Path "$PSScriptRoot\..\..\..").Path
 $schemaPath = Join-Path $repoRoot "backend\database\schema.sql"
@@ -57,4 +70,9 @@ try {
     Remove-Item $tmpSchema, $tmpSeed -ErrorAction SilentlyContinue
 }
 
-Write-Output "Base de pruebas '$TestDbName' creada a partir de schema.sql + seed.sql."
+# La marca va AL FINAL y no antes: schema.sql empieza con DROP DATABASE, asi
+# que cualquier marca previa se la lleva puesta. Desde esta linea, y solo
+# desde esta linea, la base queda autorizada a ser borrada por el teardown.
+Set-MarcaDeBaseDescartable -Database $TestDbName -CreadaPor "tests/db/setup/build_test_db.ps1"
+
+Write-Output "Base de pruebas '$TestDbName' creada a partir de schema.sql + seed.sql (marcada como descartable)."

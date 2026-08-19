@@ -11,6 +11,12 @@ PROCEDIMIENTOS.md
 # sola de las dos entradas no cubre a la otra.
 diseño/
 diseno/
+# Respaldos automaticos de las bases de prueba, que toma
+# tests/db/lib/BaseDescartable.ps1 antes de cualquier borrado. Un dump de la
+# base de demostracion lleva nombres y diagnosticos: no va a git ni por
+# accidente.
+tests/db/_respaldos/
+
 .env
 .env.local
 __pycache__/
