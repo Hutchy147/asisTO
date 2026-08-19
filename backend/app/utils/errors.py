@@ -151,6 +151,10 @@ CAMPO_POR_FRAGMENTO = (
     ('no pertenece al paciente de esta sesion', 'id_objetivo'),
     ('sobre un objetivo archivado', 'id_objetivo'),
     ('el objetivo indicado no existe', 'id_objetivo'),
+    # Regla del objetivo posterior a la sesion (2026-08-19). Marca
+    # `id_objetivo` y no `id_sesion` a proposito: la sesion es un hecho ya
+    # ocurrido y no se mueve, el que esta mal elegido es el objetivo.
+    ('el objetivo se creo despues de esa sesion', 'id_objetivo'),
     ('ya tiene evoluciones registradas', 'id_paciente'),
 
     # --- Pacientes ---

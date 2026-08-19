@@ -1035,13 +1035,53 @@ END$$
 
 
 -- ---------------------------------------------------------------------
--- Reglas 2, 3 y 4 — validacion unificada de evoluciones.
+-- Reglas 2, 3 y 4 — validacion unificada de evoluciones, mas la regla del
+-- objetivo posterior a la sesion (2026-08-19).
 --
 -- Un solo trigger a proposito, no tres. Motivo: las tres validaciones
 -- necesitan los mismos dos SELECT (la sesion y el objetivo). Separarlas
 -- multiplicaria las consultas por tres para el mismo INSERT, y el orden
 -- de disparo entre triggers del mismo evento no seria explicito.
 -- Cada regla conserva su propio mensaje de error.
+--
+-- =====================================================================
+-- LA REGLA DEL OBJETIVO POSTERIOR A LA SESION (2026-08-19)
+--
+-- No se puede calificar una sesion contra un objetivo que todavia no
+-- existia cuando esa sesion ocurrio.
+--
+-- POR QUE ES UNA REGLA Y NO UNA MOLESTIA: `p_evolucion_paciente` arma las
+-- series con los objetivos VIVOS al momento de cada sesion
+-- (`o.fecha_creacion <= TIMESTAMP(s.fecha, s.hora_inicio)`), asi que una
+-- evolucion sobre un objetivo creado despues NO ENTRA EN NINGUNA SERIE,
+-- con cualquier rango de fechas que se pida. Es una escritura que la
+-- lectura no puede devolver nunca: el sistema la acepta, contesta 201, y
+-- despues no la muestra en ningun lado. Aceptar lo que no se puede leer es
+-- perdida silenciosa, y por eso se corta en la escritura.
+--
+-- Medido antes de aplicarla: en la base real `asisto` habia 1 fila asi
+-- sobre 460 evoluciones (la evolucion 460, contra un objetivo creado nueve
+-- dias despues de su sesion). En `seed.sql` y en `seed_demo.sql` recien
+-- cargados, CERO. Un trigger que afirma que algo no puede pasar mientras
+-- el seed lo hace seria peor que no tenerlo.
+--
+-- OJO: el trigger no arregla la fila que ya esta. Solo cierra la puerta.
+--
+-- POR QUE VA ULTIMA Y NO ANTES. El orden regla 4 -> regla 3 es
+-- load-bearing y esta justificado abajo; meterse en el medio le cambiaria
+-- el mensaje a casos que hoy ya se rechazan. Puesta al final, esta regla
+-- es estrictamente aditiva: no altera el veredicto de ninguna entrada que
+-- los triggers ya rechazaban, y solo habla cuando el objetivo ya demostro
+-- ser un objetivo legitimo de ese paciente y no archivado. Decirle a
+-- alguien "ese objetivo no existia todavia" sobre un objetivo que ademas
+-- es de otro paciente lo mandaria a corregir lo que no importa.
+--
+-- Locks: NO agrega ninguno. Las tres columnas nuevas —fecha, hora_inicio
+-- y fecha_creacion— salen de los mismos dos SELECT que ya estaban, con su
+-- mismo FOR SHARE y en el mismo orden
+-- (sesiones antes que objetivos_terapeuticos). No entra ninguna tabla
+-- nueva al orden de adquisicion.
+-- =====================================================================
 -- ---------------------------------------------------------------------
 CREATE TRIGGER trg_evoluciones_validar_insert
 BEFORE INSERT ON evoluciones
@@ -1051,6 +1091,9 @@ BEGIN
   DECLARE v_paciente_sesion   INT UNSIGNED DEFAULT NULL;
   DECLARE v_paciente_objetivo INT UNSIGNED DEFAULT NULL;
   DECLARE v_objetivo_activo   BOOLEAN      DEFAULT NULL;
+  DECLARE v_fecha_sesion      DATE         DEFAULT NULL;
+  DECLARE v_hora_sesion       TIME         DEFAULT NULL;
+  DECLARE v_objetivo_creado   DATETIME     DEFAULT NULL;
 
   -- Los dos SELECT llevan FOR SHARE, y no es decorativo. Ver NOTA DE
   -- CONCURRENCIA: sin lock, estas serian lecturas consistentes de MVCC y
@@ -1072,14 +1115,14 @@ BEGIN
   --
   -- ORDEN: sesiones primero, objetivos_terapeuticos despues. Igual en los
   -- dos triggers de evoluciones. Invertirlo en uno solo crea un deadlock.
-  SELECT estado, id_paciente
-    INTO v_estado_sesion, v_paciente_sesion
+  SELECT estado, id_paciente, fecha, hora_inicio
+    INTO v_estado_sesion, v_paciente_sesion, v_fecha_sesion, v_hora_sesion
     FROM sesiones
    WHERE id = NEW.id_sesion
    FOR SHARE;
 
-  SELECT id_paciente, activo
-    INTO v_paciente_objetivo, v_objetivo_activo
+  SELECT id_paciente, activo, fecha_creacion
+    INTO v_paciente_objetivo, v_objetivo_activo, v_objetivo_creado
     FROM objetivos_terapeuticos
    WHERE id = NEW.id_objetivo
    FOR SHARE;
@@ -1121,6 +1164,15 @@ BEGIN
       SET MESSAGE_TEXT =
         'El objetivo evaluado no pertenece al paciente de esta sesion';
   END IF;
+
+  -- Objetivo posterior a la sesion. VA ULTIMA a proposito: ver el bloque
+  -- del encabezado. Es la unica de las cuatro que no cambia el veredicto
+  -- de ninguna entrada que las otras tres ya rechazaban.
+  IF v_objetivo_creado > TIMESTAMP(v_fecha_sesion, v_hora_sesion) THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT =
+        'No se puede cargar evolucion: el objetivo se creo despues de esa sesion';
+  END IF;
 END$$
 
 
@@ -1145,6 +1197,9 @@ BEGIN
   DECLARE v_paciente_sesion   INT UNSIGNED DEFAULT NULL;
   DECLARE v_paciente_objetivo INT UNSIGNED DEFAULT NULL;
   DECLARE v_objetivo_activo   BOOLEAN      DEFAULT NULL;
+  DECLARE v_fecha_sesion      DATE         DEFAULT NULL;
+  DECLARE v_hora_sesion       TIME         DEFAULT NULL;
+  DECLARE v_objetivo_creado   DATETIME     DEFAULT NULL;
 
   -- Los dos SELECT llevan FOR SHARE, y no es decorativo. Ver NOTA DE
   -- CONCURRENCIA: sin lock, estas serian lecturas consistentes de MVCC y
@@ -1166,14 +1221,14 @@ BEGIN
   --
   -- ORDEN: sesiones primero, objetivos_terapeuticos despues. Igual en los
   -- dos triggers de evoluciones. Invertirlo en uno solo crea un deadlock.
-  SELECT estado, id_paciente
-    INTO v_estado_sesion, v_paciente_sesion
+  SELECT estado, id_paciente, fecha, hora_inicio
+    INTO v_estado_sesion, v_paciente_sesion, v_fecha_sesion, v_hora_sesion
     FROM sesiones
    WHERE id = NEW.id_sesion
    FOR SHARE;
 
-  SELECT id_paciente, activo
-    INTO v_paciente_objetivo, v_objetivo_activo
+  SELECT id_paciente, activo, fecha_creacion
+    INTO v_paciente_objetivo, v_objetivo_activo, v_objetivo_creado
     FROM objetivos_terapeuticos
    WHERE id = NEW.id_objetivo
    FOR SHARE;
@@ -1212,6 +1267,15 @@ BEGIN
     SIGNAL SQLSTATE '45000'
       SET MESSAGE_TEXT =
         'El objetivo evaluado no pertenece al paciente de esta sesion';
+  END IF;
+
+  -- Objetivo posterior a la sesion. VA ULTIMA a proposito: ver el bloque
+  -- del encabezado. Es la unica de las cuatro que no cambia el veredicto
+  -- de ninguna entrada que las otras tres ya rechazaban.
+  IF v_objetivo_creado > TIMESTAMP(v_fecha_sesion, v_hora_sesion) THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT =
+        'No se puede cargar evolucion: el objetivo se creo despues de esa sesion';
   END IF;
 END$$
 
