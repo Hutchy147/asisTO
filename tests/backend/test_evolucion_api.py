@@ -298,12 +298,21 @@ class TestNingunaEvolucionAceptadaQuedaInvisible(unittest.TestCase):
     esta en el fixture no esta probado por mas que el test exista. Es la misma
     leccion que dejo el par de marcas del mismo dia.
 
-    ESTE TEST NO ELIGE LA CORRECCION, y es deliberado. Hay al menos dos
-    salidas —ampliar la ventana por defecto hasta la ultima sesion del
-    paciente, o rechazar la evolucion sobre una sesion que todavia no ocurrio—
-    y cual corresponde es decision de producto, no de auditoria. Por eso cada
-    caso acepta las dos: si el POST se rechaza, la evolucion invisible no puede
-    existir y la invariante se cumple sola.
+    LAS DOS PUERTAS NO ESTAN EN EL MISMO ESTADO, y conviene no confundirlas:
+
+    - La PRIMERA no es una decision abierta: ya esta decidida y escrita.
+      ESTADO.md:1723-1727 dice que sin fechas el endpoint devuelve el
+      "tratamiento entero", que ese caso no paga el tope de 366 dias, y el
+      motivo textual es que "recortarlo dejaria el grafico a medias sin
+      decirlo" — que es exactamente lo que paso. `fecha_alta -> date.today()`
+      no cumple ese contrato. Ahi no hay que elegir nada: hay que cumplirlo.
+    - La SEGUNDA (objetivo creado despues de la sesion) si es decision
+      abierta, y este archivo no la toma.
+
+    Lo que ninguno de los dos casos hace es imponer POR DONDE se cumple. Si el
+    sistema pasa a rechazar la evolucion sobre una sesion que todavia no
+    ocurrio, la evolucion invisible no puede existir y la invariante se cumple
+    igual: por eso `_exigir_visible` acepta las dos salidas.
     """
 
     @classmethod
@@ -430,8 +439,19 @@ class TestNingunaEvolucionAceptadaQuedaInvisible(unittest.TestCase):
         La ventana por defecto es `fecha_alta` -> `date.today()`
         (evoluciones_service.py:46), asi que una sesion posterior a hoy queda
         afuera y con ella TODA la serie: no hay objetivos, no hay puntos, no hay
-        grafico. El sistema ya sabe en otro lado que una sesion que no ocurrio
-        no se califica —`pendientes-evolucion` la excluye por fecha
+        grafico.
+
+        ESTO CONTRADICE UN CONTRATO YA ESCRITO, no es una alternativa de
+        diseno. ESTADO.md:1723-1727: "Sin fechas devuelve el tratamiento entero
+        y ese caso no paga el tope de 366 dias: el default esta acotado por la
+        realidad del paciente, no por lo que pida el llamador, y recortarlo
+        dejaria el grafico a medias sin decirlo". El propio docstring de
+        `_resolver_periodo` repite "el TRATAMIENTO ENTERO" y en la misma frase
+        lo implementa como "de fecha_alta a hoy": las dos mitades solo
+        coinciden mientras ninguna sesion caiga despues de hoy.
+
+        El sistema ya sabe en otro lado que una sesion que no ocurrio no se
+        califica —`pendientes-evolucion` la excluye por fecha
         (sesiones_service.py:239-240)— pero eso es un filtro de listado, no una
         regla, y el camino de escritura no lo aplica.
         """
