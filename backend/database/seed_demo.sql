@@ -6,7 +6,7 @@
 --
 --   seed.sql       3 pacientes, 10 sesiones. Es el que usan los tests:
 --                  chico, estable y con id conocidos.
---   seed_demo.sql  15 pacientes, ~7 semanas de agenda. Es para ver como se
+--   seed_demo.sql  17 pacientes, ~7 semanas de agenda. Es para ver como se
 --                  comporta la interfaz con datos parecidos a los reales
 --                  y para las pruebas con personas.
 --
@@ -84,9 +84,9 @@ INSERT INTO familiares (id, id_usuario, parentesco, telefono) VALUES
 
 
 -- =====================================================================
--- PACIENTES — 15
+-- PACIENTES — 17
 --
--- 10 SIN login (id_usuario NULL): menores, es lo normal. 5 CON login.
+-- 12 SIN login (id_usuario NULL): menores, es lo normal. 5 CON login.
 -- El contraste es intencional (regla 5) y no hay que "normalizarlo".
 -- =====================================================================
 INSERT INTO pacientes
@@ -120,7 +120,12 @@ INSERT INTO pacientes
   -- ficha en modo lectura salia vacia y el grafico de evolucion tambien. El
   -- caso interesante no era demostrable en la base de la demo.
   (16, NULL, 'Ignacio',   'Rivas',     '2011-04-25', 'Alta por cumplimiento de objetivos.',                                     'HC-0016', TRUE,
-   DATE_SUB(CURDATE(), INTERVAL 150 DAY));
+   DATE_SUB(CURDATE(), INTERVAL 150 DAY)),
+  -- Paciente RECIEN INGRESADO, con objetivos en FORMATO REAL DE TO.
+  -- Ver el bloque "OBJETIVOS DEL PACIENTE 17" mas abajo, que explica de
+  -- donde sale y por que la identidad esta cambiada.
+  (17, NULL, 'Damian',    'Bustos',    '2009-06-30', 'Discapacidad intelectual leve. Planificacion motora, motricidad fina y autonomia en el vestido.', 'HC-0017', TRUE,
+   DATE_SUB(CURDATE(), INTERVAL 4 DAY));
 
 
 -- =====================================================================
@@ -485,6 +490,63 @@ UPDATE pacientes
    SET activo = FALSE,
        fecha_baja = DATE_SUB(CURDATE(), INTERVAL 90 DAY)
  WHERE id = 16;
+
+
+-- =====================================================================
+-- OBJETIVOS DEL PACIENTE 17 — el formato real, medido contra un caso real
+--
+-- DE DONDE SALE. El 2026-08-15 una terapeuta ocupacional externa uso el
+-- sistema sin que nadie le explicara nada y cargo un paciente con tres
+-- objetivos. Es la unica muestra que tuvo este proyecto de como escribe una
+-- TO cuando no la esta mirando nadie, y desmintio de primera mano el
+-- supuesto con el que se valido toda la Entrega 1: sus tres objetivos miden
+-- 145, 210 y 182 caracteres contra los 46-56 del resto del seed.
+--
+-- IDENTIDAD CAMBIADA, Y NO ES UN DETALLE. Lo que se conserva es la FORMA:
+-- el largo exacto (145 / 210 / 182), el verbo de logro, la conducta
+-- observable, el nivel de apoyo, el criterio de medicion, el contexto y el
+-- plazo. Lo que NO entra al repositorio es su texto: nombre, fecha de
+-- nacimiento, diagnostico y las conductas concretas estan cambiados, porque
+-- detras de ese registro puede haber un chico real y la autorizacion de la
+-- terapeuta no alcanza para el. Damian Bustos es un paciente ficticio de
+-- este archivo, igual que Tomas Aguirre e Ignacio Rivas. El material
+-- original queda fuera del repositorio.
+--
+-- POR QUE SIN TILDES. Todo el dato de este seed es ASCII —los unicos bytes
+-- altos del archivo son guiones largos de comentario— y aca se respeta.
+-- Ojo con una en particular: "ano" sin la enie no es la palabra que se
+-- quiere en un texto clinico, asi que el plazo va como "del primer semestre
+-- del 2026", igual que el objetivo largo del paciente 1.
+--
+-- POR QUE NO HAY SESIONES NI EVOLUCION. Ella tambien agendo una sesion (dos
+-- dias en el futuro) y le cargo la evolucion en el acto. Ese caso NO se
+-- siembra: mete en el fixture una sesion futura declarada "completa", que
+-- es justo el hallazgo abierto sobre el default del modal de sesiones. El
+-- paciente queda con objetivos y sin agenda, que es el estado real de
+-- cualquier alta reciente. Sin sesiones no hay serie que graficar y la
+-- pestania Progreso muestra su estado vacio, que aca SI es verdadero.
+--
+-- Los tres se crean el mismo dia del alta y de noche, con pocos minutos
+-- entre uno y otro, porque asi se cargaron: es parte del registro de como
+-- se usa el sistema de verdad.
+-- =====================================================================
+INSERT INTO objetivos_terapeuticos (id_paciente, descripcion, activo, fecha_creacion) VALUES
+  (17,
+   'Que Damian logre subir y bajar escaleras alternando los pies, con '
+   'supervision cercana del terapeuta a cargo, durante el primer semestre '
+   'del 2026.',
+   TRUE, TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 4 DAY), '22:14:00')),
+  (17,
+   'Que Damian logre abrochar botones medianos en prendas cotidianas '
+   '(camisa y campera), con asistencia fisica y verbal, en 2 de 3 '
+   'oportunidades, en el contexto del consultorio, durante el primer '
+   'semestre del 2026.',
+   TRUE, TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 4 DAY), '22:16:00')),
+  (17,
+   'Que Damian logre servirse agua de una jarra liviana sin derramar sobre '
+   'la mesada, con asistencia moderada del terapeuta, en 2 de 5 '
+   'oportunidades, durante el primer semestre del 2026.',
+   TRUE, TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 4 DAY), '22:20:00'));
 
 
 -- =====================================================================
