@@ -27,6 +27,7 @@ from app import db
 from sqlalchemy import text
 
 MARCA_HISTORIA = 'HC-TEST-GRAF'
+MARCA_INVISIBLE = 'HC-TEST-INVIS'
 DIAS_DE_TRATAMIENTO_LARGO = 800     # bastante mas que el tope de 366
 MAXIMO_DIAS_RANGO = 366             # el de sesiones_service, replicado aca a
                                     # proposito: si cambia alla, estos tests
@@ -270,6 +271,208 @@ class TestEvolucionAPI(unittest.TestCase):
     def test_paciente_inexistente_da_404(self):
         resp = self._pedir(id_paciente=999999)
         self.assertEqual(resp.status_code, 404, resp.get_json())
+
+
+class TestNingunaEvolucionAceptadaQuedaInvisible(unittest.TestCase):
+    """
+    UNA sola invariante, por dos puertas distintas:
+
+        si el sistema ACEPTO guardar una evolucion, esa evolucion tiene que
+        aparecer en el grafico que la ficha pide por defecto.
+
+    Sale de un defecto reportado por una terapeuta ocupacional externa que uso
+    el sistema sin que nadie le explicara nada (2026-08-15): cargo paciente,
+    tres objetivos, una sesion y una evolucion, y la pestania Progreso le
+    contesto "Todavia no hay nada que graficar". El dato estaba guardado: lo que
+    no lo alcanzaba era la ventana por defecto del endpoint.
+
+    POR QUE NO ALCANZA LA ASERCION QUE YA EXISTE. tests/db/graficos tiene
+    `ninguna_evolucion_queda_fuera_de_su_serie`, que mide lo mismo — pero llama
+    al procedimiento con un rango EXPLICITO de 2000-01-01 a 2100-01-01. Ninguna
+    ventana puede fallar cuando se le pasa un siglo de ancho. La ventana por
+    defecto no vive en SQL sino en `_resolver_periodo`
+    (evoluciones_service.py), asi que solo se puede medir desde aca.
+
+    EL FIXTURE ES PROPIO A PROPOSITO. El seed no tiene ninguna sesion futura ni
+    ningun objetivo creado despues de la sesion que califica, y un caso que no
+    esta en el fixture no esta probado por mas que el test exista. Es la misma
+    leccion que dejo el par de marcas del mismo dia.
+
+    ESTE TEST NO ELIGE LA CORRECCION, y es deliberado. Hay al menos dos
+    salidas —ampliar la ventana por defecto hasta la ultima sesion del
+    paciente, o rechazar la evolucion sobre una sesion que todavia no ocurrio—
+    y cual corresponde es decision de producto, no de auditoria. Por eso cada
+    caso acepta las dos: si el POST se rechaza, la evolucion invisible no puede
+    existir y la invariante se cumple sola.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = e.obtener_app()
+        cls.laura_id, cls.laura_rol, _ = e.obtener_usuario_por_email(
+            e.EMAILS_SEED['terapeuta'])
+        cls.tok = e.token_valido(
+            cls.laura_id, cls.laura_rol, e.EMAILS_SEED['terapeuta'])
+        cls._limpiar()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._limpiar()
+
+    @classmethod
+    def _limpiar(cls):
+        with cls.app.app_context():
+            for sentencia in (
+                'DELETE ev FROM evoluciones ev JOIN sesiones s ON s.id = ev.id_sesion '
+                ' JOIN pacientes p ON p.id = s.id_paciente WHERE p.nro_historia LIKE :m',
+                'DELETE s FROM sesiones s JOIN pacientes p ON p.id = s.id_paciente '
+                ' WHERE p.nro_historia LIKE :m',
+                'DELETE o FROM objetivos_terapeuticos o JOIN pacientes p ON p.id = o.id_paciente '
+                ' WHERE p.nro_historia LIKE :m',
+                'DELETE FROM pacientes WHERE nro_historia LIKE :m',
+            ):
+                db.session.execute(text(sentencia), {'m': MARCA_INVISIBLE + '%'})
+            db.session.commit()
+
+    def setUp(self):
+        self.cliente = e.cliente()
+
+    # --- utilidades de siembra ------------------------------------------
+
+    def _sembrar_paciente(self, sufijo, alta):
+        with self.app.app_context():
+            db.session.execute(text(
+                'INSERT INTO pacientes (id_usuario,nombre,apellido,fecha_nacimiento,'
+                'nro_historia,activo,fecha_alta) '
+                "VALUES (NULL,'Invisible',:ap,'2007-02-14',:hc,TRUE,:alta)"),
+                {'ap': sufijo, 'hc': f'{MARCA_INVISIBLE}-{sufijo}', 'alta': alta})
+            id_paciente = db.session.execute(text('SELECT LAST_INSERT_ID()')).scalar()
+            db.session.commit()
+        return id_paciente
+
+    def _sembrar_objetivo(self, id_paciente, descripcion, fecha_creacion=None):
+        with self.app.app_context():
+            db.session.execute(text(
+                'INSERT INTO objetivos_terapeuticos (id_paciente,descripcion,activo) '
+                'VALUES (:p,:d,TRUE)'), {'p': id_paciente, 'd': descripcion})
+            id_objetivo = db.session.execute(text('SELECT LAST_INSERT_ID()')).scalar()
+            if fecha_creacion is not None:
+                db.session.execute(text(
+                    'UPDATE objetivos_terapeuticos SET fecha_creacion = :f WHERE id = :o'),
+                    {'f': fecha_creacion, 'o': id_objetivo})
+            db.session.commit()
+        return id_objetivo
+
+    def _sembrar_sesion(self, id_paciente, fecha, hora='08:00:00'):
+        # hora_fin se calcula: hardcodearla ya rompio este fixture con un
+        # `ERROR 1644: La hora de fin debe ser posterior a la hora de inicio`
+        # apenas se movio la hora de inicio de una sesion.
+        inicio = dt.datetime.combine(dt.date(2000, 1, 1), dt.time.fromisoformat(hora))
+        fin = (inicio + dt.timedelta(minutes=45)).time().isoformat()
+        with self.app.app_context():
+            db.session.execute(text(
+                'INSERT INTO sesiones (id_terapeuta,id_paciente,fecha,hora_inicio,'
+                "hora_fin,estado) VALUES (1,:p,:f,:h,:hf,'completa')"),
+                {'p': id_paciente, 'f': fecha, 'h': hora, 'hf': fin})
+            id_sesion = db.session.execute(text('SELECT LAST_INSERT_ID()')).scalar()
+            db.session.commit()
+        return id_sesion
+
+    def _cargar_evolucion(self, id_sesion, id_objetivo, valor=2):
+        return self.cliente.post('/api/evoluciones', json={
+            'id_sesion': id_sesion, 'id_objetivo': id_objetivo, 'valor': valor,
+            'observaciones': 'INVIS observacion de la terapeuta',
+        }, headers=e.encabezado_auth(self.tok))
+
+    def _grafico_por_defecto(self, id_paciente):
+        """La pestania Progreso pide SIN fechas. Es el unico camino que la ficha usa."""
+        resp = self.cliente.get(f'/api/pacientes/{id_paciente}/evolucion',
+                                headers=e.encabezado_auth(self.tok))
+        self.assertEqual(resp.status_code, 200, resp.get_json())
+        return resp.get_json()
+
+    def _exigir_visible(self, id_paciente, respuesta_post, como_entro):
+        """
+        La invariante, escrita una sola vez.
+
+        Si el POST fue rechazado, el caso no puede existir y no hay nada que
+        exigir: esa es la otra correccion posible y tambien cierra el agujero.
+        """
+        if respuesta_post.status_code != 201:
+            return
+
+        cuerpo = self._grafico_por_defecto(id_paciente)
+        series = cuerpo['objetivos']
+        puntos = sum(len(s['puntos']) for s in series)
+        self.assertGreaterEqual(
+            cuerpo['total_calificados'], 1,
+            f'El sistema acepto guardar la evolucion ({como_entro}) y el grafico '
+            f'que pide la ficha —sin fechas— no la muestra.\n'
+            f'  periodo devuelto : {cuerpo["periodo"]}\n'
+            f'  series           : {len(series)}\n'
+            f'  puntos           : {puntos}\n'
+            f'  calificados      : {cuerpo["total_calificados"]}\n'
+            f'  mensaje del proc.: {cuerpo["mensaje"]!r}\n'
+            'Con cero series la ficha dibuja el estado vacio "Todavia no hay nada '
+            'que graficar" (PacienteFicha.jsx:345), que afirma algo falso: el dato '
+            'esta guardado. Este test se apaga cuando el dato deja de ser '
+            'invisible, sea porque el grafico pasa a alcanzarlo o porque el '
+            'sistema deja de aceptar que se cargue asi. Cual de las dos es la '
+            'correccion no lo decide este archivo.')
+
+    # --- puerta 1: la sesion todavia no ocurrio --------------------------
+
+    def test_evolucion_sobre_sesion_futura_aparece_en_el_grafico(self):
+        """
+        El caso literal de la TO: alta hoy, sesion agendada para pasado maniana,
+        evolucion cargada en el acto.
+
+        La ventana por defecto es `fecha_alta` -> `date.today()`
+        (evoluciones_service.py:46), asi que una sesion posterior a hoy queda
+        afuera y con ella TODA la serie: no hay objetivos, no hay puntos, no hay
+        grafico. El sistema ya sabe en otro lado que una sesion que no ocurrio
+        no se califica —`pendientes-evolucion` la excluye por fecha
+        (sesiones_service.py:239-240)— pero eso es un filtro de listado, no una
+        regla, y el camino de escritura no lo aplica.
+        """
+        hoy = dt.date.today()
+        id_paciente = self._sembrar_paciente('FUT', hoy)
+        objetivo = self._sembrar_objetivo(id_paciente, 'INVIS objetivo de sesion futura')
+        sesion = self._sembrar_sesion(id_paciente, hoy + dt.timedelta(days=2))
+
+        post = self._cargar_evolucion(sesion, objetivo)
+        self._exigir_visible(
+            id_paciente, post,
+            'sobre una sesion agendada para dentro de dos dias')
+
+    # --- puerta 2: el objetivo se creo despues de la sesion --------------
+
+    def test_evolucion_sobre_objetivo_creado_despues_de_la_sesion_aparece(self):
+        """
+        La misma invariante por la otra puerta, y esta esta VIVA en la base real:
+        la evolucion 460 de `asisto` califica la sesion 584 (2026-08-05 13:00)
+        contra el objetivo 47, creado el 2026-08-14 20:28 — nueve dias despues—.
+
+        La condicion de vida del procedimiento pide
+        `o.fecha_creacion <= TIMESTAMP(s.fecha, s.hora_inicio)` (schema.sql:2248),
+        asi que ese objetivo no es serie de esa sesion y la evolucion no entra en
+        ningun grafico. Aca la sesion esta en el PASADO: si este caso queda en
+        rojo cuando el de la sesion futura ya este verde, son dos defectos y no
+        uno.
+        """
+        hoy = dt.date.today()
+        id_paciente = self._sembrar_paciente('TARDE', hoy - dt.timedelta(days=30))
+        sesion = self._sembrar_sesion(
+            id_paciente, hoy - dt.timedelta(days=7), hora='09:00:00')
+        # El objetivo se crea HOY: despues de la sesion que va a calificar.
+        objetivo = self._sembrar_objetivo(
+            id_paciente, 'INVIS objetivo creado despues de la sesion',
+            fecha_creacion=dt.datetime.now())
+
+        post = self._cargar_evolucion(sesion, objetivo, valor=4)
+        self._exigir_visible(
+            id_paciente, post,
+            'contra un objetivo creado despues de esa sesion')
 
 
 if __name__ == '__main__':
