@@ -59,8 +59,8 @@ export default function ModalAltaPaciente({ abierto, onCerrar, onCreado }) {
       onSeguirEditando={formulario.seguirEditando}
       onDescartar={formulario.descartar}
       onEnviar={formulario.enviar}
-      etiquetaEnviar="Dar de alta"
-      etiquetaGuardando="Dando de alta…"
+      etiquetaEnviar="Ingreso"
+      etiquetaGuardando="cargando ingreso. . ."
     >
       <CampoTexto
         id="paciente-nombre"
