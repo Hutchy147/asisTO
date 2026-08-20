@@ -1,0 +1,9 @@
+{
+  "name": "asisto-tests-ui",
+  "private": true,
+  "type": "module",
+  "description": "Sonda de UI de auditoria. Aislada del frontend a proposito: no toca frontend/package.json ni las dependencias de la aplicacion.",
+  "devDependencies": {
+    "playwright-core": "^1.49.0"
+  }
+}
