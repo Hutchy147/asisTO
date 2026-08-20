@@ -24,6 +24,7 @@ import DialogoConfirmacion from '../components/modal/DialogoConfirmacion.jsx';
 import { ObjetivoActivo, ObjetivoArchivado } from '../components/objetivos/FilaObjetivo.jsx';
 import ModalObjetivo from '../components/objetivos/ModalObjetivo.jsx';
 import ModalEditarPaciente from '../components/pacientes/ModalEditarPaciente.jsx';
+import ModalDetalleSesion from '../components/sesiones/ModalDetalleSesion.jsx';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { archivarObjetivo, listarObjetivosDePaciente } from '../services/objetivosService.js';
@@ -97,6 +98,9 @@ export default function PacienteFicha() {
   const [aArchivar, setAArchivar] = useState(null);
   const [archivando, setArchivando] = useState(false);
   const [idEvolucion, setIdEvolucion] = useState(null);
+  // El historial abre la vista de LECTURA. Cargar evolución sale de ahí
+  // adentro, y solo cuando corresponde. Ver ModalDetalleSesion.
+  const [idDetalle, setIdDetalle] = useState(null);
   const [aviso, setAviso] = useState('');
   const [editando, setEditando] = useState(false);
   // null | { cargando } | { objetivos_activos, asignaciones_vigentes }
@@ -496,11 +500,17 @@ export default function PacienteFicha() {
                 // Las filas se abren. Es el único camino por el que se
                 // llega a una sesión de OTRO terapeuta: el calendario solo
                 // muestra las propias, y esta pestaña trae las de todos.
+                //
+                // Abren la vista de LECTURA y no el formulario de carga.
+                // Hasta el 2026-08-20 abrían el formulario, y por eso lo
+                // que se había registrado en la sesión —notas y
+                // observaciones— no se podía leer en ninguna pantalla: el
+                // historial es un contexto de consulta, no de escritura.
                 <DataTable
                   columnas={columnasSesiones}
                   filas={sesiones.datos.sesiones}
-                  onAbrirFila={(s) => setIdEvolucion(s.id)}
-                  etiquetaFila={(s) => `Abrir la sesión del ${formatearFecha(s.fecha)}`}
+                  onAbrirFila={(s) => setIdDetalle(s.id)}
+                  etiquetaFila={(s) => `Ver el registro de la sesión del ${formatearFecha(s.fecha)}`}
                 />
               )}
             </Seccion>
@@ -585,6 +595,19 @@ export default function PacienteFicha() {
         cuáles retomar creándolos de nuevo. Las asignaciones cerradas tampoco se
         reabren.
       </DialogoConfirmacion>
+
+      <ModalDetalleSesion
+        key={`detalle-${idDetalle ?? 'sin-sesion'}`}
+        abierto={Boolean(idDetalle)}
+        idSesion={idDetalle}
+        onCerrar={() => setIdDetalle(null)}
+        // Se cierra la lectura y se abre la carga. Uno a la vez: dos
+        // diálogos apilados dejan al de atrás inerte pero visible.
+        onCargarEvolucion={(id) => {
+          setIdDetalle(null);
+          setIdEvolucion(id);
+        }}
+      />
 
       <ModalCargarEvolucion
         key={idEvolucion ?? 'sin-sesion'}

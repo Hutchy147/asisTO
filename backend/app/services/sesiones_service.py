@@ -340,6 +340,38 @@ def obtener_detalle(id_sesion):
     datos['es_propia'] = sesion.id_terapeuta == terapeuta_actual().id
     datos['objetivos'] = conteo
 
+    # La descripcion del objetivo viaja PEGADA a cada evolucion, y no se
+    # deduce cruzando contra `objetivos_activos`. El motivo es que ese cruce
+    # falla justo donde importa: un objetivo calificado en marzo puede estar
+    # archivado hoy, y entonces NO esta en esa lista. La vista de lectura
+    # mostraria una calificacion sin poder decir de que objetivo es.
+    #
+    # Es el mismo criterio que ya aplica p_evolucion_paciente para armar las
+    # series: de una sesion pasada se muestra lo que estaba vivo EN ESA
+    # SESION, no lo que sigue activo hoy.
+    objetivos_calificados = {}
+    if evoluciones:
+        objetivos_calificados = {
+            o.id: o
+            for o in ObjetivoTerapeutico.query.filter(
+                ObjetivoTerapeutico.id.in_([e.id_objetivo for e in evoluciones])
+            ).all()
+        }
+
+    evoluciones_datos = []
+    for evolucion in evoluciones:
+        item = evolucion.to_dict()
+        objetivo = objetivos_calificados.get(evolucion.id_objetivo)
+        # None solo si la fila del objetivo ya no existe. Hoy no puede pasar
+        # —la FK lo impide y el borrado esta bloqueado— pero la vista tiene
+        # que poder dibujar algo en vez de romper.
+        item['objetivo'] = {
+            'id': objetivo.id,
+            'descripcion': objetivo.descripcion,
+            'activo': bool(objetivo.activo),
+        } if objetivo else None
+        evoluciones_datos.append(item)
+
     return {
         'sesion': datos,
         'paciente': sesion.paciente.to_dict_clinico(),
@@ -347,7 +379,7 @@ def obtener_detalle(id_sesion):
             'id': sesion.id_terapeuta,
             'nombre_completo': usuario_terapeuta.nombre_completo if usuario_terapeuta else None,
         },
-        'evoluciones': [e.to_dict() for e in evoluciones],
+        'evoluciones': evoluciones_datos,
         # Contra que se puede calificar. Si viene vacio, el paciente no
         # tiene objetivos activos y no hay nada que evaluar todavia.
         'objetivos_activos': [o.to_dict() for o in objetivos],
