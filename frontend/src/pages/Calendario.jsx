@@ -15,7 +15,7 @@ import { Cargando, EstadoError } from '../components/estado/index.js';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { listarPacientes } from '../services/pacientesService.js';
 import { ETIQUETA_ESTADO, faltaEvolucion, listarSesiones } from '../services/sesionesService.js';
-import { formatearFecha } from '../utils/fechas.js';
+import { formatearFecha, formatearFechaCorta } from '../utils/fechas.js';
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 const HORA_INICIO = 8;
@@ -217,16 +217,110 @@ export default function Calendario() {
         </Button>
       }
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-        <Button size="small" variant="outlined" onClick={() => mover(-1)}>
-          Semana anterior
-        </Button>
-        <Button size="small" variant="outlined" onClick={() => setLunes(inicioDeSemana(new Date()))}>
-          Esta semana
-        </Button>
-        <Button size="small" variant="outlined" onClick={() => mover(1)}>
-          Semana siguiente
-        </Button>
+      {/* --- Navegación entre semanas ---
+          Rehecha el 2026-08-20 por observación directa: una terapeuta
+          ocupacional NO ENCONTRÓ estos controles, y sin poder moverse entre
+          semanas no llegó a probar ni la planificación ni la consulta de
+          días anteriores. Lo que estaba mal, medido en el navegador:
+
+            texto  13 px, #3E8E7E sobre #F6F4F0  -> contraste 3.56:1 (AA pide 4.5)
+            borde  el mismo color al 50 % de alfa -> 1.79:1, casi invisible
+            alto   30 px contra los 37 del boton de accion de la pantalla
+
+          Y sobre todo: los tres tenían EXACTAMENTE el mismo peso visual que
+          la leyenda de colores de al lado, que no es interactiva. Tres
+          controles y una leyenda se veían igual.
+
+          Van sobre una barra de superficie propia para separarse del fondo,
+          con texto navy —el mismo `text.primary` de la pantalla— y el rango
+          de fechas EN EL MEDIO de los dos botones: saber en qué semana estás
+          parado es la mitad del problema, y esa información vivía sola en el
+          subtítulo del encabezado, lejos y en gris. */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2, flexWrap: 'wrap' }}>
+        <Box
+          sx={(t) => ({
+            display: 'flex',
+            alignItems: 'stretch',
+            backgroundColor: t.palette.superficie.tarjeta,
+            border: `1px solid ${t.palette.superficie.borde}`,
+            borderRadius: `${t.formas.sm}px`,
+            overflow: 'hidden',
+          })}
+        >
+          <Button
+            onClick={() => mover(-1)}
+            sx={{ px: 2, borderRadius: 0, color: 'text.primary', fontWeight: 600, whiteSpace: 'nowrap' }}
+          >
+            ‹ Semana anterior
+          </Button>
+
+          <Box
+            sx={(t) => ({
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              px: 2,
+              borderLeft: `1px solid ${t.palette.superficie.borde}`,
+              borderRight: `1px solid ${t.palette.superficie.borde}`,
+              backgroundColor: t.palette.superficie.hundida,
+            })}
+          >
+            {/* Sin año: lo dice el subtítulo del encabezado dos líneas más
+                arriba, y con el año la barra pedía 844 px de ancho cuando el
+                área de contenido da 820 en el mínimo declarado del
+                calendario. Medido, no estimado.
+
+                nowrap: un rango partido en dos renglones deja de leerse como
+                un rango, y estiraba la barra entera a 65 px. */}
+            <Box
+              component="span"
+              className="tabular"
+              sx={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}
+            >
+              {formatearFechaCorta(desde)} al {formatearFechaCorta(hasta)}
+            </Box>
+            {enSemanaActual && (
+              <Box
+                component="span"
+                sx={(t) => ({
+                  flex: 'none',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: 0.4,
+                  textTransform: 'uppercase',
+                  color: t.palette.primary.contrastText,
+                  // primary.dark y no primary.main: a 11 px el blanco sobre
+                  // el eucalipto claro da 3.91:1 y AA pide 4.5. Medido en el
+                  // navegador, no elegido de memoria.
+                  backgroundColor: t.palette.primary.dark,
+                  borderRadius: `${t.formas.pill}px`,
+                  px: 0.9,
+                  py: '1px',
+                  whiteSpace: 'nowrap',
+                })}
+              >
+                Esta semana
+              </Box>
+            )}
+          </Box>
+
+          <Button
+            onClick={() => mover(1)}
+            sx={{ px: 2, borderRadius: 0, color: 'text.primary', fontWeight: 600, whiteSpace: 'nowrap' }}
+          >
+            Semana siguiente ›
+          </Button>
+        </Box>
+
+        {/* Aparece SOLO cuando estás fuera de la semana actual. Su ausencia
+            es en sí misma la señal de que ya estás parado en ella, y evita
+            un botón que no hace nada. */}
+        {!enSemanaActual && (
+          <Button variant="outlined" onClick={() => setLunes(inicioDeSemana(new Date()))}>
+            Volver a esta semana
+          </Button>
+        )}
+
         <Box sx={{ flex: 1 }} />
         <Leyenda />
       </Box>
