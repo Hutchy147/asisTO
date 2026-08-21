@@ -131,8 +131,12 @@ if ($noCorrio -gt 0) {
     Write-Host ""
     Write-Host "  La sonda de UI necesita, en este orden:" -ForegroundColor Yellow
     Write-Host "    1. pnpm install en tests/frontend (una sola vez)"
-    Write-Host "    2. MySQL levantado y backend/.env armado"
-    Write-Host "    3. los puertos $PuertoVite y $PuertoApi libres (se cambian con -PuertoVite / -PuertoApi)"
+    Write-Host "    2. Google Chrome instalado. playwright-core NO descarga navegadores:"
+    Write-Host "       usa el Chrome del sistema (channel: 'chrome'). Es el requisito que"
+    Write-Host "       mas probablemente falte en otra maquina, y el unico que no se"
+    Write-Host "       arregla desde el repo."
+    Write-Host "    3. MySQL levantado y backend/.env armado"
+    Write-Host "    4. los puertos $PuertoVite y $PuertoApi libres (se cambian con -PuertoVite / -PuertoApi)"
 }
 
 # Un fallo y un 'no corrio' salen los dos por codigo distinto de cero. La
