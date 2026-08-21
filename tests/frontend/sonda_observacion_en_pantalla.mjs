@@ -28,6 +28,7 @@ const EMAIL = process.env.SONDA_EMAIL;
 const CONTRASENA = process.env.SONDA_CONTRASENA;
 const ID_PACIENTE = process.env.SONDA_ID_PACIENTE;
 const TEXTO = process.env.SONDA_TEXTO;
+const TEXTO_NOTAS = process.env.SONDA_TEXTO_NOTAS;
 const TIMEOUT = Number(process.env.SONDA_TIMEOUT ?? 15000);
 
 for (const [nombre, valor] of Object.entries({
@@ -35,6 +36,7 @@ for (const [nombre, valor] of Object.entries({
   SONDA_CONTRASENA: CONTRASENA,
   SONDA_ID_PACIENTE: ID_PACIENTE,
   SONDA_TEXTO: TEXTO,
+  SONDA_TEXTO_NOTAS: TEXTO_NOTAS,
 })) {
   if (!valor) {
     console.error(`FALTA la variable de entorno ${nombre}.`);
@@ -111,31 +113,47 @@ try {
   paso('contenido de la sesión cargado');
 
   // ---------------------------------------------------------------------
-  // LA UNICA AFIRMACION DE ESTE ARCHIVO
+  // LA AFIRMACION DE ESTE ARCHIVO, aplicada a DOS textos.
+  //
+  // Es una sola idea -- "un texto guardado en la base aparece en la
+  // pantalla" -- sobre dos columnas distintas: `evoluciones.observaciones` y
+  // `sesiones.notas`. Las dos se guardaban desde julio y no se mostraban en
+  // ningun lado; son el mismo defecto en dos tablas, asi que se afirman
+  // igual y por separado. Se evaluan LAS DOS antes de salir: si solo se
+  // reportara la primera, arreglar una escondería a la otra.
   // ---------------------------------------------------------------------
-  const visible = await dialogo.getByText(TEXTO, { exact: false }).isVisible()
-    .catch(() => false);
+  const enPantalla = await dialogo.innerText();
 
-  if (!visible) {
-    const enElDom = (await dialogo.innerText()).includes(TEXTO);
-    console.error('');
-    console.error('FAIL  la observacion guardada NO aparece en la pantalla.');
-    console.error(`      texto buscado : ${TEXTO}`);
+  async function afirmar(queEs, textoBuscado) {
+    const visible = await dialogo.getByText(textoBuscado, { exact: false }).isVisible()
+      .catch(() => false);
+    if (visible) {
+      console.log(`PASS  ${queEs}: el texto guardado aparece en la pantalla.`);
+      return true;
+    }
+    const enElDom = enPantalla.includes(textoBuscado);
+    console.error(`FAIL  ${queEs}: el texto guardado NO aparece en la pantalla.`);
+    console.error(`      texto buscado : ${textoBuscado}`);
     console.error(`      esta en el DOM del modal: ${enElDom}`);
     if (enElDom) {
-      console.error('      -> el texto llego al DOM pero no se ve. Mirar overflow o color.');
+      console.error('      -> llego al DOM pero no se ve. Mirar overflow o color.');
     } else {
-      console.error('      -> el texto NO llego al DOM: es el defecto original, el dato');
-      console.error('         viaja al navegador y se descarta antes de pintarse.');
+      console.error('      -> NO llego al DOM: es el defecto original, el dato viaja');
+      console.error('         al navegador y se descarta antes de pintarse.');
     }
-    console.error('');
-    console.error('Texto que SI muestra el modal:');
-    console.error((await dialogo.innerText()).split('\n').map((l) => `      | ${l}`).join('\n'));
-    process.exit(1);
+    return false;
   }
 
   console.log('');
-  console.log('PASS  la observacion guardada en la base aparece en la pantalla.');
+  const okObservacion = await afirmar('observacion de la evolucion', TEXTO);
+  const okNotas = await afirmar('notas de la sesion', TEXTO_NOTAS);
+
+  if (!okObservacion || !okNotas) {
+    console.error('');
+    console.error('Texto que SI muestra el modal:');
+    console.error(enPantalla.split('\n').map((l) => `      | ${l}`).join('\n'));
+    process.exit(1);
+  }
   process.exit(0);
 } catch (error) {
   console.error('');
