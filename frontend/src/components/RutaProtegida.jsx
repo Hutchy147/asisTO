@@ -1,14 +1,17 @@
 // frontend/src/components/RutaProtegida.jsx
-// Guarda de rutas: exige sesion y, opcionalmente, un rol.
+// Guarda de rutas: exige sesion, opcionalmente un rol, y que la pantalla
+// pertenezca a la entrega que se esta mostrando.
 
 import Box from '@mui/material/Box';
 import CircularProgress from '@mui/material/CircularProgress';
 import { Navigate, useLocation } from 'react-router-dom';
 
+import { hayCapacidad } from '../config/entregas.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import FueraDeEntrega from '../pages/FueraDeEntrega.jsx';
 import NoAutorizado from '../pages/NoAutorizado.jsx';
 
-export default function RutaProtegida({ rolesPermitidos, children }) {
+export default function RutaProtegida({ rolesPermitidos, capacidad, children }) {
   const { autenticado, rol, cargando } = useAuth();
   const ubicacion = useLocation();
 
@@ -33,6 +36,17 @@ export default function RutaProtegida({ rolesPermitidos, children }) {
   // que sugeriria que el problema es la sesion cuando es de permisos.
   if (rolesPermitidos && !rolesPermitidos.includes(rol)) {
     return <NoAutorizado />;
+  }
+
+  // La pantalla existe pero no en la entrega que se esta mostrando. Va
+  // DESPUES del chequeo de rol a proposito: si las dos cosas fallan, la que
+  // hay que decir es la de permisos, que es la que no cambia segun como se
+  // arranco la aplicacion.
+  //
+  // Esto es lo que hace que no alcance con esconder el menu: aca se corta
+  // tambien la URL escrita a mano.
+  if (capacidad && !hayCapacidad(capacidad)) {
+    return <FueraDeEntrega capacidad={capacidad} />;
   }
 
   return children;

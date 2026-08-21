@@ -6,20 +6,27 @@ import Box from '@mui/material/Box';
 
 import SidebarNav from './SidebarNav.jsx';
 import Topbar from './Topbar.jsx';
+import { hayCapacidad } from '../../config/entregas.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 
 export default function AppLayout({ titulo, subtitulo, acciones, contadores = {}, children }) {
   const { usuario, logout } = useAuth();
 
+  // Cada item de navegacion lleva la capacidad de su pantalla, la misma que
+  // declara su ruta en App.jsx. Esconder el menu es la mitad barata del
+  // trabajo: la que vale es la de RutaProtegida, que corta la URL escrita a
+  // mano. Las dos leen la MISMA tabla, asi que no pueden discrepar.
+  const navegacion = [
+    { id: 'panel', etiqueta: 'Panel', ruta: '/panel', capacidad: 'panel', contador: contadores.panel },
+    { id: 'pacientes', etiqueta: 'Pacientes', ruta: '/pacientes', capacidad: 'pacientes.listado', contador: contadores.pacientes },
+    { id: 'calendario', etiqueta: 'Calendario', ruta: '/calendario', capacidad: 'calendario' },
+  ];
+
   const grupos = [
+    { items: navegacion.filter((item) => hayCapacidad(item.capacidad)) },
     {
-      items: [
-        { id: 'panel', etiqueta: 'Panel', ruta: '/panel', contador: contadores.panel },
-        { id: 'pacientes', etiqueta: 'Pacientes', ruta: '/pacientes', contador: contadores.pacientes },
-        { id: 'calendario', etiqueta: 'Calendario', ruta: '/calendario' },
-      ],
-    },
-    {
+      // Cerrar sesion no se filtra nunca: es parte de la sesion, no de una
+      // entrega, y dejar a alguien sin salida seria peor que mostrar de mas.
       items: [{ id: 'salir', etiqueta: 'Cerrar sesión', onClick: logout }],
     },
   ];

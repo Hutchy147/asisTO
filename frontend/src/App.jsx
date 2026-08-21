@@ -6,6 +6,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import RutaProtegida from './components/RutaProtegida.jsx';
+import { validarRutas } from './config/entregas.js';
 import { RUTA_POR_ROL, useAuth } from './context/AuthContext.jsx';
 import Calendario from './pages/Calendario.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -16,16 +17,32 @@ import Pacientes from './pages/Pacientes.jsx';
 import Panel from './pages/Panel.jsx';
 
 // Pantallas del terapeuta. Todas exigen sesion y rol terapeuta.
+//
+// `capacidad` NO ES OPCIONAL: dice a que entrega pertenece la pantalla y sale
+// de la tabla unica de src/config/entregas.js. Una ruta sin ella hace fallar
+// el arranque en desarrollo — ver validarRutas mas abajo.
 const RUTAS_TERAPEUTA = [
-  { ruta: '/panel', elemento: <Panel /> },
-  { ruta: '/pacientes', elemento: <Pacientes /> },
-  { ruta: '/pacientes/:id', elemento: <PacienteFicha /> },
-  { ruta: '/calendario', elemento: <Calendario /> },
+  { ruta: '/panel', capacidad: 'panel', elemento: <Panel /> },
+  { ruta: '/pacientes', capacidad: 'pacientes.listado', elemento: <Pacientes /> },
+  { ruta: '/pacientes/:id', capacidad: 'pacientes.listado', elemento: <PacienteFicha /> },
+  { ruta: '/calendario', capacidad: 'calendario', elemento: <Calendario /> },
 ];
 
 // Los tres roles cuyo modulo llega en una entrega posterior. Su dashboard
 // lo dice explicitamente para que no parezca una pantalla rota.
-const RUTAS_PENDIENTES = ['rrhh', 'familiar', 'paciente'];
+//
+// Van etiquetados aunque el modulo todavia no exista: es justamente el caso
+// que la tabla tiene que cubrir sin que nadie vuelva atras a etiquetarlo.
+const RUTAS_PENDIENTES = [
+  { rol: 'rrhh', capacidad: 'rrhh.consulta' },
+  { rol: 'familiar', capacidad: 'familiar.portal' },
+  { rol: 'paciente', capacidad: 'paciente.portal' },
+];
+
+// Corre una vez al importar el modulo. Si alguien agrega una pantalla sin
+// decir a que entrega pertenece, la aplicacion no arranca en desarrollo y el
+// error dice cual es.
+validarRutas([...RUTAS_TERAPEUTA, ...RUTAS_PENDIENTES.map((p) => ({ ...p, ruta: `/${p.rol}` }))]);
 
 function Inicio() {
   const { autenticado, rol, cargando } = useAuth();
@@ -48,12 +65,14 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/" element={<Inicio />} />
 
-      {RUTAS_TERAPEUTA.map(({ ruta, elemento }) => (
+      {RUTAS_TERAPEUTA.map(({ ruta, capacidad, elemento }) => (
         <Route
           key={ruta}
           path={ruta}
           element={
-            <RutaProtegida rolesPermitidos={['terapeuta']}>{elemento}</RutaProtegida>
+            <RutaProtegida rolesPermitidos={['terapeuta']} capacidad={capacidad}>
+              {elemento}
+            </RutaProtegida>
           }
         />
       ))}
@@ -61,12 +80,12 @@ export default function App() {
       {/* Compatibilidad: /terapeuta era la ruta inicial antes de /panel */}
       <Route path="/terapeuta" element={<Navigate to="/panel" replace />} />
 
-      {RUTAS_PENDIENTES.map((rol) => (
+      {RUTAS_PENDIENTES.map(({ rol, capacidad }) => (
         <Route
           key={rol}
           path={`/${rol}`}
           element={
-            <RutaProtegida rolesPermitidos={[rol]}>
+            <RutaProtegida rolesPermitidos={[rol]} capacidad={capacidad}>
               <Dashboard rol={rol} />
             </RutaProtegida>
           }

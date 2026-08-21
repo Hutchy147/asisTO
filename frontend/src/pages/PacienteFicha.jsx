@@ -25,6 +25,7 @@ import { ObjetivoActivo, ObjetivoArchivado } from '../components/objetivos/FilaO
 import ModalObjetivo from '../components/objetivos/ModalObjetivo.jsx';
 import ModalEditarPaciente from '../components/pacientes/ModalEditarPaciente.jsx';
 import ModalDetalleSesion from '../components/sesiones/ModalDetalleSesion.jsx';
+import { hayCapacidad } from '../config/entregas.js';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { archivarObjetivo, listarObjetivosDePaciente } from '../services/objetivosService.js';
@@ -107,6 +108,15 @@ export default function PacienteFicha() {
   const [confirmandoBaja, setConfirmandoBaja] = useState(null);
   const [procesandoEstado, setProcesandoEstado] = useState(false);
   const [confirmandoReactivacion, setConfirmandoReactivacion] = useState(false);
+
+  // Qué partes de esta ficha existen en la entrega que se está mostrando.
+  // Las claves salen de la tabla única de src/config/entregas.js; acá no se
+  // decide nada, sólo se pregunta.
+  const verHistorialDeSesiones = hayCapacidad('sesiones.historial');
+  const verProgreso = hayCapacidad('evoluciones.historial');
+  const puedeEditar = hayCapacidad('pacientes.editar');
+  const puedeDarDeBaja = hayCapacidad('pacientes.baja');
+  const verRegistroDeSesion = hayCapacidad('sesiones.consultar');
 
   if (objetivos.cargando) {
     return (
@@ -245,21 +255,30 @@ export default function PacienteFicha() {
           <Button variant="outlined" onClick={() => navigate('/pacientes')}>
             Volver a pacientes
           </Button>
+          {/* Editar, dar de baja y reactivar son de la Entrega 2. En modo 1
+              la ficha queda de lectura más alta de objetivos, que es lo que
+              este archivo describe como el estado de la Entrega 1. */}
           {soloLectura ? (
-            <Button variant="contained" onClick={() => setConfirmandoReactivacion(true)}>
-              Reactivar
-            </Button>
+            puedeDarDeBaja && (
+              <Button variant="contained" onClick={() => setConfirmandoReactivacion(true)}>
+                Reactivar
+              </Button>
+            )
           ) : (
             <>
-              <Button variant="outlined" onClick={() => setEditando(true)}>
-                Editar datos
-              </Button>
+              {puedeEditar && (
+                <Button variant="outlined" onClick={() => setEditando(true)}>
+                  Editar datos
+                </Button>
+              )}
               {/* Sin color de alarma: dar de baja es una acción clínica
                   normal —un tratamiento que termina— y no un borrado. Lo que
                   la hace segura es la confirmación con números, no el rojo. */}
-              <Button variant="outlined" onClick={pedirConfirmacionDeBaja}>
-                Dar de baja
-              </Button>
+              {puedeDarDeBaja && (
+                <Button variant="outlined" onClick={pedirConfirmacionDeBaja}>
+                  Dar de baja
+                </Button>
+              )}
             </>
           )}
         </Box>
@@ -306,6 +325,8 @@ export default function PacienteFicha() {
         </Dato>
       </Box>
 
+      {/* Las dos pestañas de consulta son de la Entrega 2. En modo 1 la ficha
+          queda con Objetivos sola, que es lo que había en esa versión. */}
       <Tabs
         value={pestania}
         onChange={(evento, valor) => setPestania(valor)}
@@ -319,19 +340,21 @@ export default function PacienteFicha() {
             </Box>
           }
         />
-        <Tab
-          value="sesiones"
-          label={
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              Sesiones <Chip size="small" label={sesiones.datos?.total ?? 0} />
-            </Box>
-          }
-        />
-        <Tab value="progreso" label="Progreso" />
+        {verHistorialDeSesiones && (
+          <Tab
+            value="sesiones"
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                Sesiones <Chip size="small" label={sesiones.datos?.total ?? 0} />
+              </Box>
+            }
+          />
+        )}
+        {verProgreso && <Tab value="progreso" label="Progreso" />}
       </Tabs>
 
       {/* --- Pestaña Progreso --- */}
-      {pestania === 'progreso' && (
+      {verProgreso && pestania === 'progreso' && (
         <>
           {evolucion.cargando && <Cargando texto="Cargando la evolución..." />}
           {evolucion.error && (
@@ -477,7 +500,7 @@ export default function PacienteFicha() {
       )}
 
       {/* --- Pestaña Sesiones --- */}
-      {pestania === 'sesiones' && (
+      {verHistorialDeSesiones && pestania === 'sesiones' && (
         <>
           {sesiones.cargando && <Cargando texto="Cargando el historial..." />}
           {sesiones.error && <EstadoError error={sesiones.error} onReintentar={sesiones.recargar} />}
@@ -506,10 +529,17 @@ export default function PacienteFicha() {
                 // que se había registrado en la sesión —notas y
                 // observaciones— no se podía leer en ninguna pantalla: el
                 // historial es un contexto de consulta, no de escritura.
+                //
+                // La lectura del registro es "consultar sesiones
+                // registradas", de la Entrega 4. Sin esa capacidad las filas
+                // NO se abren: pasar `onAbrirFila` undefined deja la tabla
+                // sin `role="button"` ni tabIndex, así que tampoco se llega
+                // con el teclado. Esconder el cursor y dejar el handler sería
+                // el mismo error que esconder el menú y dejar la URL.
                 <DataTable
                   columnas={columnasSesiones}
                   filas={sesiones.datos.sesiones}
-                  onAbrirFila={(s) => setIdDetalle(s.id)}
+                  onAbrirFila={verRegistroDeSesion ? (s) => setIdDetalle(s.id) : undefined}
                   etiquetaFila={(s) => `Ver el registro de la sesión del ${formatearFecha(s.fecha)}`}
                 />
               )}
