@@ -59,8 +59,12 @@ export default function ModalAltaPaciente({ abierto, onCerrar, onCreado }) {
       onSeguirEditando={formulario.seguirEditando}
       onDescartar={formulario.descartar}
       onEnviar={formulario.enviar}
-      etiquetaEnviar="Ingreso"
-      etiquetaGuardando="cargando ingreso. . ."
+      // "Ingresar" y no "Ingreso": el botón nombra la ACCIÓN, como el resto
+      // de la app —"Registrar sesión", "Guardar evolución"—. La palabra la
+      // confirmó una terapeuta ocupacional usando el sistema; lo que se
+      // descartó fue "Dar de alta", que en el rubro significa lo contrario.
+      etiquetaEnviar="Ingresar"
+      etiquetaGuardando="Ingresando…"
     >
       <CampoTexto
         id="paciente-nombre"
