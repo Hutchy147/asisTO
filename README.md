@@ -133,7 +133,7 @@ mysql --login-path=asisto asisto -e "SELECT * FROM v_resumen_sesiones;"
 
 | Archivo | Contenido | Para qué |
 |---|---|---|
-| `seed.sql` | 3 pacientes, 10 sesiones | **El que usan los tests.** Chico, estable, con id conocidos. |
+| `seed.sql` | 4 pacientes (1 dado de baja), 13 sesiones | **El que usan los tests.** Chico, estable, con id conocidos. |
 | `seed_demo.sql` | 16 pacientes, ~630 sesiones en 7 semanas | Ver la interfaz con volumen real y hacer pruebas con personas. |
 
 Para cargar los datos de demostración:
@@ -305,6 +305,26 @@ ruta protegida redirige al login.
 Rutas del terapeuta: `/panel`, `/pacientes`, `/pacientes/:id` y
 `/calendario`.
 
+### Variables de entorno opcionales del frontend
+
+Nadie tiene que configurar esto para desarrollar. Sin ellas, Vite se
+comporta exactamente como en los pasos de arriba.
+
+| Variable | Para qué | Sin configurar |
+|---|---|---|
+| `ASISTO_PUERTO_VITE` | Puerto en el que corre Vite | `5173` |
+| `ASISTO_API_URL` | Destino del proxy `/api` | `http://127.0.0.1:5000` |
+| `VITE_ENTREGA` | Muestra la app como en una entrega anterior (`1` a `4`) | versión completa |
+
+`VITE_ENTREGA` es solo para hacer una demostración de una entrega vieja sin
+tocar ramas: sigue siendo la app de hoy, con la interfaz recortada del lado
+del navegador. La API y la base no cambian con esta variable. Se usa así:
+
+```powershell
+$env:VITE_ENTREGA=1
+pnpm dev
+```
+
 ---
 
 ## 6. Levantar todo (resumen)
@@ -321,16 +341,23 @@ cd C:\dev\asisTO\frontend; pnpm dev
 
 Abrir **`http://localhost:5173`**.
 
-Tres cosas que ahorran media hora de confusión:
+Cuatro cosas que ahorran media hora de confusión:
 
 - **Levantar primero el backend.** Vite proxea `/api` hacia
   `127.0.0.1:5000`; si Flask no está arriba, el login falla con un error de
   red poco claro en vez de decir qué pasa.
 - **Entrar por `localhost`, no por `127.0.0.1`.** `CORS_ORIGINS` tiene
-  `http://localhost:5173` y nada más.
+  `http://localhost:5173` y nada más: por `127.0.0.1` el navegador bloquea
+  la respuesta y parece que el backend está roto.
 - **Si recargaste cualquier seed, volvé a correr `generar_hashes.py`.** Es
   el paso que más se olvida: sin él ningún login funciona y parece que el
   backend está roto.
+- **Si el panel del día aparece vacío con `seed_demo.sql`, recargá el
+  seed.** Sus fechas se calculan relativas al momento en que se carga
+  (`CURDATE()`): si la base se sembró hace días, "hoy" ya no tiene sesiones.
+  Recargar es repetir el paso 2 con `seed_demo.sql` y volver a correr
+  `generar_hashes.py --aplicar --todos`. `seed.sql` no tiene este problema:
+  sus fechas son fijas.
 
 ---
 
