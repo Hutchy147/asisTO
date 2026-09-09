@@ -13,9 +13,15 @@ import { CAPACIDADES } from '../../config/entregas.js';
  * EL NUMERO DE ENTREGA SALE DE LA TABLA, no de aca. Hasta el 2026-08-21 este
  * archivo tenia su propia lista —`rrhh: 'Entrega 2'`, `familiar: 'Entrega 3'`,
  * `paciente: 'Entrega 3'`— y era una SEGUNDA declaracion de lo mismo. Ya habia
- * divergido: decia que RRHH llega en la 2 mientras el User Story Map lo ubica
- * en la 4. Es el defecto que la tabla unica existe para evitar, encontrado en
- * el propio codigo al conectarla.
+ * divergido: decia que RRHH llega en la 2 mientras el User Story Map de
+ * entonces lo ubicaba en la 4. Es el defecto que la tabla unica existe para
+ * evitar, encontrado en el propio codigo al conectarla.
+ *
+ * EPILOGO (2026-09-08): aquella contradiccion quedo resuelta a favor de la 2
+ * —la HDU6 esta en el Sprint 2— y el plan paso de cuatro versiones a seis.
+ * Los tres numeros de este aviso cambiaron con el remapeo SIN TOCAR ESTE
+ * ARCHIVO: rrhh 4->2, familiar 3->4 y paciente 4->6 salieron de la tabla
+ * sola. Es exactamente lo que se compro al centralizarla.
  *
  * Lo que se conserva aca es el TEXTO de que hace cada modulo, que es copy y no
  * un dato: no tiene sentido meterlo en una tabla de configuracion.
