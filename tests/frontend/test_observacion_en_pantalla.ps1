@@ -94,14 +94,90 @@ if ($SembrarSinNotas) {
 }
 Write-Host ""
 
+function Get-ListenersDelPuerto {
+    <#
+        TODOS los listeners de un puerto TCP. Devuelve una lista (vacia si no
+        hay ninguno), no un si/no: el numero es el dato que importa.
+
+        POR QUE NO `Get-NetTCPConnection`, que es lo que habia aca hasta el
+        2026-09-08. MIENTE cuando hay mas de un socket en el mismo puerto.
+        Medido ese dia en esta maquina, con dos backends vivos a la vez en
+        127.0.0.1:5000:
+
+            Get-NetTCPConnection -LocalPort 5000 -State Listen  ->  1 fila (pid 23724)
+            netstat -ano, lineas LISTENING de :5000             ->  2 filas (6868 y 23724)
+
+        En Windows `SO_REUSEADDR` deja que dos sockets tomen el mismo puerto, y
+        las conexiones nuevas se las lleva el que arranco ultimo. Un chequeo que
+        solo ve uno puede dar por LIBRE un puerto con dos duenos, o acusar al pid
+        equivocado. Construccion perdio un diagnostico entero con esto
+        (ESTADO.md, "backends zombi secuestran el puerto 5000").
+
+        POR QUE NO SE MIRA EL HEADER `Server:` PARA DESEMPATAR: no distingue. El
+        2026-09-06 los dos listeners de 5000 decian Python 3.12.10, la misma
+        version que el venv del proyecto. La version del interprete no dice con
+        quien estas hablando. Lo unico que sirve es contar los sockets ANTES de
+        levantar el propio.
+
+        El estado se compara contra LISTENING y ESCUCHANDO porque netstat
+        traduce esa columna en algunas configuraciones regionales. En esta
+        maquina sale en ingles (medido). Sin filtrar por estado, una conexion
+        ESTABLISHED entrante contaria como listener y la sonda se negaria de mas.
+    #>
+    param([Parameter(Mandatory)] [int]$Puerto)
+
+    $salida = & netstat -ano -p TCP 2>$null
+    if (-not $salida) {
+        throw ("No se pudo leer la tabla de conexiones con netstat. Sin ese dato no se " +
+               "puede saber si el puerto $Puerto esta libre, y esta sonda NO corre a ciegas: " +
+               "levantaria su backend encima de uno ajeno apuntado a 'asisto'.")
+    }
+
+    $encontrados = @()
+    foreach ($linea in $salida) {
+        $campos = @(($linea -replace '^\s+', '') -split '\s+')
+        if ($campos.Count -lt 5) { continue }
+        if ($campos[0] -notmatch '^TCP$') { continue }
+        if ($campos[3] -notmatch '^(LISTENING|ESCUCHANDO)$') { continue }
+
+        # El puerto se corta por el ULTIMO ':' y no con un -match sobre la linea
+        # entera: `[::1]:5058` tiene cuatro, y un `:5058` suelto tambien pegaria
+        # contra la direccion remota o contra un puerto como 50580.
+        $local = $campos[1]
+        $corte = $local.LastIndexOf(':')
+        if ($corte -lt 0) { continue }
+        $puertoLocal = 0
+        if (-not [int]::TryParse($local.Substring($corte + 1), [ref]$puertoLocal)) { continue }
+        if ($puertoLocal -ne $Puerto) { continue }
+
+        $procesoId = 0
+        [void][int]::TryParse($campos[4], [ref]$procesoId)
+        $nombre = try { (Get-Process -Id $procesoId -ErrorAction Stop).ProcessName } catch { "proceso desconocido" }
+        $encontrados += [pscustomobject]@{
+            Direccion = $local
+            ProcesoId = $procesoId
+            Proceso   = $nombre
+        }
+    }
+    return $encontrados
+}
+
 # --- 1. Puertos ---------------------------------------------------------
 # Los propios, no los de desarrollo. Si estan ocupados esto FALLA en vez de
 # seguir: sin puerto propio la sonda terminaria hablandole al backend de
 # desarrollo, que apunta a `asisto`, y estaria leyendo la base real.
+#
+# SE CUENTAN TODOS LOS LISTENERS, no se pregunta "si o no". Dos procesos pueden
+# escuchar el mismo puerto a la vez y contesta el ultimo que arranco: si esto
+# viera uno solo, alcanzaria con que el zombi fuera el primero para que la sonda
+# se creyera duena del puerto y terminara leyendo la base real.
 foreach ($puerto in @($PuertoApi, $PuertoVite)) {
-    $ocupado = Get-NetTCPConnection -LocalPort $puerto -State Listen -ErrorAction SilentlyContinue
-    if ($ocupado) {
-        throw ("El puerto $puerto esta ocupado (pid $(($ocupado | Select-Object -First 1).OwningProcess)). " +
+    $listeners = @(Get-ListenersDelPuerto -Puerto $puerto)
+    if ($listeners.Count -gt 0) {
+        $detalle = ($listeners | ForEach-Object {
+            "$($_.Direccion) pid $($_.ProcesoId) ($($_.Proceso))"
+        }) -join " | "
+        throw ("El puerto $puerto tiene $($listeners.Count) listener(s): $detalle. " +
                "Esta sonda levanta su propio backend contra '$Database'; si usara uno ajeno " +
                "podria estar leyendo 'asisto', que es la base real. Elegi otro par con " +
                "-PuertoVite / -PuertoApi, o libera ese puerto.")
