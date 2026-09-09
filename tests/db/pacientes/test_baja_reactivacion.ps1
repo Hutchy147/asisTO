@@ -265,8 +265,30 @@ $null = Invoke-Sql -Database $Database -Sql `
 $baja3 = Llamar-Baja $pac3
 
 # 4.1 — sesiones: cerrado por construccion el 2026-08-12
+#
+# LA FECHA VA RELATIVA A `fecha_baja`, NO ESCRITA A MANO, y esto costo un rojo.
+# Hasta el 2026-09-08 aca decia '2026-09-01'. Cuando se escribio, el 12-ago, esa
+# fecha era POSTERIOR a la baja (que es CURRENT_DATE) y el caso probaba lo que
+# dice su nombre. Con el correr del calendario la misma constante quedo ANTERIOR
+# a la baja, y entonces la regla `p_fecha > v_fecha_baja` la acepta -- con toda
+# la razon: es una sesion retroactiva legitima, que es justo lo que el grupo 7
+# afirma que TIENE que entrar.
+#
+# O sea que el test no se rompio: CAMBIO DE SIGNIFICADO SOLO, de "una sesion
+# posterior a la baja se rechaza" a "una sesion anterior a la baja se rechaza",
+# que es falso y ademas contradice al grupo 7. Se leia como un rojo del sistema
+# y era una bomba de tiempo del test. Misma forma que los tres hermanos del
+# grupo 7: se lee `fecha_baja` de la base y se calcula desde ahi.
+#
+# Los 20 dias conservan la distancia original. No se usa +1 dia a proposito:
+# ese es el borde exacto y es trabajo del grupo 7, que lo prueba junto con el
+# dia anterior y el dia exacto porque son los tres que distinguen `>` de `>=`.
+# Aca la pregunta es otra -- si el camino de escritura esta cerrado -- y conviene
+# que la fecha sea inequivocamente posterior, para que un rojo de este caso
+# signifique "la base dejo pasar la sesion" y no "el borde se corrio un dia".
+$fechaBaja3 = Get-ScalarValue $Database "SELECT fecha_baja FROM pacientes WHERE id = $pac3;"
 $sesionSobreBaja = Invoke-Sql -Database $Database -Sql @"
-CALL p_registrar_sesion(1, $pac3, '2026-09-01', '08:00:00', '09:00:00', 'incompleta', NULL, @id, @msg);
+CALL p_registrar_sesion(1, $pac3, DATE_ADD('$fechaBaja3', INTERVAL 20 DAY), '08:00:00', '09:00:00', 'incompleta', NULL, @id, @msg);
 SELECT IFNULL(@id,'NULL'), @msg;
 "@
 $ultimaSesion = ($sesionSobreBaja.StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 1)
