@@ -284,6 +284,15 @@ def listar_por_paciente(id_paciente):
     }
 
 
+def _validar_estado(estado):
+    """Una sola funcion para las dos rutas de escritura (crear y editar),
+    para que la lista de estados validos no diverja entre las dos."""
+    if estado not in ESTADOS:
+        raise ErrorAplicacion(
+            'El estado tiene que ser uno de: ' + ', '.join(ESTADOS) + '.'
+        )
+
+
 def obtener_sesion(id_sesion):
     sesion = Sesion.query.get(id_sesion)
     if sesion is None:
@@ -415,10 +424,7 @@ def registrar_sesion(datos):
     if faltantes:
         raise ErrorAplicacion('Faltan datos obligatorios: ' + ', '.join(faltantes))
 
-    if estado not in ESTADOS:
-        raise ErrorAplicacion(
-            'El estado tiene que ser uno de: ' + ', '.join(ESTADOS) + '.'
-        )
+    _validar_estado(estado)
 
     db.session.execute(
         text(
@@ -449,5 +455,85 @@ def registrar_sesion(datos):
 
     sesion = Sesion.query.get(int(id_creada))
     logger.info('Sesion %s registrada por terapeuta %s', sesion.id, terapeuta.id)
+
+    return sesion, mensaje
+
+
+@reintentar_en_deadlock()
+def editar_sesion(id_sesion, datos):
+    """
+    Edita via p_editar_sesion. Editable: estado, notas, fecha, hora_inicio,
+    hora_fin. NO edita id_paciente ni id_terapeuta: el terapeuta lo fija el
+    login, igual que en registrar_sesion, y el paciente es un hecho de la
+    sesion, no un dato que se corrija aca.
+
+    ESCRITURA RESTRINGIDA al terapeuta que atendio, mismo criterio que
+    evoluciones_service.registrar_evolucion: la lectura de una sesion es
+    abierta a cualquier terapeuta, pero solo quien atendio puede tocarla.
+    El id_terapeuta viaja igual al procedimiento, que revalida la autoria
+    por su cuenta (ver el comentario en p_editar_sesion, schema.sql): el
+    403 de aca es la primera linea, no la unica.
+
+    No se duplica la validacion de superposicion, de sesion posterior a la
+    baja del paciente ni de ausencia con evoluciones cargadas: las aplica
+    trg_sesiones_solape_update y su p_mensaje se propaga tal cual.
+    """
+    sesion = obtener_sesion(id_sesion)
+    terapeuta = terapeuta_actual()
+
+    if sesion.id_terapeuta != terapeuta.id:
+        raise ErrorAplicacion(
+            'Solo el terapeuta que atendio la sesion puede editarla.',
+            http_status=403,
+        )
+
+    fecha = (datos.get('fecha') or '').strip()
+    hora_inicio = (datos.get('hora_inicio') or '').strip()
+    hora_fin = (datos.get('hora_fin') or '').strip() or None
+    estado = (datos.get('estado') or '').strip()
+    notas = datos.get('notas')
+
+    faltantes = [
+        etiqueta for etiqueta, valor in (
+            ('estado', estado),
+            ('fecha', fecha),
+            ('hora_inicio', hora_inicio),
+        ) if not valor
+    ]
+    if faltantes:
+        raise ErrorAplicacion('Faltan datos obligatorios: ' + ', '.join(faltantes))
+
+    _validar_estado(estado)
+
+    db.session.execute(
+        text(
+            'CALL p_editar_sesion(:id_sesion, :id_terapeuta, :estado, :notas, '
+            ':fecha, :hora_inicio, :hora_fin, @p_editado, @p_mensaje)'
+        ),
+        {
+            'id_sesion': sesion.id,
+            'id_terapeuta': terapeuta.id,
+            'estado': estado,
+            'notas': notas,
+            'fecha': fecha,
+            'hora_inicio': hora_inicio,
+            'hora_fin': hora_fin,
+        },
+    )
+
+    editado, mensaje = db.session.execute(
+        text('SELECT @p_editado, @p_mensaje')
+    ).first()
+
+    db.session.commit()
+
+    if editado is None:
+        # p_mensaje ya explica por que: superposicion, sesion posterior a la
+        # baja del paciente, ausencia con evoluciones cargadas, sesion
+        # inexistente. Se propaga tal cual.
+        raise ErrorAplicacion(mensaje or 'No se pudo editar la sesion.')
+
+    sesion = Sesion.query.get(sesion.id)
+    logger.info('Sesion %s editada por terapeuta %s', sesion.id, terapeuta.id)
 
     return sesion, mensaje

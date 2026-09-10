@@ -4,8 +4,8 @@
 from flask import Blueprint, jsonify, request
 
 from app.services.sesiones_service import (
-    listar_de_hoy, listar_pendientes_de_evolucion, listar_por_rango,
-    obtener_detalle, registrar_sesion,
+    editar_sesion, listar_de_hoy, listar_pendientes_de_evolucion,
+    listar_por_rango, obtener_detalle, registrar_sesion,
 )
 from app.utils.security import requiere_rol
 
@@ -51,3 +51,28 @@ def crear():
 @requiere_rol('terapeuta')
 def detalle(id_sesion):
     return jsonify(obtener_detalle(id_sesion)), 200
+
+
+@sesiones_bp.put('/sesiones/<int:id_sesion>')
+@requiere_rol('terapeuta')
+def editar(id_sesion):
+    """
+    Edita estado, notas, fecha, hora_inicio y hora_fin de una sesion.
+
+    PUT y no PATCH, mismo criterio que PUT /pacientes/<id>: el formulario
+    manda la sesion entera, no un delta.
+
+    NO edita id_paciente ni id_terapeuta: el terapeuta lo fija el login,
+    igual que en el POST, y el paciente es un hecho de la sesion, no un
+    dato que se corrija desde aca.
+
+    SOLO el terapeuta que atendio puede editar (403 para el resto); la
+    lectura sigue abierta a cualquiera por GET /sesiones/<id>.
+    """
+    datos = request.get_json(silent=True) or {}
+    sesion, mensaje = editar_sesion(id_sesion, datos)
+
+    return jsonify({
+        'sesion': sesion.to_dict(),
+        'mensaje': mensaje,
+    }), 200

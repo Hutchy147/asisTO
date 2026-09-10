@@ -385,6 +385,98 @@ primero.
 
 ---
 
+## `PUT /api/sesiones/<id>`
+
+Edita una sesión ya registrada, vía `p_editar_sesion`. **PUT y no PATCH**,
+mismo criterio que `PUT /api/pacientes/<id>`: el formulario manda la sesión
+entera, no un delta.
+
+**Editable:** `estado`, `notas`, `fecha`, `hora_inicio`, `hora_fin`.
+**NO editable:** `id_paciente` ni `id_terapeuta` — no se aceptan en el
+cuerpo. El terapeuta es siempre el logueado, igual que en el `POST`; el
+paciente es un hecho de la sesión, no un dato que se corrija desde acá.
+
+**Solo el terapeuta que atendió puede editar.** La lectura sigue abierta a
+cualquiera por `GET /api/sesiones/<id>` — es la misma decisión de "quién ve
+y quién escribe" del principio de este documento, aplicada ahora a la
+sesión entera y no solo a la evolución. El detalle ya trae `es_propia` para
+que la interfaz sepa si mostrar el formulario de edición.
+
+**Recibe:**
+
+```json
+{
+  "estado": "completa",
+  "notas": "Se retiro 20 minutos antes por malestar.",
+  "fecha": "2026-06-16",
+  "hora_inicio": "09:00:00",
+  "hora_fin": "10:00:00"
+}
+```
+
+| Campo | Obligatorio | Notas |
+|---|---|---|
+| `estado` | sí | `completa`, `incompleta` o `ausencia` |
+| `fecha` | sí | `AAAA-MM-DD` |
+| `hora_inicio` | sí | `HH:MM:SS` |
+| `hora_fin` | no | Si falta, se asume **una hora** de duración |
+| `notas` | no | Contenido clínico; se puede mandar vacío para borrarlas |
+
+**200 OK**
+
+```json
+{
+  "mensaje": "Sesion actualizada correctamente",
+  "sesion": {
+    "id": 12,
+    "id_terapeuta": 1,
+    "id_paciente": 4,
+    "fecha": "2026-06-12",
+    "hora_inicio": "11:00:00",
+    "hora_fin": "12:00:00",
+    "estado": "completa",
+    "notas": "Secuencia de vestido con apoyo verbal (editado).",
+    "fecha_registro": "2026-06-12T14:00:00"
+  }
+}
+```
+
+### Lo que la base revalida en cada edición, y cuándo
+
+La regla 6 (superposición), la fecha contra la baja del paciente y la regla
+2 aplicada al revés (ausencia con evolución ya cargada) las aplica
+`trg_sesiones_solape_update`, **no este endpoint ni el procedimiento**. El
+trigger revalida cada una exactamente cuando cambia el campo del que
+depende:
+
+| Se revalida | Cuándo | Por qué alcanza |
+|---|---|---|
+| Superposición horaria | Cambia `fecha`, `hora_inicio` u `hora_fin` | Si el horario no se toca, no puede haber una superposición nueva |
+| Sesión posterior a la baja del paciente | Cambia `fecha` | El paciente no es editable; si la fecha no se mueve, la sesión sigue donde ya estaba validada |
+| Ausencia con evolución ya cargada | Cambia `estado` a `ausencia` | Es la única de las tres que corre **siempre**, sin guardia: no depende de qué otro campo se tocó |
+
+Una edición que solo cambia `notas` no dispara ninguna de las tres — y no
+hace falta: ninguna depende de `notas`.
+
+**Errores**
+
+| Caso | Status | `mensaje` |
+|---|---|---|
+| Falta un obligatorio | `400` | `Faltan datos obligatorios: estado, fecha` |
+| `estado` no válido | `400` | `El estado tiene que ser uno de: completa, incompleta, ausencia.` |
+| **Sesión de otro terapeuta** | `403` | `Solo el terapeuta que atendio la sesion puede editarla.` |
+| **Superposición horaria** | `400` | `El terapeuta ya tiene sesiones que se superponen con ese horario` |
+| Hora de fin anterior al inicio | `400` | `La hora de fin debe ser posterior a la hora de inicio` |
+| Fecha posterior a la baja del paciente | `400` | `El paciente esta dado de baja: solo se pueden cargar sesiones hasta el dia de la baja` |
+| **A `ausencia` con evoluciones cargadas** | `400` | `No se puede marcar la sesion como ausencia: ya tiene evoluciones cargadas` |
+| Sesión inexistente | `404` | `La sesion indicada no existe.` |
+
+Los últimos cuatro son mensajes de `trg_sesiones_solape_update`, propagados
+tal cual desde `p_editar_sesion`: son los mismos textos que ya usa
+`POST /api/sesiones`, y significan lo mismo.
+
+---
+
 ## `POST /api/evoluciones`
 
 Registra vía `p_registrar_evolucion`.
@@ -488,6 +580,7 @@ conserva. La pantalla debería mostrarlo como histórico, no como error.
 | GET | `/api/pacientes/<id>/sesiones` | `200` |
 | POST | `/api/sesiones` | `201` |
 | GET | `/api/sesiones/<id>` | `200` |
+| PUT | `/api/sesiones/<id>` | `200` |
 | POST | `/api/evoluciones` | `201` |
 | GET | `/api/evoluciones/sesion/<id>` | `200` |
 
@@ -500,7 +593,7 @@ Estados que las pantallas tienen que contemplar:
 3. **Paciente sin objetivos activos** — `objetivos_activos` vacío. Hay que
    ofrecer crear un objetivo, no un formulario sin opciones.
 4. **Sesión de otro terapeuta** — `es_propia: false`. Vista de lectura, sin
-   formulario de evolución.
+   formulario de evolución ni de edición: ninguno de los dos es de esta sesión.
 5. **Día sin sesiones** — lista vacía, es normal.
 6. **Objetivo archivado en una evolución vieja** — `objetivo.activo: false`.
    Histórico, no error.

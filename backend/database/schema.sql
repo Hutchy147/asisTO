@@ -2107,6 +2107,122 @@ END$$
 
 
 -- ---------------------------------------------------------------------
+-- p_editar_sesion
+--
+-- Edita estado, notas, fecha, hora_inicio y hora_fin de una sesion ya
+-- registrada. id_terapeuta e id_paciente NO se editan por esta puerta: el
+-- terapeuta lo fija el login (igual que en p_registrar_sesion) y el
+-- paciente es un hecho de la sesion, no un dato que se corrija aca.
+--
+-- AUTORIA — mismo criterio que p_registrar_evolucion (decision 20).
+-- p_id_terapeuta es quien esta editando, no el dueno de la sesion. El 403
+-- de Python es la primera linea; esta revalidacion es la segunda, para que
+-- un CALL directo sin pasar por Flask de el mismo veredicto que la API.
+-- p_id_terapeuta NULL se rechaza igual que un id que no coincide.
+--
+-- ORDEN DE LOCKS — pacientes FOR SHARE SIEMPRE, no solo cuando cambia la
+-- fecha. Es la misma convencion que p_registrar_sesion (ver la NOTA DE
+-- CONCURRENCIA al pie de los triggers de sesiones, mas arriba en este
+-- archivo): si el UPDATE dispara el chequeo de fecha_baja de
+-- trg_sesiones_solape_update -que solo corre cuando cambia fecha o
+-- id_paciente-, ese trigger vuelve a pedir el mismo lock que esta
+-- transaccion ya tiene, y no espera. Sostener la propiedad para CUALQUIER
+-- edicion -no solo las que tocan la fecha- evita tener que razonar caso
+-- por caso cual UPDATE la necesita, que es justo lo que ya fallo tres
+-- veces en este repo (hallazgo C1/A1).
+--
+-- LO QUE ESTE PROCEDIMIENTO NO REVALIDA, A PROPOSITO: superposicion de
+-- horario, sesion posterior a la baja del paciente, y ausencia con
+-- evoluciones ya cargadas. Las tres las aplica trg_sesiones_solape_update,
+-- que las revalida exactamente cuando el campo del que dependen cambia.
+-- Repetirlas aca duplicaria una regla que ya vive en un solo lugar.
+-- ---------------------------------------------------------------------
+CREATE PROCEDURE p_editar_sesion (
+  IN  p_id_sesion     INT UNSIGNED,
+  IN  p_id_terapeuta  INT UNSIGNED,
+  IN  p_estado        VARCHAR(20),
+  IN  p_notas         TEXT,
+  IN  p_fecha         DATE,
+  IN  p_hora_inicio   TIME,
+  IN  p_hora_fin      TIME,
+  OUT p_editado       TINYINT UNSIGNED,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error        VARCHAR(255) DEFAULT '';
+  DECLARE v_ter_sesion   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_id_paciente  INT UNSIGNED DEFAULT NULL;
+  DECLARE v_lock         INT UNSIGNED DEFAULT NULL;
+
+  -- Ver CRITERIO GENERAL DE ERRORES
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_editado = NULL;
+    SET p_mensaje = v_error;
+  END;
+
+  -- Deadlock (40001) y lock wait timeout (1205) se propagan tal cual, ANTES
+  -- del generico. Ver p_alta_paciente para el desarrollo completo.
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_editado = NULL;
+    SET p_mensaje = 'No se pudo editar la sesion por un error interno';
+  END;
+
+  SET p_editado = NULL;
+
+  -- id_terapeuta e id_paciente son inmutables para una sesion (ninguna
+  -- puerta de escritura los toca), asi que leerlos sin lock antes de la
+  -- transaccion es seguro: no hay escritor concurrente que pueda
+  -- cambiarlos entre esta lectura y el UPDATE de abajo.
+  SELECT id_terapeuta, id_paciente INTO v_ter_sesion, v_id_paciente
+    FROM sesiones
+   WHERE id = p_id_sesion;
+
+  IF v_ter_sesion IS NULL THEN
+    SET p_mensaje = 'La sesion indicada no existe';
+  ELSEIF p_id_terapeuta IS NULL OR p_id_terapeuta <> v_ter_sesion THEN
+    SET p_mensaje = 'Solo el terapeuta que atendio la sesion puede editarla';
+  ELSE
+    START TRANSACTION;
+
+    -- Ver ORDEN DE LOCKS arriba: SIEMPRE, no solo si cambia la fecha.
+    SELECT id INTO v_lock
+      FROM pacientes
+     WHERE id = v_id_paciente
+     FOR SHARE;
+
+    UPDATE sesiones
+       SET estado      = p_estado,
+           notas       = p_notas,
+           fecha       = p_fecha,
+           hora_inicio = p_hora_inicio,
+           hora_fin    = p_hora_fin
+     WHERE id = p_id_sesion;
+
+    COMMIT;
+    SET p_editado = 1;
+    SET p_mensaje = 'Sesion actualizada correctamente';
+  END IF;
+END$$
+
+
+-- ---------------------------------------------------------------------
 -- p_registrar_evolucion
 --
 -- Inserta y traduce el error de los triggers a un mensaje legible. Los
