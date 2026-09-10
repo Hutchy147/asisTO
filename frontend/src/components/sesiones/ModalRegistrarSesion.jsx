@@ -12,27 +12,9 @@ import CampoTexto from '../forms/CampoTexto.jsx';
 import ModalFormulario from '../modal/ModalFormulario.jsx';
 import { useFormularioModal } from '../../hooks/useFormularioModal.js';
 import {
-  ESTADO_AUSENCIA, ESTADO_COMPLETA, ESTADO_INCOMPLETA, registrarSesion,
+  ESTADO_AUSENCIA, OPCIONES_ESTADO_SESION, registrarSesion,
 } from '../../services/sesionesService.js';
 import { formatearFecha } from '../../utils/fechas.js';
-
-const ESTADOS = [
-  {
-    valor: ESTADO_COMPLETA,
-    etiqueta: 'Completa',
-    descripcion: 'El paciente asistió y se trabajaron los objetivos previstos.',
-  },
-  {
-    valor: ESTADO_INCOMPLETA,
-    etiqueta: 'Incompleta',
-    descripcion: 'El paciente asistió pero la sesión se interrumpió o se acortó.',
-  },
-  {
-    valor: ESTADO_AUSENCIA,
-    etiqueta: 'Ausencia',
-    descripcion: 'El paciente no asistió, con o sin aviso previo.',
-  },
-];
 
 export default function ModalRegistrarSesion({
   abierto,
@@ -49,10 +31,12 @@ export default function ModalRegistrarSesion({
       fecha: fechaInicial,
       hora_inicio: horaInicial,
       hora_fin: '',
-      estado: ESTADO_COMPLETA,
+      // Arranca VACÍO a propósito: no hay estado por omisión que sea
+      // correcto. Ver el aviso más abajo y el hallazgo A de AUDITORIA.md.
+      estado: '',
       notas: '',
     },
-    obligatorios: ['id_paciente', 'fecha', 'hora_inicio'],
+    obligatorios: ['id_paciente', 'fecha', 'hora_inicio', 'estado'],
     onEnviar: (valores) =>
       registrarSesion({
         id_paciente: Number(valores.id_paciente),
@@ -69,7 +53,7 @@ export default function ModalRegistrarSesion({
     onCerrar,
   });
 
-  const { valores, setValor, setCampo, errorDe, guardando } = formulario;
+  const { valores, setValor, setCampo, errorDe, guardando, validado } = formulario;
   const esAusencia = valores.estado === ESTADO_AUSENCIA;
 
   return (
@@ -152,7 +136,10 @@ export default function ModalRegistrarSesion({
         />
       </Box>
 
-      <Box>
+      {/* data-campo-invalido: el grupo dibuja su propio error y MUI no lo
+          marca. Mismo criterio que el grupo de objetivos de
+          ModalCargarEvolucion. Ver ModalFormulario. */}
+      <Box {...(validado && !valores.estado ? { 'data-campo-invalido': '' } : {})}>
         <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
           Estado de la sesión <Box component="span" sx={{ color: 'error.main' }}>*</Box>
         </Typography>
@@ -160,7 +147,7 @@ export default function ModalRegistrarSesion({
           value={valores.estado}
           onChange={(evento) => setValor('estado', evento.target.value)}
         >
-          {ESTADOS.map((estado) => (
+          {OPCIONES_ESTADO_SESION.map((estado) => (
             <FormControlLabel
               key={estado.valor}
               value={estado.valor}
@@ -179,6 +166,11 @@ export default function ModalRegistrarSesion({
             />
           ))}
         </RadioGroup>
+        {validado && !valores.estado && (
+          <Typography variant="caption" color="error">
+            Elegí cómo transcurrió la sesión.
+          </Typography>
+        )}
       </Box>
 
       {/* El aviso aparece AL ELEGIR ausencia, no al guardar: para eso está

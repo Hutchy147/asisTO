@@ -1,10 +1,15 @@
 // frontend/src/services/sesionesService.js
 // Contrato: docs/api-sesiones-evoluciones.md
 
-import { construirQuery, get, post } from './api.js';
+import { construirQuery, get, post, put } from './api.js';
 
-export const ESTADO_COMPLETA = 'completa';
-export const ESTADO_INCOMPLETA = 'incompleta';
+// No exportadas: desde que ModalRegistrarSesion y ModalEditarSesion pasaron
+// a iterar OPCIONES_ESTADO_SESION en vez de armar su propio array, ningun
+// archivo fuera de este las necesita. ESTADO_AUSENCIA si se exporta: los
+// dos modales todavia comparan el estado elegido contra ella para decidir
+// si mostrar el aviso y el label de "motivo de la ausencia".
+const ESTADO_COMPLETA = 'completa';
+const ESTADO_INCOMPLETA = 'incompleta';
 export const ESTADO_AUSENCIA = 'ausencia';
 
 // Se borraron de aca:
@@ -74,6 +79,35 @@ export function registrarSesion({
 }
 
 /**
+ * Edita una sesion ya registrada.
+ *
+ * Editable: estado, notas, fecha, hora_inicio, hora_fin. id_paciente e
+ * id_terapeuta NO viajan: el endpoint los ignora por diseño (el terapeuta
+ * es siempre el logueado, y no puede ser otro).
+ *
+ * PUT y no PATCH: el formulario manda la sesion entera. Si no se manda
+ * hora_fin se asume una hora de duracion, igual que al registrar.
+ *
+ * Solo el terapeuta que atendio puede editar (403 si no). Contrato:
+ * docs/api-sesiones-evoluciones.md.
+ */
+export function editarSesion(idSesion, {
+  estado,
+  notas = null,
+  fecha,
+  hora_inicio: horaInicio,
+  hora_fin: horaFin = null,
+}) {
+  return put(`/sesiones/${idSesion}`, {
+    estado,
+    notas,
+    fecha,
+    hora_inicio: horaInicio,
+    hora_fin: horaFin,
+  });
+}
+
+/**
  * Detalle con todo lo necesario para la pantalla de carga de evolucion.
  * -> { sesion, paciente, terapeuta, evoluciones, objetivos_activos }
  *
@@ -118,3 +152,30 @@ export const ETIQUETA_ESTADO = {
   [ESTADO_INCOMPLETA]: 'Incompleta',
   [ESTADO_AUSENCIA]: 'Ausencia',
 };
+
+/**
+ * Las tres opciones del radio "Estado de la sesion", con su descripcion,
+ * en UN solo lugar para que ModalRegistrarSesion y ModalEditarSesion no
+ * puedan divergir en el vocabulario.
+ *
+ * ESTE VOCABULARIO NO SE TOCA sin que lo pida un encargo explicito: se
+ * rediseña en la V3, y cambiarlo antes mezclaría dos motivos distintos en
+ * la misma diferencia de números (hallazgo A de AUDITORIA.md).
+ */
+export const OPCIONES_ESTADO_SESION = [
+  {
+    valor: ESTADO_COMPLETA,
+    etiqueta: 'Completa',
+    descripcion: 'El paciente asistió y se trabajaron los objetivos previstos.',
+  },
+  {
+    valor: ESTADO_INCOMPLETA,
+    etiqueta: 'Incompleta',
+    descripcion: 'El paciente asistió pero la sesión se interrumpió o se acortó.',
+  },
+  {
+    valor: ESTADO_AUSENCIA,
+    etiqueta: 'Ausencia',
+    descripcion: 'El paciente no asistió, con o sin aviso previo.',
+  },
+];

@@ -33,6 +33,7 @@ import Typography from '@mui/material/Typography';
 
 import SesionEstadoChip from '../data/SesionEstadoChip.jsx';
 import ModalFormulario from '../modal/ModalFormulario.jsx';
+import { hayCapacidad } from '../../config/entregas.js';
 import { Cargando, EstadoError, EstadoVacio } from '../estado/index.js';
 import { usePeticion } from '../../hooks/usePeticion.js';
 import { etiquetaDeValor } from '../../services/evolucionesService.js';
@@ -135,7 +136,9 @@ function FilaCalificada({ evolucion }) {
   );
 }
 
-export default function ModalDetalleSesion({ abierto, idSesion, onCerrar, onCargarEvolucion }) {
+export default function ModalDetalleSesion({
+  abierto, idSesion, onCerrar, onCargarEvolucion, onEditar,
+}) {
   const detalle = usePeticion(() => obtenerSesion(idSesion), [idSesion], {
     inmediata: Boolean(idSesion),
   });
@@ -153,6 +156,13 @@ export default function ModalDetalleSesion({ abierto, idSesion, onCerrar, onCarg
   // Solo se ofrece cargar cuando el servidor lo va a aceptar. Las tres
   // condiciones son las mismas que aplica el backend.
   const puedeCargar = Boolean(sesion && esPropia && admite && sinCalificar.length > 0);
+  // Editar no depende de admite_evolucion ni de sinCalificar: se puede
+  // editar una ausencia o una sesión ya calificada del todo. Lo único que
+  // la habilita es ser propia (el backend da 403 si no) y que la entrega
+  // activa ya la muestre. NO ALCANZA CON DESHABILITAR EL BOTÓN si no es
+  // propia: no se dibuja directamente, porque no hay garantía de que un
+  // botón deshabilitado no se pueda forzar desde la consola.
+  const puedeEditar = Boolean(sesion && esPropia) && hayCapacidad('sesiones.editar');
 
   const subtitulo = datos
     ? `${datos.paciente.nombre_completo} · ${formatearFecha(sesion.fecha)} · ${sesion.hora_inicio?.slice(0, 5)}`
@@ -239,11 +249,18 @@ export default function ModalDetalleSesion({ abierto, idSesion, onCerrar, onCarg
             </Bloque>
           )}
 
-          {puedeCargar && (
-            <Box sx={{ display: 'flex', justifyContent: 'flex-start', pt: 0.5 }}>
-              <Button variant="contained" onClick={() => onCargarEvolucion?.(sesion.id)}>
-                Cargar evolución
-              </Button>
+          {(puedeEditar || puedeCargar) && (
+            <Box sx={{ display: 'flex', justifyContent: 'flex-start', gap: 1, pt: 0.5 }}>
+              {puedeEditar && (
+                <Button variant="outlined" onClick={() => onEditar?.(sesion)}>
+                  Editar sesión
+                </Button>
+              )}
+              {puedeCargar && (
+                <Button variant="contained" onClick={() => onCargarEvolucion?.(sesion.id)}>
+                  Cargar evolución
+                </Button>
+              )}
             </Box>
           )}
         </>

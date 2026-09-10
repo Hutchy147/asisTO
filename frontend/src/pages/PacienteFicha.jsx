@@ -25,6 +25,7 @@ import { ObjetivoActivo, ObjetivoArchivado } from '../components/objetivos/FilaO
 import ModalObjetivo from '../components/objetivos/ModalObjetivo.jsx';
 import ModalEditarPaciente from '../components/pacientes/ModalEditarPaciente.jsx';
 import ModalDetalleSesion from '../components/sesiones/ModalDetalleSesion.jsx';
+import ModalEditarSesion from '../components/sesiones/ModalEditarSesion.jsx';
 import { hayCapacidad } from '../config/entregas.js';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { usePeticion } from '../hooks/usePeticion.js';
@@ -99,9 +100,12 @@ export default function PacienteFicha() {
   const [aArchivar, setAArchivar] = useState(null);
   const [archivando, setArchivando] = useState(false);
   const [idEvolucion, setIdEvolucion] = useState(null);
-  // El historial abre la vista de LECTURA. Cargar evolución sale de ahí
-  // adentro, y solo cuando corresponde. Ver ModalDetalleSesion.
+  // El historial abre la vista de LECTURA. Cargar evolución y editar salen
+  // de ahí adentro, y solo cuando corresponde. Ver ModalDetalleSesion.
   const [idDetalle, setIdDetalle] = useState(null);
+  // La sesión entera (no solo el id): ModalEditarSesion la usa para
+  // precargar el formulario sin pedirla de nuevo. Ver ModalEditarSesion.
+  const [sesionAEditar, setSesionAEditar] = useState(null);
   const [aviso, setAviso] = useState('');
   const [editando, setEditando] = useState(false);
   // null | { cargando } | { objetivos_activos, asignaciones_vigentes }
@@ -631,11 +635,27 @@ export default function PacienteFicha() {
         abierto={Boolean(idDetalle)}
         idSesion={idDetalle}
         onCerrar={() => setIdDetalle(null)}
-        // Se cierra la lectura y se abre la carga. Uno a la vez: dos
-        // diálogos apilados dejan al de atrás inerte pero visible.
+        // Se cierra la lectura y se abre la carga o la edición. Uno a la
+        // vez: dos diálogos apilados dejan al de atrás inerte pero visible.
         onCargarEvolucion={(id) => {
           setIdDetalle(null);
           setIdEvolucion(id);
+        }}
+        onEditar={(sesion) => {
+          setIdDetalle(null);
+          setSesionAEditar(sesion);
+        }}
+      />
+
+      <ModalEditarSesion
+        key={`editar-sesion-${sesionAEditar?.id ?? 'sin-sesion'}`}
+        abierto={Boolean(sesionAEditar)}
+        sesion={sesionAEditar}
+        paciente={paciente}
+        onCerrar={() => setSesionAEditar(null)}
+        onGuardado={(respuesta) => {
+          sesiones.recargar();
+          setAviso(respuesta?.mensaje ?? 'Sesión actualizada.');
         }}
       />
 
