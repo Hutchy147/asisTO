@@ -120,7 +120,6 @@ export default function PacienteFicha() {
   const verProgreso = hayCapacidad('evoluciones.historial');
   const puedeEditar = hayCapacidad('pacientes.editar');
   const puedeDarDeBaja = hayCapacidad('pacientes.baja');
-  const verRegistroDeSesion = hayCapacidad('sesiones.consultar');
 
   if (objetivos.cargando) {
     return (
@@ -534,16 +533,26 @@ export default function PacienteFicha() {
                 // observaciones— no se podía leer en ninguna pantalla: el
                 // historial es un contexto de consulta, no de escritura.
                 //
-                // La lectura del registro es "consultar sesiones
-                // registradas", de la Entrega 4. Sin esa capacidad las filas
-                // NO se abren: pasar `onAbrirFila` undefined deja la tabla
-                // sin `role="button"` ni tabIndex, así que tampoco se llega
-                // con el teclado. Esconder el cursor y dejar el handler sería
-                // el mismo error que esconder el menú y dejar la URL.
+                // GATEADA CON verHistorialDeSesiones, NO con una capacidad
+                // propia (corregido 2026-09-10). Hasta esa fecha usaba
+                // `sesiones.consultar` -de la V5, "consultar sesiones
+                // registradas"-, una pantalla que todavía no existe. El
+                // efecto no era sutil: la fila de ESTA MISMA pestaña, que
+                // ya se muestra en V2, no abría hasta V5. `sesiones.consultar`
+                // queda reservada para cuando se construya esa pantalla
+                // propia; la fila se abre con la MISMA capacidad que abre
+                // la pestaña de la que es parte, porque las dos cosas son
+                // el mismo entregable de V2.
+                //
+                // Sin `verHistorialDeSesiones` las filas NO se abren: pasar
+                // `onAbrirFila` undefined deja la tabla sin `role="button"`
+                // ni tabIndex, así que tampoco se llega con el teclado.
+                // Esconder el cursor y dejar el handler sería el mismo
+                // error que esconder el menú y dejar la URL.
                 <DataTable
                   columnas={columnasSesiones}
                   filas={sesiones.datos.sesiones}
-                  onAbrirFila={verRegistroDeSesion ? (s) => setIdDetalle(s.id) : undefined}
+                  onAbrirFila={verHistorialDeSesiones ? (s) => setIdDetalle(s.id) : undefined}
                   etiquetaFila={(s) => `Ver el registro de la sesión del ${formatearFecha(s.fecha)}`}
                 />
               )}
