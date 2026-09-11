@@ -277,7 +277,7 @@ la salida del procedimiento.
 | `fecha` | sí | `AAAA-MM-DD` |
 | `hora_inicio` | sí | `HH:MM:SS` |
 | `hora_fin` | no | Si falta, se asume **una hora** de duración |
-| `estado` | no | `completa`, `incompleta` o `ausencia`. Por defecto `incompleta` |
+| `estado` | **sí** | `completa`, `incompleta` o `ausencia`. Sin default: hasta el 2026-09-10 un estado ausente se guardaba como `incompleta` sin que nadie lo haya declarado — ver el hallazgo A de `AUDITORIA.md`. Ahora se rechaza igual que cualquier otro obligatorio faltante |
 | `notas` | no | Contenido clínico |
 
 **El terapeuta es siempre el logueado.** Un `id_terapeuta` en el cuerpo se
@@ -306,7 +306,7 @@ ignora: si no, cualquier terapeuta podría llenarle la agenda a otro.
 
 | Caso | Status | `mensaje` |
 |---|---|---|
-| Falta un obligatorio | `400` | `Faltan datos obligatorios: fecha, hora_inicio` |
+| Falta un obligatorio | `400` | `Faltan datos obligatorios: estado, hora_inicio` |
 | `estado` no válido | `400` | `El estado tiene que ser uno de: completa, incompleta, ausencia.` |
 | **Superposición horaria** | `400` | `El terapeuta ya tiene 1 sesion(es) que se superponen con ese horario` |
 | Hora de fin anterior al inicio | `400` | `La hora de fin debe ser posterior a la hora de inicio` |

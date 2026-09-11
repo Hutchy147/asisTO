@@ -411,7 +411,14 @@ def registrar_sesion(datos):
     fecha = (datos.get('fecha') or '').strip()
     hora_inicio = (datos.get('hora_inicio') or '').strip()
     hora_fin = (datos.get('hora_fin') or '').strip() or None
-    estado = (datos.get('estado') or 'incompleta').strip()
+    # SIN DEFAULT A PROPOSITO. Hasta el 2026-09-10 esto era
+    # `datos.get('estado') or 'incompleta'`: un estado ausente se guardaba
+    # como si alguien hubiera declarado "incompleta", sin que nadie lo haya
+    # dicho. Es el mismo defecto que la interfaz (hallazgo A de
+    # AUDITORIA.md) una capa mas abajo, y ese campo es justo el que RRHH
+    # exporta y cuenta. Ausencia de estado pasa a ser lo que ya es ausencia
+    # de fecha u hora_inicio: un dato obligatorio faltante.
+    estado = (datos.get('estado') or '').strip()
     notas = datos.get('notas')
 
     faltantes = [
@@ -419,6 +426,7 @@ def registrar_sesion(datos):
             ('id_paciente', id_paciente),
             ('fecha', fecha),
             ('hora_inicio', hora_inicio),
+            ('estado', estado),
         ) if not valor
     ]
     if faltantes:
