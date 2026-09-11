@@ -583,13 +583,22 @@ DELIMITER $$
 --
 -- ORDEN DE ADQUISICION DE LOCKS (el canonico esta en CLAUDE.md):
 --
---      pacientes -> terapeutas -> sesiones -> objetivos_terapeuticos
---                -> evoluciones
+--      pacientes -> terapeutas -> asignaciones -> sesiones
+--                -> objetivos_terapeuticos -> evoluciones
+--
+-- El criterio que fija el orden: una tabla se toma DESPUES de todas las que
+-- referencia. Sirve para ubicar cualquier tabla nueva sin tener que
+-- reproducir un deadlock primero. `asignaciones` cae entre `terapeutas` y
+-- `sesiones` porque apunta a pacientes y a terapeutas, y nada la apunta a
+-- ella.
 --
 -- Todo lo de este schema lo respeta:
 --      pacientes   -> objetivos_terapeuticos   (triggers de objetivos)
+--      pacientes   -> asignaciones             (triggers de asignaciones)
 --      terapeutas  -> sesiones                 (triggers de sesiones)
 --      sesiones    -> objetivos_terapeuticos   (triggers de evoluciones)
+--      pacientes   -> asignaciones
+--                  -> objetivos_terapeuticos   (p_baja_paciente)
 --
 -- Invertirlo introduce deadlocks. No es teorico: una transaccion que toma
 -- objetivos_terapeuticos y despues sesiones, contra un INSERT de evolucion
@@ -1766,11 +1775,11 @@ END$$
 --
 -- ORDEN DE LOCKS: pacientes -> asignaciones -> objetivos_terapeuticos.
 --
--- `asignaciones` NO esta en el orden canonico del CLAUDE.md, que se escribio
--- antes de que la tabla existiera (migracion del 2026-08-07). Se la ubica
--- entre `terapeutas` y `sesiones`, que es donde cae por dependencia: referencia
--- a pacientes y a terapeutas, y nada la referencia a ella. QUEDA PROPUESTO
--- para el chat de planeamiento; este procedimiento ya respeta esa ubicacion.
+-- `asignaciones` va entre `terapeutas` y `sesiones` en el orden canonico del
+-- CLAUDE.md, que es donde cae por dependencia: referencia a pacientes y a
+-- terapeutas, y nada la referencia a ella. Este procedimiento fue el primero
+-- en tocarla junto con otras tablas; la ubicacion quedo PROPUESTA aca y
+-- ADOPTADA en el orden canonico el 2026-08-12.
 --
 -- Las tres escrituras van en UNA transaccion. Una baja a medias —el paciente
 -- inactivo pero con objetivos activos, o con asignaciones abiertas— es peor
