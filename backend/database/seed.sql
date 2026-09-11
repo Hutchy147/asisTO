@@ -155,40 +155,48 @@ INSERT INTO objetivos_terapeuticos
 -- Incluye 2 ausencias (id 4 y 7) y 1 incompleta (id 3).
 -- Terapeuta 1: pacientes 1 y 3. Terapeuta 2: paciente 2.
 -- =====================================================================
+-- ausencia_de en las dos filas de ausencia: 'paciente' para las dos,
+-- no por uniformidad sino porque las notas ya escritas (mas abajo,
+-- ninguna se toco) describen las dos como falta del paciente -- "avisó
+-- la familia", "no asistió, sin aviso previo" -- y no hay margen para
+-- inventar una ausencia del terapeuta sin reescribir ese texto. Con
+-- sólo 2 filas ninguna proporción es representativa; la variedad real
+-- (fue el criterio no uniforme que se pidió) va en seed_demo.sql, que
+-- tiene volumen para que importe.
 INSERT INTO sesiones
-  (id, id_terapeuta, id_paciente, fecha, hora_inicio, hora_fin, estado, notas) VALUES
-  (1,  1, 1, '2026-06-02', '09:00:00', '10:00:00', 'completa',
+  (id, id_terapeuta, id_paciente, fecha, hora_inicio, hora_fin, estado, ausencia_de, notas) VALUES
+  (1,  1, 1, '2026-06-02', '09:00:00', '10:00:00', 'completa',  NULL,
    'Buena disposicion. Trabajamos con masa y pinzas de ropa.'),
-  (2,  1, 1, '2026-06-09', '09:00:00', '10:00:00', 'completa',
+  (2,  1, 1, '2026-06-09', '09:00:00', '10:00:00', 'completa',  NULL,
    'Sostuvo la actividad de encastre sin ayuda fisica.'),
-  (3,  1, 1, '2026-06-16', '09:00:00', '10:00:00', 'incompleta',
+  (3,  1, 1, '2026-06-16', '09:00:00', '10:00:00', 'incompleta', NULL,
    'Se retiro 20 minutos antes por malestar.'),
   -- AUSENCIA: no lleva evolucion. El trigger lo impide (verificacion 1).
-  (4,  1, 1, '2026-06-23', '09:00:00', NULL,       'ausencia',
+  (4,  1, 1, '2026-06-23', '09:00:00', NULL,       'ausencia', 'paciente',
    'La familia aviso el mismo dia.'),
-  (5,  2, 2, '2026-06-03', '11:00:00', '12:00:00', 'completa',
+  (5,  2, 2, '2026-06-03', '11:00:00', '12:00:00', 'completa',  NULL,
    'Tolero el circuito de integracion sensorial completo.'),
-  (6,  2, 2, '2026-06-10', '11:00:00', '12:00:00', 'completa',
+  (6,  2, 2, '2026-06-10', '11:00:00', '12:00:00', 'completa',  NULL,
    'Respondio bien a los auriculares de atenuacion.'),
   -- Segunda AUSENCIA, tampoco lleva evolucion.
-  (7,  2, 2, '2026-06-17', '11:00:00', NULL,       'ausencia',
+  (7,  2, 2, '2026-06-17', '11:00:00', NULL,       'ausencia', 'paciente',
    'No asistio, sin aviso previo.'),
-  (8,  1, 3, '2026-06-04', '15:00:00', '16:00:00', 'completa',
+  (8,  1, 3, '2026-06-04', '15:00:00', '16:00:00', 'completa',  NULL,
    'Inicio de ejercicios de movilidad pasiva.'),
-  (9,  1, 3, '2026-06-11', '15:00:00', '16:00:00', 'completa',
+  (9,  1, 3, '2026-06-11', '15:00:00', '16:00:00', 'completa',  NULL,
    'Progreso en flexion. Sin dolor referido.'),
-  (10, 1, 1, '2026-06-30', '09:00:00', '10:00:00', 'completa',
+  (10, 1, 1, '2026-06-30', '09:00:00', '10:00:00', 'completa',  NULL,
    'Cierre de mes. Se evaluaron dos objetivos.'),
 
   -- Paciente 4, dado de baja despues. Las sesiones NO se tocan en la baja:
   -- son hechos que ocurrieron. Van a las 11:00 porque el terapeuta 1 ya
   -- tiene ocupadas las 09:00 y las 15:00 de esas semanas, y la regla 6
   -- rechazaria el solape.
-  (11, 1, 4, '2026-06-05', '11:00:00', '12:00:00', 'completa',
+  (11, 1, 4, '2026-06-05', '11:00:00', '12:00:00', 'completa', NULL,
    'Trabajo de equilibrio con circuito de obstaculos.'),
-  (12, 1, 4, '2026-06-12', '11:00:00', '12:00:00', 'completa',
+  (12, 1, 4, '2026-06-12', '11:00:00', '12:00:00', 'completa', NULL,
    'Secuencia de vestido con apoyo verbal.'),
-  (13, 1, 4, '2026-06-19', '11:00:00', '12:00:00', 'completa',
+  (13, 1, 4, '2026-06-19', '11:00:00', '12:00:00', 'completa', NULL,
    'Ultima sesion antes de la mudanza de la familia.');
 
 

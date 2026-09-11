@@ -11,8 +11,9 @@ import AvisoSesionSinEvolucion from '../avisos/AvisoSesionSinEvolucion.jsx';
 import CampoTexto from '../forms/CampoTexto.jsx';
 import ModalFormulario from '../modal/ModalFormulario.jsx';
 import { useFormularioModal } from '../../hooks/useFormularioModal.js';
+import { ErrorApi } from '../../services/api.js';
 import {
-  ESTADO_AUSENCIA, OPCIONES_ESTADO_SESION, registrarSesion,
+  ESTADO_AUSENCIA, OPCIONES_AUSENCIA_DE, OPCIONES_ESTADO_SESION, registrarSesion,
 } from '../../services/sesionesService.js';
 import { formatearFecha } from '../../utils/fechas.js';
 
@@ -34,18 +35,38 @@ export default function ModalRegistrarSesion({
       // Arranca VACÍO a propósito: no hay estado por omisión que sea
       // correcto. Ver el aviso más abajo y el hallazgo A de AUDITORIA.md.
       estado: '',
+      // Mismo criterio que estado: sin preselección. Es el mismo defecto
+      // que se acaba de cerrar dos veces (estado en la interfaz y en la
+      // base) y no se reintroduce acá para el campo nuevo.
+      ausencia_de: '',
       notas: '',
     },
     obligatorios: ['id_paciente', 'fecha', 'hora_inicio', 'estado'],
-    onEnviar: (valores) =>
-      registrarSesion({
+    onEnviar: (valores) => {
+      const esAusencia = valores.estado === ESTADO_AUSENCIA;
+      // No está en `obligatorios` porque solo es obligatorio CONDICIONADO
+      // al estado, y ese mecanismo es para campos siempre obligatorios.
+      // Se valida acá, antes de gastar un viaje al servidor -- que de
+      // todos modos lo iba a rechazar, ver _validar_ausencia_de en
+      // sesiones_service.py -- y el throw lo capta el mismo catch que
+      // captura un rechazo real, así que se muestra igual.
+      if (esAusencia && !valores.ausencia_de) {
+        throw new ErrorApi('Elegí quién faltó a la sesión.', { campo: 'ausencia_de' });
+      }
+      return registrarSesion({
         id_paciente: Number(valores.id_paciente),
         fecha: valores.fecha,
         hora_inicio: valores.hora_inicio,
         hora_fin: valores.hora_fin || null,
         estado: valores.estado,
+        // Se fuerza null fuera de ausencia aunque `valores.ausencia_de`
+        // haya quedado con algo elegido antes de cambiar de estado: el
+        // campo se oculta pero el valor no se limpia solo, y mandarlo
+        // igual lo rechazaría del otro lado (ver _validar_ausencia_de).
+        ausencia_de: esAusencia ? valores.ausencia_de : null,
         notas: valores.notas.trim() || null,
-      }),
+      });
+    },
     onExito: (respuesta) => {
       onCerrar?.();
       onRegistrada?.(respuesta);
@@ -172,6 +193,35 @@ export default function ModalRegistrarSesion({
           </Typography>
         )}
       </Box>
+
+      {/* Solo aparece si esAusencia: es el mismo criterio que el aviso de
+          más abajo, la consecuencia se ve al elegir, no al guardar. */}
+      {esAusencia && (
+        <Box {...(validado && !valores.ausencia_de ? { 'data-campo-invalido': '' } : {})}>
+          <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
+            Quién faltó <Box component="span" sx={{ color: 'error.main' }}>*</Box>
+          </Typography>
+          <RadioGroup
+            value={valores.ausencia_de}
+            onChange={(evento) => setValor('ausencia_de', evento.target.value)}
+          >
+            {OPCIONES_AUSENCIA_DE.map((opcion) => (
+              <FormControlLabel
+                key={opcion.valor}
+                value={opcion.valor}
+                disabled={guardando}
+                control={<Radio size="small" />}
+                label={<Box component="span" sx={{ fontSize: 14 }}>{opcion.etiqueta}</Box>}
+              />
+            ))}
+          </RadioGroup>
+          {validado && !valores.ausencia_de && (
+            <Typography variant="caption" color="error">
+              Elegí quién faltó a la sesión.
+            </Typography>
+          )}
+        </Box>
+      )}
 
       {/* El aviso aparece AL ELEGIR ausencia, no al guardar: para eso está
           el radio ahí arriba, para que la consecuencia se vea antes de

@@ -60,6 +60,7 @@ solo uno, el otro se completa con esa misma ventana.
       "hora_inicio": "11:00:00",
       "hora_fin": "12:00:00",
       "estado": "incompleta",
+      "ausencia_de": null,
       "notas": "Se trabajo parcialmente, la sesion se corto antes.",
       "fecha_registro": "2026-08-03T19:53:20",
       "admite_evolucion": true,
@@ -85,6 +86,11 @@ Campos calculados, pensados para el calendario:
 
 - **`estado`** — `completa`, `incompleta` o `ausencia`. **Son los tres del
   ENUM y no hay más.** No existe un estado "pendiente" ni "futura".
+- **`ausencia_de`** (2026-09-11) — `paciente`, `terapeuta` o `null`. Solo
+  tiene valor cuando `estado = "ausencia"`; eje distinto del estado (QUIÉN
+  faltó, no QUÉ pasó). Puede ser `null` con `estado = "ausencia"` en
+  sesiones sembradas antes de esta columna, donde nadie puede reponer el
+  dato retroactivamente.
 - **`admite_evolucion`** — `false` cuando el estado es `ausencia`. Es la
   regla 2: sobre una ausencia no se puede cargar evolución.
 - **`tiene_evolucion`** — si ya tiene al menos una cargada.
@@ -267,6 +273,7 @@ la salida del procedimiento.
   "hora_inicio": "08:00:00",
   "hora_fin": "09:00:00",
   "estado": "completa",
+  "ausencia_de": null,
   "notas": "Sesion de prueba."
 }
 ```
@@ -278,6 +285,7 @@ la salida del procedimiento.
 | `hora_inicio` | sí | `HH:MM:SS` |
 | `hora_fin` | no | Si falta, se asume **una hora** de duración |
 | `estado` | **sí** | `completa`, `incompleta` o `ausencia`. Sin default: hasta el 2026-09-10 un estado ausente se guardaba como `incompleta` sin que nadie lo haya declarado — ver el hallazgo A de `AUDITORIA.md`. Ahora se rechaza igual que cualquier otro obligatorio faltante |
+| `ausencia_de` | **condicional** (2026-09-11) | `paciente` o `terapeuta`. **Obligatorio si y solo si `estado = "ausencia"`.** Fuera de una ausencia tiene que venir `null`/ausente: mandarlo con cualquier otro estado se rechaza. Es un eje distinto de `estado` (QUIÉN faltó, no QUÉ pasó con la sesión) — ver la columna en `schema.sql` |
 | `notas` | no | Contenido clínico |
 
 **El terapeuta es siempre el logueado.** Un `id_terapeuta` en el cuerpo se
@@ -296,6 +304,7 @@ ignora: si no, cualquier terapeuta podría llenarle la agenda a otro.
     "hora_inicio": "08:00:00",
     "hora_fin": "09:00:00",
     "estado": "completa",
+    "ausencia_de": null,
     "notas": "Sesion de prueba.",
     "fecha_registro": "2026-08-02T22:20:16"
   }
@@ -308,6 +317,8 @@ ignora: si no, cualquier terapeuta podría llenarle la agenda a otro.
 |---|---|---|
 | Falta un obligatorio | `400` | `Faltan datos obligatorios: estado, hora_inicio` |
 | `estado` no válido | `400` | `El estado tiene que ser uno de: completa, incompleta, ausencia.` |
+| `ausencia` sin `ausencia_de` | `400` | `Falta declarar quien falto: tiene que ser "paciente" o "terapeuta".` |
+| `ausencia_de` fuera de una ausencia | `400` | `Quien falto solo se declara en una sesion marcada como ausencia.` |
 | **Superposición horaria** | `400` | `El terapeuta ya tiene 1 sesion(es) que se superponen con ese horario` |
 | Hora de fin anterior al inicio | `400` | `La hora de fin debe ser posterior a la hora de inicio` |
 | Paciente inexistente | `400` | `El paciente indicado no existe` |
@@ -332,6 +343,7 @@ Detalle con todo lo necesario para la pantalla de carga de evolución.
   "sesion": {
     "id": 11,
     "estado": "completa",
+    "ausencia_de": null,
     "fecha": "2026-06-05",
     "hora_inicio": "08:00:00",
     "hora_fin": "09:00:00",
@@ -391,10 +403,11 @@ Edita una sesión ya registrada, vía `p_editar_sesion`. **PUT y no PATCH**,
 mismo criterio que `PUT /api/pacientes/<id>`: el formulario manda la sesión
 entera, no un delta.
 
-**Editable:** `estado`, `notas`, `fecha`, `hora_inicio`, `hora_fin`.
-**NO editable:** `id_paciente` ni `id_terapeuta` — no se aceptan en el
-cuerpo. El terapeuta es siempre el logueado, igual que en el `POST`; el
-paciente es un hecho de la sesión, no un dato que se corrija desde acá.
+**Editable:** `estado`, `ausencia_de`, `notas`, `fecha`, `hora_inicio`,
+`hora_fin`. **NO editable:** `id_paciente` ni `id_terapeuta` — no se
+aceptan en el cuerpo. El terapeuta es siempre el logueado, igual que en el
+`POST`; el paciente es un hecho de la sesión, no un dato que se corrija
+desde acá.
 
 **Solo el terapeuta que atendió puede editar.** La lectura sigue abierta a
 cualquiera por `GET /api/sesiones/<id>` — es la misma decisión de "quién ve
@@ -407,6 +420,7 @@ que la interfaz sepa si mostrar el formulario de edición.
 ```json
 {
   "estado": "completa",
+  "ausencia_de": null,
   "notas": "Se retiro 20 minutos antes por malestar.",
   "fecha": "2026-06-16",
   "hora_inicio": "09:00:00",
@@ -417,6 +431,7 @@ que la interfaz sepa si mostrar el formulario de edición.
 | Campo | Obligatorio | Notas |
 |---|---|---|
 | `estado` | sí | `completa`, `incompleta` o `ausencia` |
+| `ausencia_de` | **condicional** (2026-09-11) | Mismo criterio que en el `POST`: obligatorio si y solo si `estado = "ausencia"`, `null`/ausente en cualquier otro caso |
 | `fecha` | sí | `AAAA-MM-DD` |
 | `hora_inicio` | sí | `HH:MM:SS` |
 | `hora_fin` | no | Si falta, se asume **una hora** de duración |
@@ -435,11 +450,25 @@ que la interfaz sepa si mostrar el formulario de edición.
     "hora_inicio": "11:00:00",
     "hora_fin": "12:00:00",
     "estado": "completa",
+    "ausencia_de": null,
     "notas": "Secuencia de vestido con apoyo verbal (editado).",
     "fecha_registro": "2026-06-12T14:00:00"
   }
 }
 ```
+
+### Sesiones de ausencia sembradas antes del 2026-09-11
+
+Las filas con `estado = "ausencia"` cargadas antes de que existiera
+`ausencia_de` quedaron con ese campo en `NULL` — nadie puede reponer
+retroactivamente quién faltó. Al editar una de esas sesiones por esta
+puerta, `ausencia_de` viaja igual que cualquier otro campo del formulario:
+si la edición no toca ni `estado` ni `ausencia_de`, se guarda sin pedir
+nada nuevo; pero **la interfaz siempre pide declarar quién faltó cuando
+`estado` es `ausencia`**, así que en la práctica la primera vez que alguien
+vuelve a abrir una de esas sesiones para editar cualquier cosa, tiene que
+completar el dato antes de poder guardar. No es un bloqueo del backend: es
+el mismo formulario obligatorio que rige para una ausencia nueva.
 
 ### Lo que la base revalida en cada edición, y cuándo
 
@@ -453,9 +482,10 @@ depende:
 |---|---|---|
 | Superposición horaria | Cambia `fecha`, `hora_inicio` u `hora_fin` | Si el horario no se toca, no puede haber una superposición nueva |
 | Sesión posterior a la baja del paciente | Cambia `fecha` | El paciente no es editable; si la fecha no se mueve, la sesión sigue donde ya estaba validada |
-| Ausencia con evolución ya cargada | Cambia `estado` a `ausencia` | Es la única de las tres que corre **siempre**, sin guardia: no depende de qué otro campo se tocó |
+| Ausencia con evolución ya cargada | Cambia `estado` a `ausencia` | Es la única de las cuatro que corre **siempre**, sin guardia: no depende de qué otro campo se tocó |
+| Consistencia `estado`/`ausencia_de` (2026-09-11) | Cambia `estado` o `ausencia_de` | Igual criterio que las otras dos guardadas: una fila de ausencia sembrada antes de esta columna, con `ausencia_de` en `NULL`, no se puede dejar congelada para cualquier edición que no toque ninguno de los dos campos |
 
-Una edición que solo cambia `notas` no dispara ninguna de las tres — y no
+Una edición que solo cambia `notas` no dispara ninguna de las cuatro — y no
 hace falta: ninguna depende de `notas`.
 
 **Errores**
@@ -464,16 +494,22 @@ hace falta: ninguna depende de `notas`.
 |---|---|---|
 | Falta un obligatorio | `400` | `Faltan datos obligatorios: estado, fecha` |
 | `estado` no válido | `400` | `El estado tiene que ser uno de: completa, incompleta, ausencia.` |
+| `ausencia` sin `ausencia_de` | `400` | `Falta declarar quien falto: tiene que ser "paciente" o "terapeuta".` |
+| `ausencia_de` fuera de una ausencia | `400` | `Quien falto solo se declara en una sesion marcada como ausencia.` |
 | **Sesión de otro terapeuta** | `403` | `Solo el terapeuta que atendio la sesion puede editarla.` |
 | **Superposición horaria** | `400` | `El terapeuta ya tiene sesiones que se superponen con ese horario` |
 | Hora de fin anterior al inicio | `400` | `La hora de fin debe ser posterior a la hora de inicio` |
 | Fecha posterior a la baja del paciente | `400` | `El paciente esta dado de baja: solo se pueden cargar sesiones hasta el dia de la baja` |
 | **A `ausencia` con evoluciones cargadas** | `400` | `No se puede marcar la sesion como ausencia: ya tiene evoluciones cargadas` |
+| **`ausencia` sin `ausencia_de` (trigger)** | `400` | `No se puede marcar la sesion como ausencia sin declarar quien falto` |
 | Sesión inexistente | `404` | `La sesion indicada no existe.` |
 
-Los últimos cuatro son mensajes de `trg_sesiones_solape_update`, propagados
-tal cual desde `p_editar_sesion`: son los mismos textos que ya usa
-`POST /api/sesiones`, y significan lo mismo.
+Los del bloque de `trg_sesiones_solape_update` se propagan tal cual desde
+`p_editar_sesion`: son los mismos textos que ya usa `POST /api/sesiones`, y
+significan lo mismo. Las dos primeras filas de `ausencia_de` las valida
+Python (`_validar_ausencia_de`, mismo criterio que `_validar_estado`) antes
+de llegar a la base; la del trigger es la misma regla vista desde un `CALL`
+directo, que no pasa por Python.
 
 ---
 

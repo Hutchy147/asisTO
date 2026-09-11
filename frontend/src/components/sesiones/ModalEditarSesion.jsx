@@ -26,8 +26,9 @@ import AvisoSesionSinEvolucion from '../avisos/AvisoSesionSinEvolucion.jsx';
 import CampoTexto from '../forms/CampoTexto.jsx';
 import ModalFormulario from '../modal/ModalFormulario.jsx';
 import { useFormularioModal } from '../../hooks/useFormularioModal.js';
+import { ErrorApi } from '../../services/api.js';
 import {
-  editarSesion, ESTADO_AUSENCIA, OPCIONES_ESTADO_SESION,
+  editarSesion, ESTADO_AUSENCIA, OPCIONES_AUSENCIA_DE, OPCIONES_ESTADO_SESION,
 } from '../../services/sesionesService.js';
 import { formatearFecha } from '../../utils/fechas.js';
 
@@ -35,20 +36,32 @@ export default function ModalEditarSesion({ abierto, sesion, paciente, onCerrar,
   const formulario = useFormularioModal({
     inicial: {
       estado: sesion?.estado ?? '',
+      // Ausencias sembradas antes de que esta columna existiera quedan
+      // NULL -- ver schema.sql --, así que acá arranca vacío igual que si
+      // fuera una sesión nueva: no hay valor que precargar, y el usuario
+      // tiene que elegir antes de poder guardar cualquier otro cambio en
+      // esa fila. Es la consecuencia, dicha, no un efecto secundario.
+      ausencia_de: sesion?.ausencia_de ?? '',
       notas: sesion?.notas ?? '',
       fecha: sesion?.fecha ?? '',
       hora_inicio: sesion?.hora_inicio?.slice(0, 5) ?? '',
       hora_fin: sesion?.hora_fin?.slice(0, 5) ?? '',
     },
     obligatorios: ['estado', 'fecha', 'hora_inicio'],
-    onEnviar: (valores) =>
-      editarSesion(sesion.id, {
+    onEnviar: (valores) => {
+      const esAusencia = valores.estado === ESTADO_AUSENCIA;
+      if (esAusencia && !valores.ausencia_de) {
+        throw new ErrorApi('Elegí quién faltó a la sesión.', { campo: 'ausencia_de' });
+      }
+      return editarSesion(sesion.id, {
         estado: valores.estado,
+        ausencia_de: esAusencia ? valores.ausencia_de : null,
         notas: valores.notas.trim() || null,
         fecha: valores.fecha,
         hora_inicio: valores.hora_inicio,
         hora_fin: valores.hora_fin || null,
-      }),
+      });
+    },
     onExito: (respuesta) => {
       onCerrar?.();
       onGuardado?.(respuesta);
@@ -169,6 +182,34 @@ export default function ModalEditarSesion({ abierto, sesion, paciente, onCerrar,
           </Typography>
         )}
       </Box>
+
+      {/* Mismo bloque que ModalRegistrarSesion, mismo criterio. */}
+      {esAusencia && (
+        <Box {...(validado && !valores.ausencia_de ? { 'data-campo-invalido': '' } : {})}>
+          <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
+            Quién faltó <Box component="span" sx={{ color: 'error.main' }}>*</Box>
+          </Typography>
+          <RadioGroup
+            value={valores.ausencia_de}
+            onChange={(evento) => setValor('ausencia_de', evento.target.value)}
+          >
+            {OPCIONES_AUSENCIA_DE.map((opcion) => (
+              <FormControlLabel
+                key={opcion.valor}
+                value={opcion.valor}
+                disabled={guardando}
+                control={<Radio size="small" />}
+                label={<Box component="span" sx={{ fontSize: 14 }}>{opcion.etiqueta}</Box>}
+              />
+            ))}
+          </RadioGroup>
+          {validado && !valores.ausencia_de && (
+            <Typography variant="caption" color="error">
+              Elegí quién faltó a la sesión.
+            </Typography>
+          )}
+        </Box>
+      )}
 
       {/* Mismo criterio que ModalRegistrarSesion: la consecuencia se ve
           antes de confirmar, todavía se puede cambiar de opinión. */}

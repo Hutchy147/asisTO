@@ -13,6 +13,15 @@ ESTADOS = (ESTADO_COMPLETA, ESTADO_INCOMPLETA, ESTADO_AUSENCIA)
 # esta constante solo sirve para filtrar listados, no para validar.
 ESTADOS_CON_EVOLUCION = (ESTADO_COMPLETA, ESTADO_INCOMPLETA)
 
+AUSENCIA_DE_PACIENTE = 'paciente'
+AUSENCIA_DE_TERAPEUTA = 'terapeuta'
+
+# Quien falto, solo cuando estado='ausencia'. Eje distinto del estado (ver
+# el comentario de la columna en schema.sql): la consistencia entre los
+# dos la valida el trigger, esta tupla es solo para no repetir los
+# literales.
+ORIGENES_AUSENCIA = (AUSENCIA_DE_PACIENTE, AUSENCIA_DE_TERAPEUTA)
+
 
 def formatear_hora(valor):
     """
@@ -51,6 +60,12 @@ class Sesion(db.Model):
     hora_inicio = db.Column(db.Time, nullable=False)
     hora_fin = db.Column(db.Time, nullable=True)
     estado = db.Column(db.Enum(*ESTADOS, name='estado_sesion'), nullable=False)
+    # Quien falto. NULL fuera de 'ausencia', obligatorio dentro -- lo aplica
+    # el trigger, no el ORM. Es dato de asistencia, no contenido clinico:
+    # va en to_dict() sin el guardado de con_notas, a diferencia de notas.
+    ausencia_de = db.Column(
+        db.Enum(*ORIGENES_AUSENCIA, name='ausencia_de_sesion'), nullable=True
+    )
     # notas es CONTENIDO CLINICO. RRHH no puede verlo: no incluirlo en
     # ninguna respuesta de ese modulo (limite duro del CLAUDE.md).
     notas = db.Column(db.Text, nullable=True)
@@ -70,6 +85,7 @@ class Sesion(db.Model):
             'hora_inicio': formatear_hora(self.hora_inicio),
             'hora_fin': formatear_hora(self.hora_fin),
             'estado': self.estado,
+            'ausencia_de': self.ausencia_de,
             'fecha_registro': self.fecha_registro.isoformat() if self.fecha_registro else None,
         }
         if con_notas:

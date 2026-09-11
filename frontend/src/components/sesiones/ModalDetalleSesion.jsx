@@ -37,7 +37,9 @@ import { hayCapacidad } from '../../config/entregas.js';
 import { Cargando, EstadoError, EstadoVacio } from '../estado/index.js';
 import { usePeticion } from '../../hooks/usePeticion.js';
 import { etiquetaDeValor } from '../../services/evolucionesService.js';
-import { obtenerSesion } from '../../services/sesionesService.js';
+import {
+  ESTADO_AUSENCIA, ETIQUETA_AUSENCIA_DE, obtenerSesion,
+} from '../../services/sesionesService.js';
 import { formatearFecha } from '../../utils/fechas.js';
 
 /** Encabezado de bloque con su contador a la derecha. */
@@ -182,12 +184,27 @@ export default function ModalDetalleSesion({
 
       {datos && (
         <>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 2.5 }}>
-            <SesionEstadoChip estado={sesion.estado} />
-            <Typography variant="body2" color="text.secondary">
-              Atendió {datos.terapeuta?.nombre_completo ?? 'un terapeuta del centro'}
-              {esPropia ? '' : ' · otro terapeuta'}
-            </Typography>
+          <Box sx={{ mb: 2.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+              <SesionEstadoChip estado={sesion.estado} />
+              <Typography variant="body2" color="text.secondary">
+                Atendió {datos.terapeuta?.nombre_completo ?? 'un terapeuta del centro'}
+                {esPropia ? '' : ' · otro terapeuta'}
+              </Typography>
+            </Box>
+
+            {/* Solo en ausencia: es un eje distinto del estado (ver la
+                columna en schema.sql), no algo que el chip deba mostrar. Las
+                ausencias sembradas antes de que la columna existiera no
+                tienen dato -- se dice explícitamente, no se oculta la
+                línea, que sería indistinguible de un olvido de carga. */}
+            {sesion.estado === ESTADO_AUSENCIA && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                Faltó {sesion.ausencia_de
+                  ? ETIQUETA_AUSENCIA_DE[sesion.ausencia_de]
+                  : '— sin especificar (sesión registrada antes de que se pudiera declarar)'}
+              </Typography>
+            )}
           </Box>
 
           <Bloque titulo="Notas del día">

@@ -183,6 +183,7 @@ BEGIN
   DECLARE v_hora       TIME;
   DECLARE v_id_pac     INT;
   DECLARE v_estado     VARCHAR(20);
+  DECLARE v_ausencia_de VARCHAR(20);
   DECLARE v_contador   INT DEFAULT 0;
   DECLARE v_id_sesion  INT;
   DECLARE v_n_obj      INT;
@@ -284,12 +285,36 @@ BEGIN
             ELSE 'completa'
           END;
 
+          -- QUIEN FALTO, solo cuando v_estado = 'ausencia' (2026-09-11).
+          -- Distribucion NO uniforme, a proposito: un seed donde todas las
+          -- ausencias son del paciente describe un mundo donde el terapeuta
+          -- nunca falta, y RRHH se prueba contra este seed. v_contador llega
+          -- aca ya siendo multiplo de 11 (es la condicion de arriba), asi
+          -- que v_contador DIV 11 es el numero de orden de ESTA ausencia
+          -- (1a, 2a, 3a...). Una de cada cinco (la 5a, 10a, 15a...) se marca
+          -- 'terapeuta'; el resto, 'paciente'. Sobre 59 ausencias totales
+          -- (medido en la base) da 11 terapeuta / 48 paciente, ~19%/81%:
+          -- minoria real, no cero.
+          SET v_ausencia_de = CASE
+            WHEN v_estado = 'ausencia' AND (v_contador DIV 11) MOD 5 = 0
+              THEN 'terapeuta'
+            WHEN v_estado = 'ausencia'
+              THEN 'paciente'
+            ELSE NULL
+          END;
+
           INSERT INTO sesiones
-            (id_terapeuta, id_paciente, fecha, hora_inicio, hora_fin, estado, notas)
+            (id_terapeuta, id_paciente, fecha, hora_inicio, hora_fin, estado,
+             ausencia_de, notas)
           VALUES (
             v_ter, v_id_pac, v_dia, v_hora, ADDTIME(v_hora, '01:00:00'), v_estado,
+            v_ausencia_de,
             CASE v_estado
-              WHEN 'ausencia'   THEN 'No asistio. Se aviso a la familia.'
+              WHEN 'ausencia' THEN
+                CASE v_ausencia_de
+                  WHEN 'terapeuta' THEN 'El terapeuta debio reprogramar por una urgencia.'
+                  ELSE                  'No asistio. Se aviso a la familia.'
+                END
               WHEN 'incompleta' THEN 'Se trabajo parcialmente, la sesion se corto antes.'
               ELSE                   'Sesion trabajada segun el plan previsto.'
             END
@@ -413,31 +438,36 @@ INSERT INTO objetivos_terapeuticos (id_paciente, descripcion, activo, fecha_crea
 --    Dos sesiones caen EL MISMO DIA (la de 140 y una segunda a las 18:00):
 --    es el caso que hace visible el apilado de marcas del grafico, y ocurre
 --    de verdad —un paciente puede tener dos turnos el mismo dia—.
-INSERT INTO sesiones (id_terapeuta, id_paciente, fecha, hora_inicio, hora_fin, estado, notas) VALUES
-  (2, 16, DATE_SUB(CURDATE(), INTERVAL 140 DAY), '17:00:00', '18:00:00', 'completa',
+-- Las dos ausencias de esta historia van 'paciente': el mismo criterio que
+-- seed.sql -- las notas ya escritas ("avisó la familia", "no asistió, sin
+-- aviso") describen falta del paciente, no del terapeuta, y esta es una
+-- historia fija de un solo paciente, no la muestra grande donde importa la
+-- variedad (esa es la del generador de arriba).
+INSERT INTO sesiones (id_terapeuta, id_paciente, fecha, hora_inicio, hora_fin, estado, ausencia_de, notas) VALUES
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL 140 DAY), '17:00:00', '18:00:00', 'completa', NULL,
    'Primera sesion. Se toma linea de base de fuerza y escritura.'),
-  (2, 16, DATE_SUB(CURDATE(), INTERVAL 140 DAY), '18:00:00', '19:00:00', 'incompleta',
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL 140 DAY), '18:00:00', '19:00:00', 'incompleta', NULL,
    'Segundo turno del mismo dia. Se corto antes por cansancio.'),
-  (2, 16, DATE_SUB(CURDATE(), INTERVAL 133 DAY), '17:00:00', '18:00:00', 'completa',
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL 133 DAY), '17:00:00', '18:00:00', 'completa', NULL,
    'Trabajo de prension con masa y pinzas.'),
   -- Este dia tiene DOS sesiones y una es ausencia: es el caso que hace
   -- visible por que las marcas se apilan. Si se superpusieran, el ambar de
   -- la sesion trabajada taparia el ladrillo de la ausencia —o al reves— y
   -- una ausencia desapareceria del grafico. Eso es informacion clinica
   -- oculta, no una molestia de densidad.
-  (2, 16, DATE_SUB(CURDATE(), INTERVAL 126 DAY), '17:00:00', '18:00:00', 'ausencia',
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL 126 DAY), '17:00:00', '18:00:00', 'ausencia', 'paciente',
    'La familia aviso el dia anterior.'),
-  (2, 16, DATE_SUB(CURDATE(), INTERVAL 126 DAY), '18:00:00', '19:00:00', 'completa',
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL 126 DAY), '18:00:00', '19:00:00', 'completa', NULL,
    'Se recupero el turno mas tarde. No se llego a calificar.'),
-  (2, 16, DATE_SUB(CURDATE(), INTERVAL 119 DAY), '17:00:00', '18:00:00', 'completa',
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL 119 DAY), '17:00:00', '18:00:00', 'completa', NULL,
    'Retoma el trazo con apoyo verbal.'),
-  (2, 16, DATE_SUB(CURDATE(), INTERVAL 112 DAY), '17:00:00', '18:00:00', 'completa',
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL 112 DAY), '17:00:00', '18:00:00', 'completa', NULL,
    'Practica de vestido con prendas propias.'),
-  (2, 16, DATE_SUB(CURDATE(), INTERVAL 105 DAY), '17:00:00', '18:00:00', 'ausencia',
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL 105 DAY), '17:00:00', '18:00:00', 'ausencia', 'paciente',
    'No asistio, sin aviso.'),
-  (2, 16, DATE_SUB(CURDATE(), INTERVAL  98 DAY), '17:00:00', '18:00:00', 'completa',
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL  98 DAY), '17:00:00', '18:00:00', 'completa', NULL,
    'Escritura sostenida sin recordatorios.'),
-  (2, 16, DATE_SUB(CURDATE(), INTERVAL  91 DAY), '17:00:00', '18:00:00', 'completa',
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL  91 DAY), '17:00:00', '18:00:00', 'completa', NULL,
    'Cierre del tratamiento. Se repasan los tres objetivos.');
 
 -- 3. Evoluciones. NO se califican todos los objetivos en todas las sesiones

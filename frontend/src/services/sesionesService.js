@@ -12,6 +12,14 @@ const ESTADO_COMPLETA = 'completa';
 const ESTADO_INCOMPLETA = 'incompleta';
 export const ESTADO_AUSENCIA = 'ausencia';
 
+// Quien faltó, solo cuando estado = ESTADO_AUSENCIA. Eje distinto del
+// estado (ver la columna en schema.sql): ESTADOS_SESION dice QUÉ pasó,
+// esto dice QUIÉN de los dos no estuvo. No exportados, mismo criterio que
+// ESTADO_COMPLETA/ESTADO_INCOMPLETA: los modales no comparan contra el
+// valor directo, solo iteran OPCIONES_AUSENCIA_DE (más abajo).
+const AUSENCIA_DE_PACIENTE = 'paciente';
+const AUSENCIA_DE_TERAPEUTA = 'terapeuta';
+
 // Se borraron de aca:
 //
 //   ESTADOS_SESION
@@ -66,6 +74,7 @@ export function registrarSesion({
   hora_inicio: horaInicio,
   hora_fin: horaFin = null,
   estado = ESTADO_INCOMPLETA,
+  ausencia_de: ausenciaDe = null,
   notas = null,
 }) {
   return post('/sesiones', {
@@ -74,6 +83,7 @@ export function registrarSesion({
     hora_inicio: horaInicio,
     hora_fin: horaFin,
     estado,
+    ausencia_de: ausenciaDe,
     notas,
   });
 }
@@ -81,9 +91,9 @@ export function registrarSesion({
 /**
  * Edita una sesion ya registrada.
  *
- * Editable: estado, notas, fecha, hora_inicio, hora_fin. id_paciente e
- * id_terapeuta NO viajan: el endpoint los ignora por diseño (el terapeuta
- * es siempre el logueado, y no puede ser otro).
+ * Editable: estado, ausencia_de, notas, fecha, hora_inicio, hora_fin.
+ * id_paciente e id_terapeuta NO viajan: el endpoint los ignora por diseño
+ * (el terapeuta es siempre el logueado, y no puede ser otro).
  *
  * PUT y no PATCH: el formulario manda la sesion entera. Si no se manda
  * hora_fin se asume una hora de duracion, igual que al registrar.
@@ -93,6 +103,7 @@ export function registrarSesion({
  */
 export function editarSesion(idSesion, {
   estado,
+  ausencia_de: ausenciaDe = null,
   notas = null,
   fecha,
   hora_inicio: horaInicio,
@@ -100,6 +111,7 @@ export function editarSesion(idSesion, {
 }) {
   return put(`/sesiones/${idSesion}`, {
     estado,
+    ausencia_de: ausenciaDe,
     notas,
     fecha,
     hora_inicio: horaInicio,
@@ -179,3 +191,20 @@ export const OPCIONES_ESTADO_SESION = [
     descripcion: 'El paciente no asistió, con o sin aviso previo.',
   },
 ];
+
+/**
+ * Las dos opciones del radio "Quién faltó", que solo se muestra cuando el
+ * estado elegido es ESTADO_AUSENCIA. Mismo criterio que
+ * OPCIONES_ESTADO_SESION: un solo lugar para que los dos modales no
+ * diverjan en el vocabulario.
+ */
+export const OPCIONES_AUSENCIA_DE = [
+  { valor: AUSENCIA_DE_PACIENTE, etiqueta: 'El paciente' },
+  { valor: AUSENCIA_DE_TERAPEUTA, etiqueta: 'El terapeuta' },
+];
+
+/** Etiqueta de quién faltó, para mostrar en el detalle de una sesión. */
+export const ETIQUETA_AUSENCIA_DE = {
+  [AUSENCIA_DE_PACIENTE]: 'el paciente',
+  [AUSENCIA_DE_TERAPEUTA]: 'el terapeuta',
+};

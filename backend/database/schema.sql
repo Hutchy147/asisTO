@@ -266,6 +266,20 @@ CREATE TABLE sesiones (
   hora_fin        TIME         NULL DEFAULT NULL,
   estado          ENUM('completa','incompleta','ausencia')
                     NOT NULL DEFAULT 'incompleta',
+  -- QUIEN FALTO, solo cuando estado='ausencia'. Es un eje distinto del
+  -- estado: `estado` describe QUE paso con la sesion (se hizo, se corto,
+  -- no hubo sesion); esta columna describe QUIEN de los dos no estuvo.
+  -- Va en columna propia y no ampliando el ENUM de estado porque son dos
+  -- preguntas distintas, no dos valores del mismo eje.
+  --
+  -- Tiene que ser NULL siempre que estado no sea 'ausencia', y no-NULL
+  -- siempre que SI lo sea: los dos triggers de mas abajo rechazan las dos
+  -- combinaciones inconsistentes. La validacion esta guardada para correr
+  -- SOLO cuando `estado` o esta columna cambian (ver trg_sesiones_solape_
+  -- update): las filas de ausencia sembradas antes de que esta columna
+  -- existiera quedan con ausencia_de NULL, sin dato que nadie puede
+  -- reponer, y no se fuerza su reescritura por editar otra cosa.
+  ausencia_de     ENUM('paciente','terapeuta') NULL DEFAULT NULL,
   notas           TEXT         NULL DEFAULT NULL,
   -- DUPLA TERAPEUTICA — preparacion de la Entrega 4, hoy sin uso.
   --
@@ -755,6 +769,26 @@ BEGIN
   DECLARE v_fecha_baja   DATE         DEFAULT NULL;
 
   -- =====================================================================
+  -- AUSENCIA Y QUIEN FALTO TIENEN QUE VIAJAR JUNTOS (2026-09-10)
+  --
+  -- No lee ninguna tabla ni toma ningun lock: compara NEW contra si misma,
+  -- asi que va primero, antes de gastar el lock de pacientes en una fila
+  -- que de todos modos se va a rechazar. Mismo mensaje que en el trigger
+  -- de UPDATE — son las dos puertas de la misma regla.
+  -- =====================================================================
+  IF NEW.estado = 'ausencia' AND NEW.ausencia_de IS NULL THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT =
+        'No se puede marcar la sesion como ausencia sin declarar quien falto';
+  END IF;
+
+  IF NEW.estado <> 'ausencia' AND NEW.ausencia_de IS NOT NULL THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT =
+        'Quien falto solo se declara en una sesion marcada como ausencia';
+  END IF;
+
+  -- =====================================================================
   -- SESION SOBRE UN PACIENTE DADO DE BAJA (2026-08-13)
   --
   -- Mismo criterio que p_registrar_sesion: el corte es la FECHA de la
@@ -902,6 +936,39 @@ BEGIN
       SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT =
           'No se puede marcar la sesion como ausencia: ya tiene evoluciones cargadas';
+    END IF;
+  END IF;
+
+  -- =====================================================================
+  -- AUSENCIA Y QUIEN FALTO TIENEN QUE VIAJAR JUNTOS (2026-09-10)
+  --
+  -- Par del chequeo del trigger de INSERT, mismos dos mensajes. Aca no es
+  -- incondicional: CORRE SOLO SI CAMBIA `estado` O `ausencia_de`. Sin esta
+  -- guarda, cualquier UPDATE sobre una fila de ausencia sembrada ANTES de
+  -- que esta columna existiera (59 en `asisto`, 59 en seed_demo.sql, 2 en
+  -- seed.sql, medido el 2026-09-10 y ninguna tiene ausencia_de) quedaria
+  -- congelada para siempre: NEW repite el mismo estado='ausencia' con
+  -- ausencia_de NULL que la fila ya tenia, y una regla sin guarda la
+  -- rechazaria por un dato que nadie puede reponer, aunque el UPDATE real
+  -- solo tocara `notas`. Es el mismo defecto, con la misma solucion, que
+  -- ya se encontro y se corrigio para el chequeo de fecha_baja de arriba
+  -- (ver su comentario, punto 1): la regla es sobre el estado FINAL que se
+  -- esta declarando, no sobre si una fila vieja se puede seguir tocando.
+  -- No va dentro del IF de ausencia+evolucion de arriba porque esa guarda
+  -- (`NEW.estado = 'ausencia' AND OLD.estado <> 'ausencia'`) no cubre el
+  -- caso de corregir solo `ausencia_de` sobre una fila que YA es ausencia.
+  -- =====================================================================
+  IF NEW.estado <> OLD.estado OR NOT (NEW.ausencia_de <=> OLD.ausencia_de) THEN
+    IF NEW.estado = 'ausencia' AND NEW.ausencia_de IS NULL THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+          'No se puede marcar la sesion como ausencia sin declarar quien falto';
+    END IF;
+
+    IF NEW.estado <> 'ausencia' AND NEW.ausencia_de IS NOT NULL THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+          'Quien falto solo se declara en una sesion marcada como ausencia';
     END IF;
   END IF;
 
@@ -1949,6 +2016,19 @@ CREATE PROCEDURE p_registrar_sesion (
   IN  p_hora_inicio   TIME,
   IN  p_hora_fin      TIME,
   IN  p_estado        VARCHAR(20),
+  -- Quien falto, solo cuando p_estado='ausencia'. NULL en cualquier otro
+  -- caso. La consistencia entre los dos la valida el trigger de INSERT,
+  -- no este procedimiento — ver AUSENCIA Y QUIEN FALTO TIENEN QUE VIAJAR
+  -- JUNTOS en trg_sesiones_solape_insert.
+  --
+  -- PARAMETRO NUEVO (2026-09-10): agregarlo cambio la aridad del
+  -- procedimiento, asi que todo CALL existente con 7 argumentos posicionales
+  -- deja de compilar. El unico llamador que este cambio pudo corregir es
+  -- `sesiones_service.py` (backend, no es tests/). Los CALL directos de
+  -- `tests/db` y `tests/backend` quedan rotos a proposito: tests/ es de
+  -- auditoria, no se toca desde aca. Ver la nota para la otra terminal en
+  -- ESTADO.md.
+  IN  p_ausencia_de   VARCHAR(20),
   IN  p_notas         TEXT,
   OUT p_id_sesion     INT UNSIGNED,
   OUT p_mensaje       VARCHAR(255)
@@ -2010,6 +2090,17 @@ BEGIN
     SET p_mensaje = 'El terapeuta indicado no existe';
   ELSEIF v_existe_pac = 0 THEN
     SET p_mensaje = 'El paciente indicado no existe';
+  -- CERRADO 2026-09-10 (hallazgo C1): hasta hoy esta rama no existia y el
+  -- INSERT de mas abajo hacia IFNULL(p_estado, 'incompleta'). Un CALL
+  -- directo sin estado entraba igual, declarado como si alguien hubiera
+  -- dicho "incompleta" sin haberlo dicho — el mismo hallazgo que ya se
+  -- habia cerrado del lado de Python (`registrar_sesion`), eludido por
+  -- este otro camino de escritura. Medido antes de aplicar: los 14
+  -- llamadores de este procedimiento en todo el repo (`grep -rn "CALL
+  -- p_registrar_sesion("`) mandan un estado explicito, ninguno dependia
+  -- del default.
+  ELSEIF p_estado IS NULL OR p_estado = '' THEN
+    SET p_mensaje = 'El estado es obligatorio';
   -- Agregado el 2026-08-12, con el modulo de baja. Hasta ese dia el
   -- procedimiento validaba que el paciente EXISTIERA y nada mas, y lo unico
   -- que impedia agendarle una sesion a alguien dado de baja era que no
@@ -2091,10 +2182,11 @@ BEGIN
         ' sesion(es) que se superponen con ese horario');
     ELSE
       INSERT INTO sesiones (
-        id_terapeuta, id_paciente, fecha, hora_inicio, hora_fin, estado, notas
+        id_terapeuta, id_paciente, fecha, hora_inicio, hora_fin, estado,
+        ausencia_de, notas
       ) VALUES (
         p_id_terapeuta, p_id_paciente, p_fecha, p_hora_inicio, p_hora_fin,
-        IFNULL(p_estado, 'incompleta'), p_notas
+        p_estado, p_ausencia_de, p_notas
       );
 
       SET p_id_sesion = LAST_INSERT_ID();
@@ -2141,6 +2233,13 @@ CREATE PROCEDURE p_editar_sesion (
   IN  p_id_sesion     INT UNSIGNED,
   IN  p_id_terapeuta  INT UNSIGNED,
   IN  p_estado        VARCHAR(20),
+  -- Quien falto, mismo criterio que p_registrar_sesion (ver ahi el porque
+  -- de la consistencia y el mensaje). NUEVO 2026-09-11, cambia la aridad:
+  -- el unico llamador de este procedimiento en todo el repo es
+  -- `sesiones_service.py` (`grep -rn "p_editar_sesion" tests/db
+  -- tests/backend` no da nada fuera de _respaldos), asi que no hay ningun
+  -- CALL en tests/ que se rompa por este parametro.
+  IN  p_ausencia_de   VARCHAR(20),
   IN  p_notas         TEXT,
   IN  p_fecha         DATE,
   IN  p_hora_inicio   TIME,
@@ -2209,6 +2308,7 @@ BEGIN
 
     UPDATE sesiones
        SET estado      = p_estado,
+           ausencia_de = p_ausencia_de,
            notas       = p_notas,
            fecha       = p_fecha,
            hora_inicio = p_hora_inicio,

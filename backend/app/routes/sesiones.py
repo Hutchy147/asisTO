@@ -57,7 +57,8 @@ def detalle(id_sesion):
 @requiere_rol('terapeuta')
 def editar(id_sesion):
     """
-    Edita estado, notas, fecha, hora_inicio y hora_fin de una sesion.
+    Edita estado, ausencia_de, notas, fecha, hora_inicio y hora_fin de una
+    sesion.
 
     PUT y no PATCH, mismo criterio que PUT /pacientes/<id>: el formulario
     manda la sesion entera, no un delta.

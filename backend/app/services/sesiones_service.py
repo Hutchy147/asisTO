@@ -9,7 +9,7 @@ from sqlalchemy import bindparam, text
 
 from app import db
 from app.models import Evolucion, ObjetivoTerapeutico, Paciente, Sesion, Terapeuta, Usuario
-from app.models.sesion import ESTADOS, ESTADOS_CON_EVOLUCION
+from app.models.sesion import ESTADO_AUSENCIA, ESTADOS, ESTADOS_CON_EVOLUCION, ORIGENES_AUSENCIA
 from app.utils.db import reintentar_en_deadlock
 from app.utils.errors import ErrorAplicacion
 
@@ -293,6 +293,28 @@ def _validar_estado(estado):
         )
 
 
+def _validar_ausencia_de(estado, ausencia_de):
+    """Misma consistencia que trg_sesiones_solape_insert/_update, pero con
+    mensaje de Python antes de gastar un viaje a la base. Compartida entre
+    crear y editar, igual que _validar_estado: es la misma regla en las
+    dos puertas y no puede divergir entre ellas.
+
+    El trigger queda como la fuente de verdad (un CALL directo sin pasar
+    por Flask tiene que dar el mismo veredicto); esto es una copia
+    deliberada para dar el mensaje en castellano antes, no un reemplazo.
+    """
+    if estado == ESTADO_AUSENCIA:
+        if ausencia_de not in ORIGENES_AUSENCIA:
+            raise ErrorAplicacion(
+                'Falta declarar quien falto: tiene que ser "paciente" o '
+                '"terapeuta".'
+            )
+    elif ausencia_de:
+        raise ErrorAplicacion(
+            'Quien falto solo se declara en una sesion marcada como ausencia.'
+        )
+
+
 def obtener_sesion(id_sesion):
     sesion = Sesion.query.get(id_sesion)
     if sesion is None:
@@ -419,6 +441,7 @@ def registrar_sesion(datos):
     # exporta y cuenta. Ausencia de estado pasa a ser lo que ya es ausencia
     # de fecha u hora_inicio: un dato obligatorio faltante.
     estado = (datos.get('estado') or '').strip()
+    ausencia_de = (datos.get('ausencia_de') or '').strip() or None
     notas = datos.get('notas')
 
     faltantes = [
@@ -433,11 +456,13 @@ def registrar_sesion(datos):
         raise ErrorAplicacion('Faltan datos obligatorios: ' + ', '.join(faltantes))
 
     _validar_estado(estado)
+    _validar_ausencia_de(estado, ausencia_de)
 
     db.session.execute(
         text(
             'CALL p_registrar_sesion(:id_terapeuta, :id_paciente, :fecha, '
-            ':hora_inicio, :hora_fin, :estado, :notas, @p_id_sesion, @p_mensaje)'
+            ':hora_inicio, :hora_fin, :estado, :ausencia_de, :notas, '
+            '@p_id_sesion, @p_mensaje)'
         ),
         {
             'id_terapeuta': terapeuta.id,
@@ -446,6 +471,7 @@ def registrar_sesion(datos):
             'hora_inicio': hora_inicio,
             'hora_fin': hora_fin,
             'estado': estado,
+            'ausencia_de': ausencia_de,
             'notas': notas,
         },
     )
@@ -470,10 +496,10 @@ def registrar_sesion(datos):
 @reintentar_en_deadlock()
 def editar_sesion(id_sesion, datos):
     """
-    Edita via p_editar_sesion. Editable: estado, notas, fecha, hora_inicio,
-    hora_fin. NO edita id_paciente ni id_terapeuta: el terapeuta lo fija el
-    login, igual que en registrar_sesion, y el paciente es un hecho de la
-    sesion, no un dato que se corrija aca.
+    Edita via p_editar_sesion. Editable: estado, ausencia_de, notas, fecha,
+    hora_inicio, hora_fin. NO edita id_paciente ni id_terapeuta: el
+    terapeuta lo fija el login, igual que en registrar_sesion, y el
+    paciente es un hecho de la sesion, no un dato que se corrija aca.
 
     ESCRITURA RESTRINGIDA al terapeuta que atendio, mismo criterio que
     evoluciones_service.registrar_evolucion: la lectura de una sesion es
@@ -499,6 +525,7 @@ def editar_sesion(id_sesion, datos):
     hora_inicio = (datos.get('hora_inicio') or '').strip()
     hora_fin = (datos.get('hora_fin') or '').strip() or None
     estado = (datos.get('estado') or '').strip()
+    ausencia_de = (datos.get('ausencia_de') or '').strip() or None
     notas = datos.get('notas')
 
     faltantes = [
@@ -512,16 +539,19 @@ def editar_sesion(id_sesion, datos):
         raise ErrorAplicacion('Faltan datos obligatorios: ' + ', '.join(faltantes))
 
     _validar_estado(estado)
+    _validar_ausencia_de(estado, ausencia_de)
 
     db.session.execute(
         text(
-            'CALL p_editar_sesion(:id_sesion, :id_terapeuta, :estado, :notas, '
-            ':fecha, :hora_inicio, :hora_fin, @p_editado, @p_mensaje)'
+            'CALL p_editar_sesion(:id_sesion, :id_terapeuta, :estado, '
+            ':ausencia_de, :notas, :fecha, :hora_inicio, :hora_fin, '
+            '@p_editado, @p_mensaje)'
         ),
         {
             'id_sesion': sesion.id,
             'id_terapeuta': terapeuta.id,
             'estado': estado,
+            'ausencia_de': ausencia_de,
             'notas': notas,
             'fecha': fecha,
             'hora_inicio': hora_inicio,
