@@ -80,6 +80,21 @@ export default function ModalEditarSesion({ abierto, sesion, paciente, onCerrar,
   // que la regla prohíbe.
   const ausenciaBloqueada = Boolean(sesion?.tiene_evolucion) && sesion?.estado !== ESTADO_AUSENCIA;
 
+  // Salir de ausencia limpia "quién faltó", no solo lo esconde. El envío ya
+  // fuerza null fuera de ausencia, así que esto no arregla un rechazo que
+  // hoy pase: cierra la forma en que ese rechazo nace. Un campo invisible
+  // que conserva su valor vuelve a mandarlo en cuanto alguien toque la
+  // guarda del envío, y el par (estado, ausencia_de) inconsistente es
+  // exactamente lo que trg_sesiones_solape_insert/_update rechaza con 1644.
+  //
+  // Además se ve: volver a ausencia después de haber salido vuelve a pedir
+  // quién faltó en vez de mostrar la respuesta anterior ya marcada. La
+  // preselección es justo lo que se decidió no hacer en este campo.
+  const cambiarEstado = (valor) => {
+    setValor('estado', valor);
+    if (valor !== ESTADO_AUSENCIA) setValor('ausencia_de', '');
+  };
+
   return (
     <ModalFormulario
       abierto={abierto}
@@ -150,7 +165,7 @@ export default function ModalEditarSesion({ abierto, sesion, paciente, onCerrar,
         </Typography>
         <RadioGroup
           value={valores.estado}
-          onChange={(evento) => setValor('estado', evento.target.value)}
+          onChange={(evento) => cambiarEstado(evento.target.value)}
         >
           {OPCIONES_ESTADO_SESION.map((estado) => {
             const bloqueada = estado.valor === ESTADO_AUSENCIA && ausenciaBloqueada;

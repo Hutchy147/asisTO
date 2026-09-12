@@ -59,10 +59,11 @@ export default function ModalRegistrarSesion({
         hora_inicio: valores.hora_inicio,
         hora_fin: valores.hora_fin || null,
         estado: valores.estado,
-        // Se fuerza null fuera de ausencia aunque `valores.ausencia_de`
-        // haya quedado con algo elegido antes de cambiar de estado: el
-        // campo se oculta pero el valor no se limpia solo, y mandarlo
-        // igual lo rechazaría del otro lado (ver _validar_ausencia_de).
+        // Se fuerza null fuera de ausencia. Desde que `cambiarEstado`
+        // limpia el campo al salir de ausencia esto ya no debería tener
+        // nada que forzar, y se queda igual a propósito: son dos guardas
+        // independientes de la misma regla, y la de acá es la única que
+        // sigue valiendo si alguien cambia el estado por otro camino.
         ausencia_de: esAusencia ? valores.ausencia_de : null,
         notas: valores.notas.trim() || null,
       });
@@ -76,6 +77,17 @@ export default function ModalRegistrarSesion({
 
   const { valores, setValor, setCampo, errorDe, guardando, validado } = formulario;
   const esAusencia = valores.estado === ESTADO_AUSENCIA;
+
+  // Salir de ausencia limpia "quién faltó", no solo lo esconde. Mismo
+  // criterio y mismo porqué que en ModalEditarSesion: el envío ya fuerza
+  // null, y esto cierra la forma en que nace el par inconsistente que la
+  // base rechaza con 1644. También evita que volver a ausencia muestre la
+  // respuesta anterior ya marcada, que es la preselección que este campo
+  // decidió no tener.
+  const cambiarEstado = (valor) => {
+    setValor('estado', valor);
+    if (valor !== ESTADO_AUSENCIA) setValor('ausencia_de', '');
+  };
 
   return (
     <ModalFormulario
@@ -166,7 +178,7 @@ export default function ModalRegistrarSesion({
         </Typography>
         <RadioGroup
           value={valores.estado}
-          onChange={(evento) => setValor('estado', evento.target.value)}
+          onChange={(evento) => cambiarEstado(evento.target.value)}
         >
           {OPCIONES_ESTADO_SESION.map((estado) => (
             <FormControlLabel
