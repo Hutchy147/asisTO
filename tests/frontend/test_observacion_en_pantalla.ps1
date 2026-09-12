@@ -227,7 +227,7 @@ SET @obj = LAST_INSERT_ID();
 UPDATE objetivos_terapeuticos SET fecha_creacion = DATE_SUB(NOW(), INTERVAL 30 DAY)
  WHERE id = @obj;
 CALL p_registrar_sesion(1, @pac, DATE_SUB(CURDATE(), INTERVAL 7 DAY),
-                        '11:00:00', '11:45:00', 'completa', $notasSql, @ses, @m);
+                        '11:00:00', '11:45:00', 'completa', NULL, $notasSql, @ses, @m);
 CALL p_registrar_evolucion(@ses, @obj, 3, $observacion, 1, @evo, @m);
 SELECT @pac, @ses, @evo, @m;
 "@

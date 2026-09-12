@@ -99,20 +99,35 @@ $r = Invoke-Sql -Database $Database -Sql @"
 CALL p_alta_paciente('Grafico','Historico','2015-02-02',NULL,'HC-GRAF-1',NULL,@id,@msg);
 SELECT @id;
 "@
-if ($r.ExitCode -ne 0) { throw "No se pudo crear el paciente: $($r.StdErr)" }
-$pac = [int](($r.StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 1).Trim())
+$pac = Get-IdDeSalida $r "El alta del paciente del grafico historico"
 
-$null = Invoke-Sql -Database $Database -Sql @"
+# La sesion 4 es la AUSENCIA del escenario y ahora tiene que declarar quien
+# falto: desde b039bb4 el trigger de INSERT rechaza una fila de ausencia sin
+# `ausencia_de`. 'paciente' no cambia nada de lo que este archivo mide --
+# ninguna asercion mira esa columna, solo que la sesion 4 sea 'ausencia' y
+# no traiga evolucion-- pero sin el dato la fila no entra.
+#
+# Y COMO ES UN INSERT MULTI-FILA, la fila rechazada se llevaba puestas a las
+# otras tres: la sentencia entera se deshace. Por eso 8 aserciones daban rojo
+# por UNA fila que faltaba, y ninguna hablaba de ausencias.
+#
+# El resultado del INSERT se REVISA, que antes no pasaba: estaba asignado a
+# $null y el script seguia de largo con las variables vacias. Un fixture que
+# no se sembro tiene que decirlo aca, no diez aserciones mas abajo.
+$rSiembra = Invoke-Sql -Database $Database -Sql @"
 INSERT INTO objetivos_terapeuticos (id_paciente, descripcion, activo)
   VALUES ($pac, 'GRAF objetivo A', TRUE), ($pac, 'GRAF objetivo B', TRUE);
 UPDATE objetivos_terapeuticos SET fecha_creacion = '2026-01-05 09:00:00'
  WHERE id_paciente = $pac;
-INSERT INTO sesiones (id_terapeuta, id_paciente, fecha, hora_inicio, hora_fin, estado, notas) VALUES
-  (1, $pac, '2026-02-10', '14:00:00', '14:45:00', 'completa',  'GRAF s1'),
-  (1, $pac, '2026-02-20', '14:00:00', '14:45:00', 'completa',  'GRAF s2'),
-  (1, $pac, '2026-04-10', '14:00:00', '14:45:00', 'completa',  'GRAF s3'),
-  (1, $pac, '2026-04-20', '14:00:00', '14:45:00', 'ausencia',  'GRAF s4');
+INSERT INTO sesiones (id_terapeuta, id_paciente, fecha, hora_inicio, hora_fin, estado, ausencia_de, notas) VALUES
+  (1, $pac, '2026-02-10', '14:00:00', '14:45:00', 'completa',  NULL,       'GRAF s1'),
+  (1, $pac, '2026-02-20', '14:00:00', '14:45:00', 'completa',  NULL,       'GRAF s2'),
+  (1, $pac, '2026-04-10', '14:00:00', '14:45:00', 'completa',  NULL,       'GRAF s3'),
+  (1, $pac, '2026-04-20', '14:00:00', '14:45:00', 'ausencia',  'paciente', 'GRAF s4');
 "@
+if ($rSiembra.ExitCode -ne 0) {
+    throw "No se pudo sembrar el escenario del grafico: $(Get-UltimaLineaSql $rSiembra)"
+}
 
 $objA = [int](Get-ScalarValue $Database "SELECT id FROM objetivos_terapeuticos WHERE id_paciente=$pac AND descripcion='GRAF objetivo A';")
 $objB = [int](Get-ScalarValue $Database "SELECT id FROM objetivos_terapeuticos WHERE id_paciente=$pac AND descripcion='GRAF objetivo B';")
@@ -235,7 +250,7 @@ $r = Invoke-Sql -Database $Database -Sql @"
 CALL p_alta_paciente('Grafico','DeBaja','2015-03-03',NULL,'HC-GRAF-2',NULL,@id,@msg);
 SELECT @id;
 "@
-$pacBaja = [int](($r.StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 1).Trim())
+$pacBaja = Get-IdDeSalida $r "El alta del paciente dado de baja del grafico"
 $null = Invoke-Sql -Database $Database -Sql @"
 INSERT INTO objetivos_terapeuticos (id_paciente, descripcion, activo)
   VALUES ($pacBaja, 'GRAF baja uno', TRUE), ($pacBaja, 'GRAF baja dos', TRUE);
@@ -269,7 +284,7 @@ $rInexistente = Invoke-Sql -Database $Database -Sql @"
 CALL p_evolucion_paciente(999999, '2000-01-01', '2100-01-01', @m);
 SELECT @m;
 "@
-$mensajeInexistente = ($rInexistente.StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 1).Trim()
+$mensajeInexistente = Get-UltimaLineaSql $rInexistente
 $resultados += Assert-True $modulo "paciente_inexistente_devuelve_su_mensaje" `
     ($mensajeInexistente -match "no existe") `
     "Sigue contestando 'El paciente indicado no existe'" `
@@ -282,7 +297,7 @@ $rMensaje = Invoke-Sql -Database $Database -Sql @"
 CALL p_evolucion_paciente($pac, '2000-01-01', '2100-01-01', @m);
 SELECT @m;
 "@
-$mensaje = ($rMensaje.StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 1).Trim()
+$mensaje = Get-UltimaLineaSql $rMensaje
 $resultados += Assert-True $modulo "el_mensaje_cuenta_evoluciones_y_no_filas" `
     ($mensaje -match "Se encontraron $evolucionesEnBase evoluciones") `
     "El mensaje informa $evolucionesEnBase evoluciones, que es lo cargado" `

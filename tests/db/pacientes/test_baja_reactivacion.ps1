@@ -54,23 +54,29 @@ function Nuevo-Paciente {
 CALL p_alta_paciente('Baja','$Sufijo','2015-05-05',NULL,'HC-BAJA-$Sufijo',NULL,@id,@msg);
 SELECT @id;
 "@
-    if ($r.ExitCode -ne 0) { throw "No se pudo crear el paciente $Sufijo : $($r.StdErr)" }
-    return [int](($r.StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 1).Trim())
+    return Get-IdDeSalida $r "El alta del paciente $Sufijo"
 }
 
+# Las dos funciones de abajo leen una fila de N columnas separadas por tab.
+# Si el lote de mysql se corto antes del SELECT --un error en el CALL, que
+# sale SOLO por stderr-- esa fila no existe y los indices que faltan daban
+# $null, y el .Trim() sobre $null se llevaba la suite entera. Ahora el
+# mensaje de error viaja en el campo `Mensaje` y los datos que no llegaron
+# dicen "(sin dato)": la asercion falla igual, pero falla CON el motivo.
 function Llamar-Baja {
     param([int]$IdPaciente)
     $r = Invoke-Sql -Database $Database -Sql @"
 CALL p_baja_paciente($IdPaciente, @obj, @asig, @msg);
 SELECT IFNULL(@obj,'NULL'), IFNULL(@asig,'NULL'), @msg;
 "@
-    $ultima = ($r.StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 1)
-    $campos = $ultima -split "`t"
+    $ultima = Get-UltimaLineaSql $r
+    $campos = @($ultima -split "`t")
+    $completa = $campos.Count -ge 3
     return [pscustomobject]@{
         ExitCode     = $r.ExitCode
-        Objetivos    = $campos[0].Trim()
-        Asignaciones = $campos[1].Trim()
-        Mensaje      = $campos[2].Trim()
+        Objetivos    = $(if ($completa) { $campos[0].Trim() } else { "(sin dato)" })
+        Asignaciones = $(if ($completa) { $campos[1].Trim() } else { "(sin dato)" })
+        Mensaje      = $(if ($completa) { $campos[2].Trim() } else { $ultima })
     }
 }
 
@@ -80,12 +86,13 @@ function Llamar-Reactivar {
 CALL p_reactivar_paciente($IdPaciente, @react, @msg);
 SELECT IFNULL(@react,'NULL'), @msg;
 "@
-    $ultima = ($r.StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 1)
-    $campos = $ultima -split "`t"
+    $ultima = Get-UltimaLineaSql $r
+    $campos = @($ultima -split "`t")
+    $completa = $campos.Count -ge 2
     return [pscustomobject]@{
         ExitCode   = $r.ExitCode
-        Reactivado = $campos[0].Trim()
-        Mensaje    = $campos[1].Trim()
+        Reactivado = $(if ($completa) { $campos[0].Trim() } else { "(sin dato)" })
+        Mensaje    = $(if ($completa) { $campos[1].Trim() } else { $ultima })
     }
 }
 
@@ -288,14 +295,19 @@ $baja3 = Llamar-Baja $pac3
 # signifique "la base dejo pasar la sesion" y no "el borde se corrio un dia".
 $fechaBaja3 = Get-ScalarValue $Database "SELECT fecha_baja FROM pacientes WHERE id = $pac3;"
 $sesionSobreBaja = Invoke-Sql -Database $Database -Sql @"
-CALL p_registrar_sesion(1, $pac3, DATE_ADD('$fechaBaja3', INTERVAL 20 DAY), '08:00:00', '09:00:00', 'incompleta', NULL, @id, @msg);
+CALL p_registrar_sesion(1, $pac3, DATE_ADD('$fechaBaja3', INTERVAL 20 DAY), '08:00:00', '09:00:00', 'incompleta', NULL, NULL, @id, @msg);
 SELECT IFNULL(@id,'NULL'), @msg;
 "@
-$ultimaSesion = ($sesionSobreBaja.StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 1)
+# ESTA ES LA LINEA QUE TIRO EL RUNNER ENTERO EL 2026-09-11. El CALL tenia la
+# aridad vieja, mysql corto el lote antes del SELECT, el stdout quedo vacio,
+# `Select-Object -Last 1` dio $null y el `.Trim()` de abajo reviento con
+# InvokeMethodOnNull. Con $ErrorActionPreference = "Stop" eso no fue un rojo:
+# fue el fin de la corrida, con dos modulos sin ejecutar y sin RESUMEN.
+$ultimaSesion = Get-UltimaLineaSql $sesionSobreBaja
 $resultados += Assert-True $modulo "sesion_nueva_sobre_paciente_de_baja_es_rechazada" `
     ($ultimaSesion -match "dado de baja") `
-    "p_registrar_sesion rechaza: $($ultimaSesion.Trim())" `
-    "p_registrar_sesion NO rechazo la sesion sobre un paciente de baja: $($ultimaSesion.Trim())"
+    "p_registrar_sesion rechaza: $ultimaSesion" `
+    "p_registrar_sesion NO rechazo la sesion sobre un paciente de baja: $ultimaSesion"
 
 $sesionesDelTres = [int](Get-ScalarValue $Database "SELECT COUNT(*) FROM sesiones WHERE id_paciente=$pac3;")
 $resultados += Assert-True $modulo "sesion_rechazada_no_inserta_nada" ($sesionesDelTres -eq 0) `
@@ -407,7 +419,7 @@ $resultados += Assert-True $modulo "carrera_el_atacante_retiene_el_lock" $armado
     "El atacante nunca tomo el lock: no hubo carrera y nada de lo que sigue significa algo"
 
 $jobVictima = Start-Job -ScriptBlock $jobScript -ArgumentList $script:MysqlExe, $script:LoginPath, $Database, @"
-CALL p_registrar_sesion(1, $pac4, '2026-09-15', '10:00:00', '11:00:00', 'incompleta', NULL, @id, @msg);
+CALL p_registrar_sesion(1, $pac4, '2026-09-15', '10:00:00', '11:00:00', 'incompleta', NULL, NULL, @id, @msg);
 SELECT IFNULL(@id,'NULL'), @msg;
 "@
 
@@ -453,8 +465,8 @@ Wait-Job $jobAtacante | Out-Null; Receive-Job $jobAtacante | Out-Null; Remove-Jo
 $salidaVictima = Receive-Job (Wait-Job $jobVictima); Remove-Job $jobVictima
 $salidaBaja = Receive-Job (Wait-Job $jobBaja); Remove-Job $jobBaja
 
-$finVictima = ($salidaVictima -split "`r?`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 1).Trim()
-$finBaja = ($salidaBaja -split "`r?`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 1).Trim()
+$finVictima = Get-UltimaLinea $salidaVictima
+$finBaja = Get-UltimaLinea $salidaBaja
 
 # El estado final NO se mide contando "sesiones sobre un paciente inactivo":
 # esa cuenta da 1 tambien cuando todo funciono bien, porque la sesion se
@@ -524,9 +536,10 @@ Wait-Job $jobRetieneP | Out-Null; Receive-Job $jobRetieneP | Out-Null; Remove-Jo
 $salidaA = Receive-Job (Wait-Job $jobBajaA); Remove-Job $jobBajaA
 $salidaB = Receive-Job (Wait-Job $jobBajaB); Remove-Job $jobBajaB
 
-function Ultima-Linea { param($Texto) return ($Texto -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 1).Trim() }
-$finA = Ultima-Linea $salidaA
-$finB = Ultima-Linea $salidaB
+# La `Ultima-Linea` local se fue: hacia lo mismo que Get-UltimaLinea de
+# TestHelpers.ps1, pero sin la guarda contra la salida vacia.
+$finA = Get-UltimaLinea $salidaA
+$finB = Get-UltimaLinea $salidaB
 
 # Una de las dos tiene que haber sido rechazada con "ya estaba dado de baja".
 $unaRechazada = ($finA -match "ya estaba dado de baja") -or ($finB -match "ya estaba dado de baja")
@@ -562,10 +575,10 @@ function Probar-SesionRetroactiva {
     param([string]$Test, [string]$ExpresionFecha, [bool]$DebeAceptarse, [string]$Porque)
     $r = Invoke-Sql -Database $Database -Sql @"
 SET @f = $ExpresionFecha;
-CALL p_registrar_sesion(1, $pac6, @f, '08:00:00', '09:00:00', 'completa', NULL, @id, @msg);
+CALL p_registrar_sesion(1, $pac6, @f, '08:00:00', '09:00:00', 'completa', NULL, NULL, @id, @msg);
 SELECT IFNULL(@id,'NULL'), @msg, @f;
 "@
-    $ultima = (($r.StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 1)).Trim()
+    $ultima = Get-UltimaLineaSql $r
     $seAcepto = ($ultima -notmatch "^NULL")
     if ($DebeAceptarse) {
         return Assert-True $modulo $Test $seAcepto `
@@ -614,7 +627,7 @@ SELECT COUNT(*) FROM performance_schema.data_locks
 # Fecha futura: hoy el paciente esta activo y la sesion es legitima; despues de
 # la baja, la misma fecha seria posterior a fecha_baja y estaria prohibida.
 $jobVictima7 = Start-Job -ScriptBlock $jobScript -ArgumentList $script:MysqlExe, $script:LoginPath, $Database, @"
-CALL p_registrar_sesion(1, $pac7, DATE_ADD(CURRENT_DATE, INTERVAL 10 DAY), '12:00:00', '13:00:00', 'incompleta', NULL, @id, @msg);
+CALL p_registrar_sesion(1, $pac7, DATE_ADD(CURRENT_DATE, INTERVAL 10 DAY), '12:00:00', '13:00:00', 'incompleta', NULL, NULL, @id, @msg);
 SELECT IFNULL(@id,'NULL'), @msg;
 "@
 $esperando7 = Esperar-Condicion @"
@@ -636,9 +649,9 @@ $resultados += Assert-True $modulo "retroactiva_carrera_la_baja_espera_a_la_sesi
     "No se logro dejar la baja esperando detras de la sesion (atacante=$armado7, victima esperando=$esperando7, dos esperas=$lasDosEsperando7, activo=$sigueActivo7)"
 
 Wait-Job $jobAtacante7 | Out-Null; Receive-Job $jobAtacante7 | Out-Null; Remove-Job $jobAtacante7
-$finVictima7 = ((Receive-Job (Wait-Job $jobVictima7)) -split "`r?`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 1).Trim()
+$finVictima7 = Get-UltimaLinea (Receive-Job (Wait-Job $jobVictima7))
 Remove-Job $jobVictima7
-$finBaja7 = ((Receive-Job (Wait-Job $jobBaja7)) -split "`r?`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 1).Trim()
+$finBaja7 = Get-UltimaLinea (Receive-Job (Wait-Job $jobBaja7))
 Remove-Job $jobBaja7
 
 # La sesion quedo con fecha POSTERIOR a fecha_baja, y esta bien: se decidio

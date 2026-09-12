@@ -606,11 +606,14 @@ class TestElProcedimientoPropagaElError(BaseDeadlock):
         self.assertTrue(self._esperar_a_que_el_atacante_tenga_el_lock(
             f'SELECT id FROM sesiones WHERE id_terapeuta={TERAPEUTA} FOR UPDATE NOWAIT'))
 
+        # `ausencia` va en None: la sesion es 'completa', y el trigger
+        # rechaza declarar quien falto en una sesion que no es ausencia.
         error = self._llamar_procedimiento(
-            'CALL p_registrar_sesion(:ter,:pac,:fecha,:hi,:hf,:est,:notas,@id,@msg)',
+            'CALL p_registrar_sesion(:ter,:pac,:fecha,:hi,:hf,:est,:ausencia,'
+            ':notas,@id,@msg)',
             {'ter': TERAPEUTA, 'pac': 1, 'fecha': FECHA_SESION_LIBRE,
              'hi': '08:00:00', 'hf': '09:00:00', 'est': 'completa',
-             'notas': MARCA_NOTAS})
+             'ausencia': None, 'notas': MARCA_NOTAS})
 
         hilo.join(timeout=30)
         self.assertGreaterEqual(self._contador_de_deadlocks() - antes, 1,
@@ -668,10 +671,11 @@ class TestElProcedimientoPropagaElError(BaseDeadlock):
             f'SELECT id FROM terapeutas WHERE id={TERAPEUTA} FOR UPDATE NOWAIT'))
 
         error = self._llamar_procedimiento(
-            'CALL p_registrar_sesion(:ter,:pac,:fecha,:hi,:hf,:est,:notas,@id,@msg)',
+            'CALL p_registrar_sesion(:ter,:pac,:fecha,:hi,:hf,:est,:ausencia,'
+            ':notas,@id,@msg)',
             {'ter': TERAPEUTA, 'pac': 1, 'fecha': FECHA_SESION_LIBRE,
              'hi': '10:00:00', 'hf': '11:00:00', 'est': 'completa',
-             'notas': MARCA_NOTAS}, timeout_corto=True)
+             'ausencia': None, 'notas': MARCA_NOTAS}, timeout_corto=True)
 
         self._soltar_pestillo()
         hilo.join(timeout=30)
@@ -1214,7 +1218,8 @@ class TestBajaConUpdateDirectoDeSesion(BaseDeadlock):
         #     lectura de solape toca justo la fila que despues retiene A.
         hilo_c, resultado_c = self._lanzar_atacante(
             f"CALL p_registrar_sesion({TERAPEUTA}, {self.id_paciente}, "
-            f"'{FECHA_SESION_LIBRE}', '10:30:00', '11:30:00', 'incompleta', NULL, @id, @msg);\n"
+            f"'{FECHA_SESION_LIBRE}', '10:30:00', '11:30:00', 'incompleta', "
+            f"NULL, NULL, @id, @msg);\n"
             'SELECT IFNULL(@id,\'NULL\'), @msg;\n')
         self.assertTrue(self._esperar_transacciones_en_espera(1),
                         'p_registrar_sesion nunca quedo esperando el lock de '

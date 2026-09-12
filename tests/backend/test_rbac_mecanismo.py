@@ -87,9 +87,10 @@ class TestMecanismoRBAC(unittest.TestCase):
 
     def test_rrhh_no_entra_a_la_ruta_de_contenido_clinico_proxy(self):
         """
-        Proxy directo del limite duro del CLAUDE.md: una ruta que exige
-        cualquier rol MENOS rrhh debe rechazar a rrhh con 403, y aceptar a
-        los demas. No hay endpoint real de contenido clinico todavia; esto
+        Proxy directo del limite duro de las convenciones del proyecto: una
+        ruta que exige cualquier rol MENOS rrhh debe rechazar a rrhh con 403,
+        y aceptar a los demas. No hay endpoint real de contenido clinico
+        todavia; esto
         prueba que el mecanismo que lo va a sostener (@requiere_rol
         excluyendo 'rrhh') funciona.
         """

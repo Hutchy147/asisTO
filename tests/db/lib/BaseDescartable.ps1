@@ -41,8 +41,8 @@
 #     tenga razon.
 #   - NINGUNA DE LAS DOS reemplaza al control humano. En aquel caso el pedido
 #     terminaba en "Reporta y espera" y el borrado ocurrio sin reportar y sin
-#     esperar. Esa regla vive en CLAUDE.md y es de construccion, no de este
-#     archivo.
+#     esperar. Esa regla vive en las convenciones del proyecto y es de
+#     construccion, no de este archivo.
 
 # Nombre de la tabla-marca. Va con guion bajo adelante para que no se confunda
 # con una tabla del dominio y para que ordene aparte en un SHOW TABLES.

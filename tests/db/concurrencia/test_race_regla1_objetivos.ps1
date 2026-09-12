@@ -43,9 +43,13 @@ $r = Invoke-Sql -Database $Database -Sql @"
 CALL p_alta_paciente('Race','Objetivos','2015-01-01',NULL,'HC-RACE-OBJ', NULL, @id, @msg);
 SELECT @id;
 "@
-$idPaciente = ($r.StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 1).Trim()
+# La guarda de abajo ya existia y estaba bien pensada -- pero nunca se
+# alcanzaba: con el stdout vacio, el `.Trim()` de esta linea reventaba antes
+# de llegar al `if`. Get-UltimaLineaSql devuelve "" o el error de stderr, y
+# recien ahi el chequeo puede hacer su trabajo.
+$idPaciente = Get-UltimaLineaSql $r
 
-if (-not $idPaciente -or $idPaciente -eq "NULL") {
+if (-not $idPaciente -or $idPaciente -eq "NULL" -or $idPaciente -notmatch '^\d+$') {
     $resultados += New-TestResult $modulo "race_regla1_setup" "FAIL" "No se pudo crear el paciente de prueba: $($r.StdErr)"
     Write-ResultsTable $resultados
     return $resultados

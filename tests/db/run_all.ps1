@@ -60,15 +60,65 @@ $modulos = @(
     @{ Nombre = "graficos";       Script = "$PSScriptRoot\graficos\test_evolucion_series.ps1" }
 )
 
+# CADA MODULO VA ADENTRO DE UN try/catch, Y ESTO NO ES DEFENSIVO POR GUSTO.
+#
+# Hasta el 2026-09-11 este bucle llamaba al modulo pelado. Con
+# `$ErrorActionPreference = "Stop"` de la linea 30, CUALQUIER excepcion sin
+# capturar adentro de CUALQUIER modulo mataba el runner entero: los modulos
+# que faltaban no corrian y el RESUMEN no se imprimia. Paso de verdad -- un
+# `$null.Trim()` en el modulo 12 (`pacientes`) se llevo puestos el 13 y el 14
+# y dejo la corrida sin ningun numero final.
+#
+# Lo que estaba mal no era el `.Trim()`: era que el resultado de trece
+# modulos dependiera de que el catorce no tropezara. Un modulo que revienta
+# tiene que ser UN rojo, no la perdida de la medicion completa.
+#
+# Se copia la forma de tests/frontend/run_all.ps1, que ya degradaba limpio
+# por esto mismo:
+#
+#   - el modulo que revienta queda como NO CORRIO, con el mensaje de la
+#     excepcion adentro;
+#   - NO CORRIO cuenta como rojo, nunca se suma a los PASS ni se omite en
+#     silencio (un "se salteo" indistinguible de un "paso" es el defecto
+#     original de los 188 de UI);
+#   - el bucle sigue con el modulo siguiente.
+#
+# El `finally` del teardown es la otra mitad. Antes, un modulo que reventaba
+# se saltaba su `teardown_test_db.ps1` y dejaba la base colgada; asi quedo
+# huerfana `asisto_test_audit_baja` en la corrida del 11/09. Ahora la base se
+# destruye igual, que es ademas lo unico que mantiene esa limpieza dentro de
+# los scripts del repo en vez de a mano.
 $todos = @()
+$noCorrieron = @()
 foreach ($m in $modulos) {
     $dbModulo = "${TestDbPrefix}_$($m.Nombre)"
     Write-Output ""
     Write-Output "=== $($m.Script) (base: $dbModulo) ==="
-    & "$PSScriptRoot\setup\build_test_db.ps1" -TestDbName $dbModulo
-    $todos += & $m.Script -Database $dbModulo
-    if (-not $KeepDb) {
-        & "$PSScriptRoot\setup\teardown_test_db.ps1" -TestDbName $dbModulo
+    try {
+        & "$PSScriptRoot\setup\build_test_db.ps1" -TestDbName $dbModulo
+        $todos += & $m.Script -Database $dbModulo
+    } catch {
+        $motivo = $_.Exception.Message
+        Write-Output ""
+        Write-Output "  !! El modulo '$($m.Nombre)' NO PUDO TERMINAR: $motivo"
+        Write-Output "     Se sigue con el resto; esta corrida NO puede quedar en verde."
+        # El modulo caido entra en $todos COMO UNA FILA MAS, y eso importa:
+        # este script hace `return $todos`, asi que quien lo llame y cuente
+        # PASS/FAIL sobre lo devuelto tiene que VER el modulo que no corrio.
+        # Si viviera solo en $noCorrieron, un llamador que mire "FAIL -eq 0"
+        # leeria verde una corrida a la que le falta un modulo entero. Es la
+        # misma clase de agujero que el "se salteo" indistinguible del "paso".
+        $fila = New-TestResult $m.Nombre "(el modulo entero)" "NO CORRIO" $motivo
+        $todos += $fila
+        $noCorrieron += $fila
+    } finally {
+        if (-not $KeepDb) {
+            # El teardown va en su propio try: si el modulo ya reviento, un
+            # segundo error aca taparia el primero, que es el que explica la
+            # corrida.
+            try { & "$PSScriptRoot\setup\teardown_test_db.ps1" -TestDbName $dbModulo }
+            catch { Write-Output "  !! No se pudo destruir '$dbModulo': $($_.Exception.Message)" }
+        }
     }
 }
 
@@ -91,17 +141,21 @@ $todos | Format-Table -AutoSize -Property Modulo, Test, Resultado | Out-String -
 $pass = @($todos | Where-Object { $_.Resultado -eq "PASS" }).Count
 $fail = @($todos | Where-Object { $_.Resultado -eq "FAIL" }).Count
 $info = @($todos | Where-Object { $_.Resultado -eq "INFO" }).Count
-Write-Output "PASS: $pass   FAIL: $fail   INFO: $info   TOTAL: $($todos.Count)"
+$caidos = @($todos | Where-Object { $_.Resultado -eq "NO CORRIO" }).Count
+Write-Output ("PASS: $pass   FAIL: $fail   INFO: $info   NO CORRIO: $caidos   " +
+              "TOTAL: $($todos.Count)")
 
 # Red por si algun modulo devuelve algo que no es un resultado (ya paso: una
 # tabla formateada colandose por el stream de salida) o un Resultado que no
-# es ninguno de los tres. Sin esto, esos objetos solo se notan sumando a mano.
-$clasificados = $pass + $fail + $info
+# es ninguno de los cuatro. Sin esto, esos objetos solo se notan sumando a
+# mano.
+$clasificados = $pass + $fail + $info + $caidos
 if ($clasificados -ne $todos.Count) {
     Write-Output ""
     Write-Output ("ATENCION: $($todos.Count) objetos devueltos y solo $clasificados " +
-                  "clasificados como PASS/FAIL/INFO. Hay $($todos.Count - $clasificados) " +
-                  "objeto(s) que no son resultados o que traen otro valor en Resultado.")
+                  "clasificados como PASS/FAIL/INFO/NO CORRIO. Hay " +
+                  "$($todos.Count - $clasificados) objeto(s) que no son resultados " +
+                  "o que traen otro valor en Resultado.")
 }
 
 if ($fail -gt 0) {
@@ -110,6 +164,25 @@ if ($fail -gt 0) {
     $todos | Where-Object { $_.Resultado -eq "FAIL" } | ForEach-Object {
         Write-Output "  - [$($_.Modulo)] $($_.Test)"
     }
+}
+
+# Los modulos que no terminaron van DESPUES de los FAIL y con su propio
+# encabezado, porque son peor que un rojo: de un modulo que reviento no se
+# sabe cuantas afirmaciones quedaron sin hacer. Los numeros de arriba son
+# de lo que SI corrio, y sin esta advertencia se leerian como si fueran el
+# total -- que es exactamente como un runner caido se disfraza de suite
+# chica.
+if ($noCorrieron.Count -gt 0) {
+    Write-Output ""
+    Write-Output "ATENCION: $($noCorrieron.Count) modulo(s) NO TERMINARON. Esto NO es verde,"
+    Write-Output "y los PASS/FAIL de arriba son SOLO de los modulos que llegaron al final:"
+    $noCorrieron | ForEach-Object {
+        Write-Output "  - $($_.Modulo): $($_.Detalle)"
+    }
+    Write-Output ""
+    Write-Output "De un modulo que no termino NO se sabe cuantas afirmaciones quedaron sin"
+    Write-Output "hacer: no es 'un test menos', es un pedazo de cobertura de tamano"
+    Write-Output "desconocido. Correlo suelto para ver donde se corta."
 }
 
 return $todos

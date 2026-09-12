@@ -1,7 +1,7 @@
 # tests/db/reglas_negocio/test_reglas_1_a_6.ps1
 #
-# Regresion de las 6 reglas de negocio del CLAUDE.md por el camino
-# "directo": lo que la Terminal 1 ya declaro verificado. Sirve para
+# Regresion de las 6 reglas de negocio de las convenciones del proyecto, por
+# el camino "directo": lo que la Terminal 1 ya declaro verificado. Sirve para
 # confirmar que una correccion futura no rompio el camino feliz ni los
 # rechazos basicos. Los casos que eluden estas reglas por un camino
 # distinto al INSERT directo estan en tests/db/bordes/.
@@ -70,12 +70,11 @@ $resultados += Assert-Succeeds $modulo "regla5_alta_paciente_sin_login_ok" $Data
 # --- Regla 6: sin sesiones solapadas del mismo terapeuta ---------------
 # Terapeuta 1 tiene sesion 09:00-10:00 el 2026-06-02 (id 1). 09:00-11:00 la toca.
 $resultados += Assert-Succeeds $modulo "regla6_horario_sin_solape_ok" $Database `
-    "CALL p_registrar_sesion(1, 1, '2026-06-02', '10:00:00', '11:00:00', 'incompleta', NULL, @id, @msg); SELECT @id, @msg;"
+    "CALL p_registrar_sesion(1, 1, '2026-06-02', '10:00:00', '11:00:00', 'incompleta', NULL, NULL, @id, @msg); SELECT @id, @msg;"
 
 $r = Invoke-Sql -Database $Database -Sql `
-    "CALL p_registrar_sesion(1, 1, '2026-06-02', '09:30:00', '10:30:00', 'incompleta', NULL, @id, @msg); SELECT @id, @msg;"
-$lineasSolapa = $r.StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" }
-$solapaMsg = $lineasSolapa | Select-Object -Last 1
+    "CALL p_registrar_sesion(1, 1, '2026-06-02', '09:30:00', '10:30:00', 'incompleta', NULL, NULL, @id, @msg); SELECT @id, @msg;"
+$solapaMsg = Get-UltimaLineaSql $r
 $resultados += Assert-True $modulo "regla6_horario_solapado_rechazado" `
     ($r.ExitCode -eq 0 -and $solapaMsg -match "se superponen") `
     "Mensaje: $solapaMsg" "No se rechazo el solape o el mensaje cambio: $solapaMsg"

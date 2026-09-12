@@ -106,9 +106,13 @@ function Get-NombreBaseDePrueba {
     Write-Host ""
     Write-Host '    $env:ASISTO_ROL = "auditoria"      # o "construccion" / "apoyo"' -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "O arrancar la terminal con el rol puesto, como esta en PROCEDIMIENTOS.md:"
-    Write-Host ""
-    Write-Host '    $env:ASISTO_ROL="auditoria"; claude --model claude-opus-5 --effort xhigh' -ForegroundColor Cyan
+    # El comando de lanzamiento de la terminal NO se imprime aca y no es un
+    # detalle de estilo: este archivo esta versionado y sube al repositorio,
+    # asi que cualquier cosa que se escriba aca queda publicada. El comando
+    # concreto —con su binario, su modelo y sus flags— vive en
+    # PROCEDIMIENTOS.md, que es donde lo busca quien lo necesita.
+    Write-Host "O arrancar la terminal con el rol ya puesto: el comando exacto esta en"
+    Write-Host "PROCEDIMIENTOS.md."
     Write-Host ""
     Write-Host "Si preferis un nombre puntual y sabes lo que haces, pasalo explicito y"
     Write-Host "esto no se ejecuta:"
@@ -264,6 +268,102 @@ function Get-ScalarValue {
     $lines = $r.StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" }
     if ($lines.Count -lt 2) { return $null }
     return $lines[-1].Trim()
+}
+
+# =======================================================================
+# LA GUARDA CONTRA LA SALIDA VACIA
+#
+# POR QUE EXISTE, y es la parte que importa mas que las tres funciones:
+#
+# `mysql` en modo batch ABORTA el lote en el primer error, y ese error sale
+# por STDERR. O sea que un `CALL` que falla deja el STDOUT COMPLETAMENTE
+# VACIO: el `SELECT` que venia despues nunca llega a correr. La forma que
+# estaba repetida en seis archivos --
+#
+#     ($r.StdOut -split "`r?`n" | Where-Object {...} | Select-Object -Last 1).Trim()
+#
+# -- devuelve $null en ese caso, y `$null.Trim()` es un error TERMINANTE en
+# PowerShell 5.1.
+#
+# Con `$ErrorActionPreference = "Stop"` (run_all.ps1, linea 30) ese error no
+# se queda en el modulo que lo produjo: SE LLEVA EL RUNNER ENTERO. Paso de
+# verdad el 2026-09-11. Un cambio de aridad en `p_registrar_sesion` dejo el
+# stdout vacio en `pacientes/test_baja_reactivacion.ps1`, el `.Trim()`
+# reviento, y los modulos 13 y 14 NUNCA CORRIERON ni se imprimio el RESUMEN.
+# Un error de un modulo borro la medicion de los catorce.
+#
+# Y hay un agravante que es el verdadero motivo de esta seccion: el error
+# venia SOLO POR STDERR. El unico lugar donde estaba escrito que habia
+# pasado era el stream que nadie miraba. Por eso la regla no es "no revientes
+# con null" sino:
+#
+#   UN ERROR QUE SALE SOLO POR STDERR TIENE QUE DAR UN ROJO CON MENSAJE,
+#   NUNCA TIRAR LA SUITE.
+#
+# Falsado el 2026-09-12: ver la seccion de control positivo en AUDITORIA.md.
+# =======================================================================
+
+# Ultima linea no vacia de una salida capturada. NUNCA devuelve $null:
+# devuelve "" cuando no hay ninguna, para que el llamador pueda seguir
+# usando metodos de string sin reventar.
+function Get-UltimaLinea {
+    param([AllowNull()] $Salida)
+    if ($null -eq $Salida) { return "" }
+    # `Receive-Job` devuelve un ARRAY de lineas y `Invoke-Sql` una sola cadena
+    # con los saltos adentro. El -join cubre los dos casos: sobre la cadena
+    # suelta es un no-op, y sobre el array conserva los cortes. Interpolar
+    # con "$Salida" NO sirve aca -- aplastaria el array con espacios, que es
+    # justo lo que destruiria la nocion de "ultima linea".
+    $texto = @($Salida) -join "`n"
+    $lineas = @($texto -split "`r?`n" | Where-Object { $_.Trim() -ne "" })
+    if ($lineas.Count -eq 0) { return "" }
+    return $lineas[-1].Trim()
+}
+
+# Igual que la anterior pero para un resultado de Invoke-Sql: si el stdout
+# vino vacio, devuelve el ERROR de stderr en una sola linea en vez de "".
+# Asi la asercion que use este valor falla CON el motivo adentro, que es el
+# punto entero de la guarda.
+function Get-UltimaLineaSql {
+    param([Parameter(Mandatory)] $Resultado)
+    $ultima = Get-UltimaLinea $Resultado.StdOut
+    if ($ultima -ne "") { return $ultima }
+
+    # LA CONTRAPARTIDA DE DEVOLVER EL ERROR EN VEZ DE "", dicha y no
+    # escondida: si el llamador afirma con `-match "<texto del dominio>"` y
+    # el rechazo vino de un SIGNAL de trigger que lleva ESE MISMO texto, la
+    # asercion pasa. Eso no es un verde falso sobre el sistema --el rechazo
+    # ocurrio de verdad-- pero si sobre QUE CAPA rechazo. Los llamadores que
+    # necesitan distinguir la capa comparan con `-ceq` contra el texto
+    # exacto, y el prefijo de abajo rompe esa igualdad a proposito.
+    #
+    # La alternativa (devolver "") pierde el mensaje, que es exactamente el
+    # defecto que esta seccion viene a arreglar. Entre perder el motivo y
+    # confundir la capa, se elige lo segundo y se deja escrito.
+    $err = ("$($Resultado.StdErr)" -replace "`r?`n", " ").Trim()
+    if ($err -ne "") { return "(SIN SALIDA, exit=$($Resultado.ExitCode)) $err" }
+    return "(SIN SALIDA NI ERROR, exit=$($Resultado.ExitCode))"
+}
+
+# Para los fixtures que leen un id recien creado. Reemplaza la forma
+# `[int](($r.StdOut -split ...).Trim())`, que tenia DOS maneras de reventar:
+# el `.Trim()` sobre $null y, si eso se arreglaba devolviendo "", el
+# `[int]""` que tambien es un error terminante.
+#
+# Sigue lanzando --un fixture que no se pudo armar no tiene como seguir--
+# pero ahora lanza con el motivo puesto, y run_all.ps1 lo atrapa por modulo
+# (NO CORRIO) en vez de morirse con el.
+function Get-IdDeSalida {
+    param(
+        [Parameter(Mandatory)] $Resultado,
+        [Parameter(Mandatory)] [string]$Que
+    )
+    $ultima = Get-UltimaLineaSql $Resultado
+    $n = 0
+    if (-not [int]::TryParse($ultima, [ref]$n)) {
+        throw "$Que no devolvio un id utilizable. Respuesta: '$ultima'"
+    }
+    return $n
 }
 
 function Write-ResultsTable {

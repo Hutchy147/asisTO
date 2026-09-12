@@ -119,10 +119,10 @@ SELECT COUNT(*) FROM performance_schema.data_locks
 
 # --- Caso 1: regla 4 -- archivar un objetivo mientras se carga una
 #     evolucion nueva sobre el ---------------------------------------
-$idPaciente1 = ($(Invoke-Sql -Database $Database -Sql @"
+$idPaciente1 = Get-IdDeSalida (Invoke-Sql -Database $Database -Sql @"
 CALL p_alta_paciente('Race','Evol4','2015-01-01',NULL,'HC-RACE-EVOL4', NULL, @id, @msg);
 SELECT @id;
-"@).StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 1).Trim()
+"@) "El alta del paciente de la carrera de la regla 4"
 
 $null = Invoke-Sql -Database $Database -Sql @"
 INSERT INTO objetivos_terapeuticos (id_paciente, descripcion, activo) VALUES ($idPaciente1, 'Objetivo race regla4', TRUE);
@@ -155,9 +155,10 @@ Wait-Job $jobA1 | Out-Null; Receive-Job $jobA1 | Out-Null; Remove-Job $jobA1
 #     archiva: congelar el texto contra el que se puntuaron esas evoluciones.
 #   - El seed lo trae desde que siembra un paciente dado de baja con historia.
 #
-# La regla 4 del CLAUDE.md dice otra cosa: no se puede CARGAR una evolucion
-# sobre un objetivo archivado. Es una regla sobre la escritura nueva, no sobre
-# el estado final. Por eso ahora se afirma que la conexion B fue RECHAZADA.
+# La regla 4 de las convenciones del proyecto dice otra cosa: no se puede
+# CARGAR una evolucion sobre un objetivo archivado. Es una regla sobre la
+# escritura nueva, no sobre el estado final. Por eso ahora se afirma que la
+# conexion B fue RECHAZADA.
 #
 # POR QUE LOS CASOS 2 Y 3 SI PUEDEN MIRAR EL ESTADO FINAL: en esos dos la
 # transicion inversa tambien esta cerrada —marcar como ausencia una sesion con
@@ -179,9 +180,17 @@ INSERT INTO sesiones (id_terapeuta, id_paciente, fecha, hora_inicio, hora_fin, e
 "@
 $idSesion2 = [int](Get-ScalarValue $Database "SELECT id FROM sesiones WHERE id_paciente=1 AND fecha='2026-07-02';")
 
+# El `ausencia_de` NO es decoracion: sin el, el trigger rechaza este UPDATE y
+# la conexion A nunca toma el lock exclusivo. Esa es toda la carrera. El
+# sintoma medido el 2026-09-11 fue `race_regla2_el_ataque_quedo_armado` en
+# rojo -- que dice literalmente "lo que siga NO es una carrera y su resultado
+# no significa nada", y era cierto: el ataque se habia desarmado solo.
+#
+# Es el caso mas claro de por que esto no era mecanico. Agregar la columna
+# aca no cambia lo que el test afirma: lo devuelve a poder afirmarlo.
 $jobA2 = Iniciar-ConexionQueMantieneAbierta $Database @"
 START TRANSACTION;
-UPDATE sesiones SET estado = 'ausencia' WHERE id = $idSesion2;
+UPDATE sesiones SET estado = 'ausencia', ausencia_de = 'paciente' WHERE id = $idSesion2;
 SELECT SLEEP(4);
 COMMIT;
 "@

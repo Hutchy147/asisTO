@@ -1,8 +1,8 @@
 # tests/db/rrhh/test_contenido_clinico.ps1
 #
-# El CLAUDE.md pone un limite duro: RRHH verifica asistencias, no lee
-# contenido clinico (evoluciones, notas de sesion, informes). Este
-# modulo confirma que los dos objetos pensados para RRHH
+# Las convenciones del proyecto ponen un limite duro: RRHH verifica
+# asistencias, no lee contenido clinico (evoluciones, notas de sesion,
+# informes). Este modulo confirma que los dos objetos pensados para RRHH
 # (p_reporte_sesiones_periodo y v_resumen_sesiones) no devuelven ese
 # contenido, ni por columna ni "de colado" en el texto de otra columna.
 #

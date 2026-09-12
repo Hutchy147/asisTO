@@ -1,8 +1,8 @@
 # tests/db/errores/test_mensajes_error.ps1
 #
-# El CLAUDE.md pide procedimientos con OUT p_mensaje para el resultado, y
-# la consigna de auditoria pide mensajes legibles que no filtren
-# estructura interna (nombres de tabla, de constraint, de la base).
+# Las convenciones del proyecto piden procedimientos con OUT p_mensaje para
+# el resultado, y la consigna de auditoria pide mensajes legibles que no
+# filtren estructura interna (nombres de tabla, de constraint, de la base).
 #
 # p_registrar_evolucion hace esto bien: los triggers validan la
 # existencia de la sesion/objetivo ANTES de que la FK pueda disparar, asi
@@ -90,7 +90,7 @@ $resultados += Test-MensajeSanoYSinFuga $modulo "alta_paciente_id_usuario_inexis
 
 # --- p_registrar_sesion con terapeuta/paciente que no existen ----------
 $res2 = Get-ResultadoProcedimiento $Database `
-    "CALL p_registrar_sesion(999999, 999999, '2026-09-05', '09:00:00', '10:00:00', 'incompleta', NULL, @id, @msg); SELECT @msg;"
+    "CALL p_registrar_sesion(999999, 999999, '2026-09-05', '09:00:00', '10:00:00', 'incompleta', NULL, NULL, @id, @msg); SELECT @msg;"
 $resultados += Test-MensajeSanoYSinFuga $modulo "registrar_sesion_fk_inexistente" $res2
 
 # --- p_alta_paciente, nro_historia duplicado por el camino normal ------

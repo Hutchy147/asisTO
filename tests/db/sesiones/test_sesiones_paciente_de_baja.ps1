@@ -67,8 +67,7 @@ function Nuevo-Paciente {
 CALL p_alta_paciente('Sesion','$Sufijo','2015-04-04',NULL,'HC-SESBAJA-$Sufijo',NULL,@id,@msg);
 SELECT @id;
 "@
-    if ($r.ExitCode -ne 0) { throw "No se pudo crear el paciente $Sufijo : $($r.StdErr)" }
-    return [int](($r.StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 1).Trim())
+    return Get-IdDeSalida $r "El alta del paciente $Sufijo"
 }
 
 function Dar-Baja {
@@ -77,7 +76,7 @@ function Dar-Baja {
 CALL p_baja_paciente($IdPaciente, @o, @a, @m);
 SELECT @m;
 "@
-    $ultima = ($r.StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 1).Trim()
+    $ultima = Get-UltimaLineaSql $r
     if ($ultima -notmatch "correctamente") { throw "La baja de $IdPaciente no salio: $ultima" }
     return (Get-ScalarValue $Database "SELECT fecha_baja FROM pacientes WHERE id=$IdPaciente;")
 }
@@ -210,10 +209,16 @@ $fechaBajaMsg = Dar-Baja $pacMensaje
 $fechaPosterior = "DATE_ADD('$fechaBajaMsg', INTERVAL 5 DAY)"
 
 $rProc = Invoke-Sql -Database $Database -Sql @"
-CALL p_registrar_sesion(1, $pacMensaje, $fechaPosterior, '18:00:00', '18:45:00', 'completa', NULL, @id, @msg);
+CALL p_registrar_sesion(1, $pacMensaje, $fechaPosterior, '18:00:00', '18:45:00', 'completa', NULL, NULL, @id, @msg);
 SELECT @msg;
 "@
-$mensajeProc = ($rProc.StdOut -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 1).Trim()
+# La comparacion de abajo es `-ceq` contra el texto exacto, asi que si el
+# stdout viene vacio y Get-UltimaLineaSql devuelve el error de stderr, el
+# prefijo "(SIN SALIDA...)" rompe la igualdad y el test da rojo CON el
+# motivo. Es justamente el caso que esta guarda tiene que cubrir sin
+# confundir "el procedimiento contesto otra cosa" con "el procedimiento no
+# contesto nada".
+$mensajeProc = Get-UltimaLineaSql $rProc
 
 $rIns = Insertar-Sesion $pacMensaje $fechaPosterior '19:00:00'
 $mensajeInsert = if ($rIns.StdErr -match 'ERROR \d+ \(\d+\)(?: at line \d+)?: (.+)') { $Matches[1].Trim() } else { "(no se pudo extraer: $($rIns.StdErr.Trim()))" }
@@ -265,7 +270,7 @@ $resultados += Assert-True $modulo "errno_1644_en_las_dos_puertas_de_trigger" `
 $pacFutura = Nuevo-Paciente "FUT"
 $rAgenda = Invoke-Sql -Database $Database -Sql @"
 CALL p_registrar_sesion(1, $pacFutura, DATE_ADD(CURRENT_DATE, INTERVAL 20 DAY),
-                        '20:00:00', '20:45:00', 'incompleta', NULL, @id, @msg);
+                        '20:00:00', '20:45:00', 'incompleta', NULL, NULL, @id, @msg);
 SELECT IFNULL(@id,'NULL'), @msg;
 "@
 $idFutura = [int](Get-ScalarValue $Database @"
@@ -273,8 +278,17 @@ SELECT id FROM sesiones WHERE id_paciente=$pacFutura ORDER BY id DESC LIMIT 1;
 "@)
 $null = Dar-Baja $pacFutura
 
+# `ausencia_de` VIAJA JUNTO CON EL ESTADO, y no es un relleno: desde
+# b039bb4 un UPDATE que deja `estado='ausencia'` sin declarar quien falto lo
+# rechaza el trigger. Sin esta columna el UPDATE fallaria por la regla NUEVA
+# y el test seguiria diciendo "CONGELADA", que es un hallazgo DISTINTO. El
+# rojo se leeria igual y significaria otra cosa.
+#
+# Lo que este caso pregunta es si el trigger de la baja deja cerrar una
+# sesion agendada cuando el paciente estaba activo. Para que esa pregunta se
+# conteste, el UPDATE tiene que ser valido en todo lo demas.
 $rCerrar = Invoke-Sql -Database $Database -Sql @"
-UPDATE sesiones SET estado = 'ausencia' WHERE id = $idFutura;
+UPDATE sesiones SET estado = 'ausencia', ausencia_de = 'paciente' WHERE id = $idFutura;
 "@
 $resultados += Assert-True $modulo "una_sesion_futura_legitima_se_puede_cerrar_tras_la_baja" `
     ($rCerrar.ExitCode -eq 0) `
@@ -306,8 +320,20 @@ $resultados += Assert-True $modulo "update_de_notas_sobre_sesion_posterior_a_la_
 # Reescribir la MISMA fecha no es cambiarla: con `NEW.fecha <> OLD.fecha` esto
 # no dispara el chequeo. Si alguien implementara la condicion mirando si la
 # columna aparece en el SET en vez de si el valor cambio, este caso lo agarra.
+#
+# EL `ausencia_de = NULL` ES OBLIGATORIO Y SE DESCUBRIO MIDIENDO. La fila llega
+# aca en 'ausencia' con `ausencia_de='paciente'`, que es lo que puso el caso
+# "una_sesion_futura_legitima_se_puede_cerrar_tras_la_baja" unas lineas arriba.
+# Sacarla de 'ausencia' sin limpiar la columna choca con la OTRA mitad del
+# chequeo nuevo -- "Quien falto solo se declara en una sesion marcada como
+# ausencia" (schema.sql:794) -- y el UPDATE se rechaza por un motivo que no
+# tiene nada que ver con la fecha, que es lo unico que este caso mide.
+#
+# Reproducido en aislamiento antes de escribirlo: con la columna colgada da
+# ERROR 1644 con ese texto; limpiandola, entra. El par de UPDATE es eso, un
+# PAR: el estado que deja el primero es la precondicion del segundo.
 $rMismaFecha = Invoke-Sql -Database $Database -Sql @"
-UPDATE sesiones SET fecha = fecha, estado = 'completa' WHERE id = $idFutura;
+UPDATE sesiones SET fecha = fecha, estado = 'completa', ausencia_de = NULL WHERE id = $idFutura;
 "@
 $resultados += Assert-True $modulo "update_que_reescribe_la_misma_fecha_se_acepta" `
     ($rMismaFecha.ExitCode -eq 0) `

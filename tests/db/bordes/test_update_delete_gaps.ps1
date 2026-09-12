@@ -62,8 +62,16 @@ $resultados += Assert-Fails $modulo "objetivo_update_id_paciente_con_evoluciones
 # evolucion cargada como 'ausencia' via UPDATE no se revisa contra la
 # regla 2, y deja una evolucion sobre una sesion en ausencia.
 # ------------------------------------------------------------------
+#
+# El `ausencia_de` se agrega A PROPOSITO y el test queda MAS fuerte, no mas
+# debil. Sin el hay DOS triggers que pueden rechazar este UPDATE --la regla 2
+# ("tiene evoluciones cargadas") y el chequeo nuevo de b039bb4 ("sin declarar
+# quien falto")-- y cual gana depende del orden en que corren, que no esta
+# escrito en ningun lado para `sesiones`. Un PASS asi afirmaria un orden por
+# accidente. Declarando quien falto, el unico rechazo posible es el de la
+# regla 2, que es el que este caso dice medir.
 $resultados += Assert-Fails $modulo "sesion_update_estado_a_ausencia_con_evolucion_cargada" $Database `
-    "UPDATE sesiones SET estado = 'ausencia' WHERE id = 9;" `
+    "UPDATE sesiones SET estado = 'ausencia', ausencia_de = 'paciente' WHERE id = 9;" `
     "tiene evoluciones cargadas"
 
 # ------------------------------------------------------------------
