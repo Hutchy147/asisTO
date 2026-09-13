@@ -2585,12 +2585,38 @@ BEGIN
     SET p_mensaje = 'No se pudo generar el reporte por un error interno';
   END;
 
+  -- =====================================================================
+  -- PROYECCION DE RRHH — LISTA CERRADA, SE AGREGA SOLO CON UNA HDU
+  --
+  -- RRHH verifica asistencias y NO accede a contenido clinico. Es un limite
+  -- duro del proyecto, y HOY NO LO SOSTIENE LA BASE: no hay un usuario de
+  -- MySQL separado ni GRANTs por columna que lo impidan (hallazgo A3, sigue
+  -- abierto). Lo unico que lo sostiene es esta lista y la del endpoint.
+  --
+  -- Por eso las columnas van NOMBRADAS UNA POR UNA y nunca `s.*`: con `s.*`
+  -- cualquier columna que se agregue manana a `sesiones` empieza a salir por
+  -- este camino sin que nadie lo decida. `notas` es exactamente ese caso —
+  -- vive en `sesiones`, al lado de las que si salen, y es contenido clinico.
+  --
+  -- NO PUEDEN ENTRAR ACA, aunque sea comodo: `s.notas`, nada de
+  -- `evoluciones` (observaciones, valor), nada de `objetivos_terapeuticos`
+  -- (descripcion) y `p.diagnostico`. Si alguna hace falta, no se agrega:
+  -- se discute si RRHH cambio de alcance, que es una HDU, no una columna.
+  -- =====================================================================
   SELECT
     s.id                                 AS id_sesion,
     s.fecha,
     s.hora_inicio,
     s.hora_fin,
     s.estado,
+    -- Quien falto. Es el dato que hace utilizable el reporte: "hubo 12
+    -- ausencias" no sirve para lo administrativo si no dice de quien.
+    -- Viaja NULL en toda sesion que no sea ausencia (lo garantizan los dos
+    -- triggers) y tambien en las ausencias anteriores al 2026-09-10, que
+    -- se cargaron cuando la columna no existia. NULL aca significa "no
+    -- declarado", NO significa "el paciente": el endpoint las cuenta en un
+    -- balde propio y no las reparte.
+    s.ausencia_de,
     CONCAT(ut.apellido, ', ', ut.nombre) AS terapeuta,
     CONCAT(p.apellido, ', ', p.nombre)   AS paciente,
     p.nro_historia,
@@ -2603,10 +2629,16 @@ BEGIN
          AND s.hora_inicio < IFNULL(s2.hora_fin, ADDTIME(s2.hora_inicio, '01:00:00'))
          AND IFNULL(s.hora_fin, ADDTIME(s.hora_inicio, '01:00:00')) > s2.hora_inicio
     )                                    AS superposiciones
+    -- ORDEN DE LOCKS: este SELECT no toma ninguno. No lleva FOR UPDATE ni
+    -- FOR SHARE, asi que es una lectura consistente y no entra en el orden
+    -- canonico ni puede formar un ciclo con nadie. `pacientes` va escrito
+    -- antes que `terapeutas` de todos modos, para que la fuente se lea en
+    -- el orden de la convencion; es cosmetico y no cambia el plan, porque
+    -- el orden de los JOIN no es el orden de ejecucion.
     FROM sesiones s
+    JOIN pacientes p   ON p.id = s.id_paciente
     JOIN terapeutas t  ON t.id = s.id_terapeuta
     JOIN usuarios ut   ON ut.id = t.id_usuario
-    JOIN pacientes p   ON p.id = s.id_paciente
    WHERE s.fecha BETWEEN p_fecha_desde AND p_fecha_hasta
      AND (p_id_terapeuta IS NULL OR s.id_terapeuta = p_id_terapeuta)
    ORDER BY s.fecha, s.hora_inicio, terapeuta;

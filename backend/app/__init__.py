@@ -114,6 +114,7 @@ def register_blueprints(app):
     from app.routes.health import health_bp
     from app.routes.objetivos import objetivos_bp
     from app.routes.pacientes import pacientes_bp
+    from app.routes.rrhh import rrhh_bp
     from app.routes.sesiones import sesiones_bp
 
     app.register_blueprint(health_bp, url_prefix='/api')
@@ -128,3 +129,10 @@ def register_blueprints(app):
     # mitigacion acordada para el hallazgo A3 de AUDITORIA.md: no hay
     # usuario de MySQL separado por rol, asi que el limite lo sostiene esa
     # separacion. No mezclar endpoints de RRHH en otro blueprint.
+    #
+    # Construido el 2026-09-13 con el primer lote del modulo. Hoy expone un
+    # solo endpoint y llama a un solo procedimiento; `v_resumen_sesiones`
+    # todavia no la usa nadie. La separacion vale igual desde el primer dia:
+    # es mas barata de sostener que de reconstruir cuando ya haya cinco
+    # endpoints escritos en otro lado.
+    app.register_blueprint(rrhh_bp, url_prefix='/api')
