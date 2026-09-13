@@ -7,6 +7,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 
 import RutaProtegida from './components/RutaProtegida.jsx';
 import { validarRutas } from './config/entregas.js';
+import { RUTAS_PROTEGIDAS } from './config/rutas.js';
 import { RUTA_POR_ROL, useAuth } from './context/AuthContext.jsx';
 import Calendario from './pages/Calendario.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -17,46 +18,40 @@ import Pacientes from './pages/Pacientes.jsx';
 import Panel from './pages/Panel.jsx';
 import PanelRrhh from './pages/PanelRrhh.jsx';
 
-// Pantallas del terapeuta. Todas exigen sesion y rol terapeuta.
+// QUE SE DIBUJA EN CADA RUTA.
 //
-// `capacidad` NO ES OPCIONAL: dice a que entrega pertenece la pantalla y sale
-// de la tabla unica de src/config/entregas.js. Una ruta sin ella hace fallar
-// el arranque en desarrollo — ver validarRutas mas abajo.
-const RUTAS_TERAPEUTA = [
-  { ruta: '/panel', capacidad: 'panel', elemento: <Panel /> },
-  { ruta: '/pacientes', capacidad: 'pacientes.listado', elemento: <Pacientes /> },
-  { ruta: '/pacientes/:id', capacidad: 'pacientes.listado', elemento: <PacienteFicha /> },
-  { ruta: '/calendario', capacidad: 'calendario', elemento: <Calendario /> },
-];
-
-// Pantallas de otros roles, con su propia pantalla ya construida.
+// QUIEN puede verla y a que entrega pertenece NO se declara aca: sale de
+// RUTAS_PROTEGIDAS (src/config/rutas.js), que es la lista unica y la que
+// tambien consulta `Login` para decidir si un destino guardado sirve para el
+// rol que entra. Aca solo se le cuelga el componente a cada ruta.
 //
-// RRHH salio de RUTAS_PENDIENTES el 2026-09-13, cuando el panel se
-// construyo. Lleva la MISMA capacidad que llevaba de pendiente
-// (`rrhh.consulta`, entrega 2), asi que en modo 1 desaparece igual que
-// antes: lo que cambio es que ahora hay una pantalla detras, no la etiqueta.
-const RUTAS_POR_ROL = [
-  { ruta: '/rrhh', rol: 'rrhh', capacidad: 'rrhh.consulta', elemento: <PanelRrhh /> },
-];
-
-// Los roles cuyo modulo llega en una entrega posterior. Su dashboard lo dice
-// explicitamente para que no parezca una pantalla rota.
-//
-// Van etiquetados aunque el modulo todavia no exista: es justamente el caso
-// que la tabla tiene que cubrir sin que nadie vuelva atras a etiquetarlo.
-const RUTAS_PENDIENTES = [
-  { rol: 'familiar', capacidad: 'familiar.portal' },
-  { rol: 'paciente', capacidad: 'paciente.portal' },
-];
+// Los tres roles cuyo modulo todavia no existe caen en `Dashboard`, que dice
+// explicitamente que falta la pantalla y no el acceso. RRHH salio de ese
+// grupo el 2026-09-13, cuando se construyo su panel.
+const ELEMENTO_POR_RUTA = {
+  '/panel': <Panel />,
+  '/pacientes': <Pacientes />,
+  '/pacientes/:id': <PacienteFicha />,
+  '/calendario': <Calendario />,
+  '/rrhh': <PanelRrhh />,
+  '/familiar': <Dashboard rol="familiar" />,
+  '/paciente': <Dashboard rol="paciente" />,
+};
 
 // Corre una vez al importar el modulo. Si alguien agrega una pantalla sin
 // decir a que entrega pertenece, la aplicacion no arranca en desarrollo y el
 // error dice cual es.
-validarRutas([
-  ...RUTAS_TERAPEUTA,
-  ...RUTAS_POR_ROL,
-  ...RUTAS_PENDIENTES.map((p) => ({ ...p, ruta: `/${p.rol}` })),
-]);
+validarRutas(RUTAS_PROTEGIDAS);
+
+// Y el par de la misma guarda: una ruta declarada sin componente seria una
+// pantalla en blanco. Se cae al arrancar, con el nombre adentro.
+const SIN_ELEMENTO = RUTAS_PROTEGIDAS.filter((r) => !ELEMENTO_POR_RUTA[r.ruta]);
+if (SIN_ELEMENTO.length > 0) {
+  throw new Error(
+    '[rutas] Rutas declaradas en src/config/rutas.js sin componente en App.jsx:\n' +
+    SIN_ELEMENTO.map((r) => `  ${r.ruta}`).join('\n')
+  );
+}
 
 function Inicio() {
   const { autenticado, rol, cargando } = useAuth();
@@ -79,13 +74,15 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/" element={<Inicio />} />
 
-      {RUTAS_TERAPEUTA.map(({ ruta, capacidad, elemento }) => (
+      {/* Una sola pasada sobre la lista unica. Los roles y la capacidad de
+          cada ruta salen de ahi, no de este archivo. */}
+      {RUTAS_PROTEGIDAS.map(({ ruta, roles, capacidad }) => (
         <Route
           key={ruta}
           path={ruta}
           element={
-            <RutaProtegida rolesPermitidos={['terapeuta']} capacidad={capacidad}>
-              {elemento}
+            <RutaProtegida rolesPermitidos={roles} capacidad={capacidad}>
+              {ELEMENTO_POR_RUTA[ruta]}
             </RutaProtegida>
           }
         />
@@ -93,30 +90,6 @@ export default function App() {
 
       {/* Compatibilidad: /terapeuta era la ruta inicial antes de /panel */}
       <Route path="/terapeuta" element={<Navigate to="/panel" replace />} />
-
-      {RUTAS_POR_ROL.map(({ ruta, rol, capacidad, elemento }) => (
-        <Route
-          key={ruta}
-          path={ruta}
-          element={
-            <RutaProtegida rolesPermitidos={[rol]} capacidad={capacidad}>
-              {elemento}
-            </RutaProtegida>
-          }
-        />
-      ))}
-
-      {RUTAS_PENDIENTES.map(({ rol, capacidad }) => (
-        <Route
-          key={rol}
-          path={`/${rol}`}
-          element={
-            <RutaProtegida rolesPermitidos={[rol]} capacidad={capacidad}>
-              <Dashboard rol={rol} />
-            </RutaProtegida>
-          }
-        />
-      ))}
 
       <Route path="/403" element={<NoAutorizado />} />
 

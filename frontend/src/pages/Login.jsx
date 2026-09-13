@@ -12,6 +12,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
+import { rolPuedeVer } from '../config/rutas.js';
 import { RUTA_POR_ROL, useAuth } from '../context/AuthContext.jsx';
 
 export default function Login() {
@@ -49,7 +50,29 @@ export default function Login() {
 
     try {
       const usuario = await login(email.trim(), contrasena);
-      const destino = ubicacion.state?.desde ?? RUTA_POR_ROL[usuario.rol] ?? '/';
+
+      // El destino guardado SOLO vale si el rol que acaba de entrar puede
+      // verlo. Si no puede, se descarta EN SILENCIO y se va a su inicio.
+      //
+      // Antes esta linea era `ubicacion.state?.desde ?? RUTA_POR_ROL[...]`,
+      // o sea que el destino guardado ganaba siempre. Con eso, a un
+      // terapeuta que venia de `/rrhh` —porque se le vencio la sesion ahi, o
+      // porque salio desde ahi— el login lo dejaba en la pantalla 403. La
+      // sesion estaba bien; lo que estaba mal era a donde lo mandabamos.
+      //
+      // NO se ignora el destino guardado: el caso legitimo es el que mas
+      // pasa. A quien se le vence la sesion en una pantalla SUYA, volver ahi
+      // despues de reloguear es lo util, y eso se conserva. La regla es "si
+      // el rol no puede, se descarta", no "se descarta siempre".
+      //
+      // Se descarta CALLADO a proposito: el usuario no pidió ir a /rrhh, lo
+      // pidió el estado que arrastraba la sesión anterior. Avisarle de algo
+      // que no hizo solo lo confunde.
+      const guardado = ubicacion.state?.desde;
+      const destino = guardado && rolPuedeVer(usuario.rol, guardado)
+        ? guardado
+        : (RUTA_POR_ROL[usuario.rol] ?? '/');
+
       navigate(destino, { replace: true });
     } catch (fallo) {
       // El backend devuelve el mismo mensaje si el email no existe o si la
