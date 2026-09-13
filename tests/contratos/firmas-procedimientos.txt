@@ -1,0 +1,72 @@
+# tests/contratos/firmas-procedimientos.txt
+#
+# LA FIRMA DE CADA PROCEDIMIENTO ALMACENADO, ESCRITA A MANO Y A PROPOSITO.
+#
+# Lo verifica `test_aridad_procedimientos.ps1` contra
+# `backend/database/schema.sql`. Si los dos no coinciden, ese test se pone en
+# ROJO y nombra los dos valores.
+#
+# ----------------------------------------------------------------------
+# PARA QUE SIRVE ESTE ARCHIVO, que no es obvio y vale leerlo una vez:
+#
+# NO sirve para saber cual es la firma -- para eso esta schema.sql, que es la
+# fuente de verdad. Sirve para que CAMBIARLA SEA UN ACTO CONSCIENTE.
+#
+# El 2026-09-11 se agrego un parametro a p_registrar_sesion. La aridad paso de
+# 9 a 10 y 13 llamadores quedaron rotos EN SILENCIO: repartidos en tres
+# carpetas, descubiertos al dia siguiente, y en una de las suites ni siquiera
+# se vieron porque el runner se caia antes de imprimir.
+#
+# Con este archivo, ese cambio no puede entrar sin que alguien edite estas
+# lineas. Y el momento de editarlas es exactamente el momento de acordarse de
+# ir a buscar los llamadores.
+#
+# ESTE ARCHIVO NO BUSCA LLAMADORES y el test tampoco. Ninguno de los dos sabe
+# si los CALL estan al dia. Lo unico que garantizan es que la firma no cambie
+# de callado. El relevamiento de la version que si los busca -- y de las tres
+# formas que tiene de dar verde falso -- esta en AUDITORIA.md (2026-09-12).
+#
+# ----------------------------------------------------------------------
+# COMO SE ACTUALIZA
+#
+# Cuando cambies una firma en schema.sql, el test va a fallar y el mensaje del
+# rojo trae LA LINEA EXACTA para pegar aca. No hay que escribirla a mano ni
+# contar parametros: la dicta el mismo parser que despues la verifica.
+#
+# FORMATO:  nombre | aridad | IN/OUT nombre_parametro, IN/OUT nombre, ...
+#
+# La aridad cuenta TODOS los parametros, IN y OUT juntos, porque eso es lo que
+# cuenta MySQL en un CALL. `p_mensaje` es un argumento mas.
+#
+# La firma esta ademas de la aridad por un motivo medido: p_registrar_sesion y
+# p_registrar_sesion_race_test tienen los DOS aridad 10, y son procedimientos
+# distintos. Contar no alcanza. Dar vuelta dos parametros del mismo tipo no
+# cambia la aridad, MySQL no se queja, y el dato entra en la columna
+# equivocada: ese caso solo lo agarra la lista de nombres.
+#
+# ----------------------------------------------------------------------
+# QUE NO ESTA ACA, Y POR QUE
+#
+#   p_generar_demo()                -- vive en seed_demo.sql, no en schema.sql.
+#                                      Es un generador de datos de demo, sin
+#                                      llamadores fuera de su propio archivo.
+#   p_registrar_sesion_race_test    -- lo crea y lo borra
+#                                      tests/db/concurrencia/test_race_regla6_sesiones.ps1.
+#                                      Es un fixture con firma propia, a
+#                                      proposito distinta de la real; no es
+#                                      parte del schema y no lo llama nadie mas.
+#
+# Los dos quedan afuera porque este test sujeta el CONTRATO DEL SCHEMA. Si
+# alguno de los dos se mueve a schema.sql, entra aca solo: el test falla por
+# "no esta en el manifiesto" el mismo dia.
+# ----------------------------------------------------------------------
+
+p_alta_paciente | 8 | IN p_nombre, IN p_apellido, IN p_fecha_nacimiento, IN p_diagnostico, IN p_nro_historia, IN p_id_usuario, OUT p_id_paciente, OUT p_mensaje
+p_baja_paciente | 4 | IN p_id_paciente, OUT p_objetivos_archivados, OUT p_asignaciones_cerradas, OUT p_mensaje
+p_editar_paciente | 9 | IN p_id_paciente, IN p_nombre, IN p_apellido, IN p_fecha_nacimiento, IN p_diagnostico, IN p_obra_social, IN p_nro_historia, OUT p_editado, OUT p_mensaje
+p_editar_sesion | 10 | IN p_id_sesion, IN p_id_terapeuta, IN p_estado, IN p_ausencia_de, IN p_notas, IN p_fecha, IN p_hora_inicio, IN p_hora_fin, OUT p_editado, OUT p_mensaje
+p_evolucion_paciente | 4 | IN p_id_paciente, IN p_fecha_desde, IN p_fecha_hasta, OUT p_mensaje
+p_reactivar_paciente | 3 | IN p_id_paciente, OUT p_reactivado, OUT p_mensaje
+p_registrar_evolucion | 7 | IN p_id_sesion, IN p_id_objetivo, IN p_valor, IN p_observaciones, IN p_id_terapeuta, OUT p_id_evolucion, OUT p_mensaje
+p_registrar_sesion | 10 | IN p_id_terapeuta, IN p_id_paciente, IN p_fecha, IN p_hora_inicio, IN p_hora_fin, IN p_estado, IN p_ausencia_de, IN p_notas, OUT p_id_sesion, OUT p_mensaje
+p_reporte_sesiones_periodo | 4 | IN p_fecha_desde, IN p_fecha_hasta, IN p_id_terapeuta, OUT p_mensaje
