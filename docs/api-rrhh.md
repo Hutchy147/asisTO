@@ -10,8 +10,11 @@ Base: `/api` · Formato: JSON · Autenticación: `Authorization: Bearer <token>`
 Las convenciones generales (códigos de autenticación, forma de los errores)
 son las mismas que en [`api-pacientes-objetivos.md`](api-pacientes-objetivos.md).
 
-Estado: **primer lote, sólo el camino de datos.** La interfaz y el export no
-están construidos.
+Estado: **camino de datos + panel de consulta.** El export no está construido.
+
+La pantalla es `frontend/src/pages/PanelRrhh.jsx`, ruta `/rrhh`, capacidad
+`rrhh.consulta` (entrega 2). Es **de sólo lectura**: el módulo no expone
+ningún endpoint de escritura.
 
 ---
 

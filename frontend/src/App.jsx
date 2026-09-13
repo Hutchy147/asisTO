@@ -15,6 +15,7 @@ import NoAutorizado from './pages/NoAutorizado.jsx';
 import PacienteFicha from './pages/PacienteFicha.jsx';
 import Pacientes from './pages/Pacientes.jsx';
 import Panel from './pages/Panel.jsx';
+import PanelRrhh from './pages/PanelRrhh.jsx';
 
 // Pantallas del terapeuta. Todas exigen sesion y rol terapeuta.
 //
@@ -28,13 +29,22 @@ const RUTAS_TERAPEUTA = [
   { ruta: '/calendario', capacidad: 'calendario', elemento: <Calendario /> },
 ];
 
-// Los tres roles cuyo modulo llega en una entrega posterior. Su dashboard
-// lo dice explicitamente para que no parezca una pantalla rota.
+// Pantallas de otros roles, con su propia pantalla ya construida.
+//
+// RRHH salio de RUTAS_PENDIENTES el 2026-09-13, cuando el panel se
+// construyo. Lleva la MISMA capacidad que llevaba de pendiente
+// (`rrhh.consulta`, entrega 2), asi que en modo 1 desaparece igual que
+// antes: lo que cambio es que ahora hay una pantalla detras, no la etiqueta.
+const RUTAS_POR_ROL = [
+  { ruta: '/rrhh', rol: 'rrhh', capacidad: 'rrhh.consulta', elemento: <PanelRrhh /> },
+];
+
+// Los roles cuyo modulo llega en una entrega posterior. Su dashboard lo dice
+// explicitamente para que no parezca una pantalla rota.
 //
 // Van etiquetados aunque el modulo todavia no exista: es justamente el caso
 // que la tabla tiene que cubrir sin que nadie vuelva atras a etiquetarlo.
 const RUTAS_PENDIENTES = [
-  { rol: 'rrhh', capacidad: 'rrhh.consulta' },
   { rol: 'familiar', capacidad: 'familiar.portal' },
   { rol: 'paciente', capacidad: 'paciente.portal' },
 ];
@@ -42,7 +52,11 @@ const RUTAS_PENDIENTES = [
 // Corre una vez al importar el modulo. Si alguien agrega una pantalla sin
 // decir a que entrega pertenece, la aplicacion no arranca en desarrollo y el
 // error dice cual es.
-validarRutas([...RUTAS_TERAPEUTA, ...RUTAS_PENDIENTES.map((p) => ({ ...p, ruta: `/${p.rol}` }))]);
+validarRutas([
+  ...RUTAS_TERAPEUTA,
+  ...RUTAS_POR_ROL,
+  ...RUTAS_PENDIENTES.map((p) => ({ ...p, ruta: `/${p.rol}` })),
+]);
 
 function Inicio() {
   const { autenticado, rol, cargando } = useAuth();
@@ -79,6 +93,18 @@ export default function App() {
 
       {/* Compatibilidad: /terapeuta era la ruta inicial antes de /panel */}
       <Route path="/terapeuta" element={<Navigate to="/panel" replace />} />
+
+      {RUTAS_POR_ROL.map(({ ruta, rol, capacidad, elemento }) => (
+        <Route
+          key={ruta}
+          path={ruta}
+          element={
+            <RutaProtegida rolesPermitidos={[rol]} capacidad={capacidad}>
+              {elemento}
+            </RutaProtegida>
+          }
+        />
+      ))}
 
       {RUTAS_PENDIENTES.map(({ rol, capacidad }) => (
         <Route
