@@ -8,6 +8,26 @@
 --   mysql -u root -p < backend/database/schema.sql
 -- =====================================================================
 
+-- =====================================================================
+-- CUIDADO: ESTE ARCHIVO NOMBRA LA BASE Y EMPIEZA BORRANDOLA.
+--
+-- Las tres lineas de abajo dicen `asisto` y la primera es un DROP DATABASE.
+-- `mysql --login-path=asisto otra_base < schema.sql` **NO** arma otra_base:
+-- BORRA `asisto` y la rehace vacia. El argumento de linea de comandos no
+-- protege de nada, porque estas lineas lo pisan.
+--
+-- POR QUE SIGUE ASI, cuando `seed.sql` y `seed_demo.sql` ya no nombran
+-- ninguna base (2026-09-13): este archivo CREA la base, no escribe en una
+-- que ya existe. Sacarle el nombre lo dejaria sin `CREATE DATABASE` y sin
+-- contexto para los `CREATE TABLE`, y quien tendria que crearla pasa a ser
+-- el invocador — hoy `tests/db/setup/build_test_db.ps1`, que vive en
+-- `tests/` y no lo escribe esta terminal. Es un cambio coordinado, no una
+-- linea. Queda propuesto y sin hacer.
+--
+-- MIENTRAS TANTO, la unica forma seria de correrlo contra otra base es la
+-- que ya usa el script: reescribir estas tres lineas sobre una COPIA del
+-- archivo. A mano, nunca.
+-- =====================================================================
 DROP DATABASE IF EXISTS asisto;
 CREATE DATABASE asisto
   CHARACTER SET utf8mb4

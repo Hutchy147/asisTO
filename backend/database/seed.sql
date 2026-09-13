@@ -13,7 +13,24 @@
 -- backend, nunca escritos a mano en este archivo.
 -- =====================================================================
 
-USE asisto;
+-- ESTE ARCHIVO NO ELIGE BASE, Y ES UNA DECISION (2026-09-13).
+--
+-- Hasta hoy aca decia `USE asisto;`. Esa linea PISA el nombre de base que se
+-- pasa por linea de comandos: `mysql --login-path=asisto otra_base < seed.sql`
+-- escribia en `asisto`, no en `otra_base`, sin avisar nada. Paso de verdad y
+-- dejo a `asisto` con los datos de la demo encima; se recupero del respaldo.
+--
+-- Un script de datos no decide sobre que base escribe: lo decide quien lo
+-- invoca. Sin `USE`, el argumento de `mysql` (o el `-Database` de
+-- `Invoke-Sql`) manda, que es lo unico que el que ejecuta puede ver.
+--
+-- Los dos scripts que ya lo cargaban pasan la base como argumento
+-- (`build_test_db.ps1` y `test_seed_coherencia.ps1`), asi que siguen
+-- funcionando igual: lo que tenian era un `-replace` de esta linea, que
+-- ahora no encuentra nada y no hace falta.
+--
+-- Si lo corres a mano, el nombre va SIEMPRE explicito:
+--     mysql --login-path=asisto la_base_que_quieras < seed.sql
 
 -- Orden inverso al de las dependencias para poder recorrer el seed las
 -- veces que haga falta sin recrear el schema entero.

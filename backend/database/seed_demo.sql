@@ -22,7 +22,18 @@
 -- las cuatro maquinas obtienen exactamente los mismos datos.
 -- =====================================================================
 
-USE asisto;
+-- ESTE ARCHIVO NO ELIGE BASE, Y ES UNA DECISION (2026-09-13).
+--
+-- Hasta hoy aca decia `USE asisto;`, y aca era peor que en `seed.sql`: a
+-- este archivo NO lo carga ningun script del repo, se corre siempre a mano.
+-- O sea que la linea no le ahorraba nada a nadie y solo podia hacer dano.
+--
+-- El dano concreto: `mysql --login-path=asisto otra_base < seed_demo.sql`
+-- escribia en `asisto`. Paso el 2026-09-13 y dejo a `asisto` con 640/468 en
+-- vez de 644/466; se recupero entera del respaldo previo.
+--
+-- El nombre de base va SIEMPRE explicito al invocar:
+--     mysql --login-path=asisto la_base_que_quieras < seed_demo.sql
 
 SET FOREIGN_KEY_CHECKS = 0;
 TRUNCATE TABLE auditoria_accesos;
