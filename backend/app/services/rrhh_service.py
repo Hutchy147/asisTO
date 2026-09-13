@@ -46,6 +46,11 @@ COLUMNAS_REPORTE = (
     'hora_fin',
     'estado',
     'ausencia_de',
+    # El id ADEMAS del nombre: identifica donde el nombre solo no alcanza
+    # (dos homonimos son una sola fila para un reporte administrativo). No
+    # amplia el alcance de RRHH: es la misma clave que ya viajaba como filtro
+    # en `p_id_terapeuta`, y no hay endpoint clinico alcanzable con ese rol.
+    'id_terapeuta',
     'terapeuta',
     'paciente',
     'nro_historia',

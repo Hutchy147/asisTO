@@ -2617,6 +2617,17 @@ BEGIN
     -- declarado", NO significa "el paciente": el endpoint las cuenta en un
     -- balde propio y no las reparte.
     s.ausencia_de,
+    -- El id VA ADEMAS del nombre, no en su lugar: el id identifica y el
+    -- nombre se lee. Sin el id, dos terapeutas homonimos son la misma fila
+    -- para un reporte administrativo, y el paciente ya tenia con que
+    -- distinguirse (`nro_historia`) mientras que el terapeuta no.
+    --
+    -- No abre nada: `id_terapeuta` es la MISMA clave que RRHH ya podia pasar
+    -- como filtro (`p_id_terapeuta`), asi que devolverla no le da ningun
+    -- valor que no pudiera haber adivinado probando. Y no existe ningun
+    -- endpoint clinico que el rol rrhh pueda llamar con ese id: el blueprint
+    -- de RRHH no importa un solo servicio clinico. Verificado por HTTP.
+    s.id_terapeuta,
     CONCAT(ut.apellido, ', ', ut.nombre) AS terapeuta,
     CONCAT(p.apellido, ', ', p.nombre)   AS paciente,
     p.nro_historia,

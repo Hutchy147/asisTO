@@ -94,6 +94,7 @@ motivo: sin tope se puede pedir "1900 a 2100" y traerse todo de una.
       "hora_fin": null,
       "hora_inicio": "11:00",
       "id_sesion": 7,
+      "id_terapeuta": 2,
       "nro_historia": "HC-0002",
       "paciente": "Sosa, Valentina",
       "superposiciones": 0,
@@ -106,6 +107,7 @@ motivo: sin tope se puede pedir "1900 a 2100" y traerse todo de una.
       "hora_fin": "12:00",
       "hora_inicio": "11:00",
       "id_sesion": 13,
+      "id_terapeuta": 1,
       "nro_historia": "HC-0004",
       "paciente": "Peralta, Ignacio",
       "superposiciones": 0,
@@ -115,7 +117,7 @@ motivo: sin tope se puede pedir "1900 a 2100" y traerse todo de una.
 }
 ```
 
-### Las diez columnas de una sesión, y ninguna más
+### Las once columnas de una sesión, y ninguna más
 
 | Campo | Notas |
 |---|---|
@@ -125,7 +127,8 @@ motivo: sin tope se puede pedir "1900 a 2100" y traerse todo de una.
 | `hora_fin` | `HH:MM` o `null` — es NULLABLE, se asume una hora |
 | `estado` | `completa`, `incompleta`, `ausencia` |
 | `ausencia_de` | `paciente`, `terapeuta` o `null` |
-| `terapeuta` | `Apellido, Nombre` |
+| `id_terapeuta` | Identifica; el nombre solo no alcanza con homónimos |
+| `terapeuta` | `Apellido, Nombre` — para leer, no para identificar |
 | `paciente` | `Apellido, Nombre` |
 | `nro_historia` | Identificador administrativo, no clínico |
 | `superposiciones` | Cuántas sesiones del mismo terapeuta pisan ese horario |
