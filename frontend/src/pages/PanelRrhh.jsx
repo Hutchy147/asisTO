@@ -41,9 +41,11 @@ import StatTile from '../components/data/StatTile.jsx';
 import { Aviso, Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { usePeticion } from '../hooks/usePeticion.js';
+import { ESTADO_AUSENCIA } from '../services/sesionesService.js';
 import {
   ORIGENES_AUSENCIA, obtenerReporteSesiones, terapeutasDelReporte,
 } from '../services/rrhhService.js';
+import { armarCsv, descargarCsv } from '../utils/csv.js';
 import { formatearFecha } from '../utils/fechas.js';
 
 // Ventana por omision: los ultimos 90 dias.
@@ -112,6 +114,56 @@ export default function PanelRrhh() {
       setTerapeutas(terapeutasDelReporte(reporte.datos.sesiones));
     }
   }, [reporte.datos, aplicado.idTerapeuta]);
+
+  // LAS COLUMNAS DEL CSV. Lista cerrada, igual que la de la pantalla.
+  //
+  // Van SEPARADAS de `columnas` a proposito, aunque digan casi lo mismo: las
+  // de la pantalla devuelven JSX (chips, PersonCell) y un archivo necesita
+  // texto. Derivar una de la otra obligaria a que cada `render` supiera
+  // ademas dibujarse en plano, que es peor que escribir las dos listas.
+  //
+  // NO SALE NADA CLINICO, y aca es donde hay que sostenerlo: el endpoint ya
+  // no devuelve notas ni evoluciones ni diagnostico, asi que no hay de donde
+  // sacarlo — pero si manana alguien agrega una columna al endpoint, esta
+  // lista la sigue dejando afuera hasta que alguien la escriba. El limite no
+  // se relaja por ser un archivo en vez de una pantalla.
+  //
+  // El id del terapeuta va en COLUMNA PROPIA y no pegado al nombre: en la
+  // pantalla es un meta chico debajo, pero en una planilla se filtra y se
+  // ordena por columna, y "Fernandez, Laura (id 1)" no se puede ordenar por
+  // id. Mismo criterio con nro_historia.
+  const columnasCsv = [
+    { clave: 'fecha', etiqueta: 'Fecha' },
+    { clave: 'hora_inicio', etiqueta: 'Hora inicio' },
+    { clave: 'hora_fin', etiqueta: 'Hora fin' },
+    { clave: 'id_terapeuta', etiqueta: 'Id terapeuta' },
+    { clave: 'terapeuta', etiqueta: 'Terapeuta' },
+    { clave: 'nro_historia', etiqueta: 'N de historia' },
+    { clave: 'paciente', etiqueta: 'Paciente' },
+    { clave: 'estado', etiqueta: 'Estado' },
+    {
+      clave: 'ausencia_de',
+      etiqueta: 'Quien falto',
+      // Mismo texto que la pantalla, y el mismo balde de tres: una ausencia
+      // sin declarar dice "Sin declarar", NO queda vacia. Una celda vacia en
+      // una planilla se lee como "no hubo ausencia", que es justo lo que no
+      // es.
+      valor: (s) => {
+        if (s.estado !== ESTADO_AUSENCIA) return '';
+        const origen = ORIGENES_AUSENCIA.find((o) => o.clave === (s.ausencia_de ?? 'sin_declarar'));
+        return origen?.etiqueta ?? s.ausencia_de ?? '';
+      },
+    },
+    { clave: 'superposiciones', etiqueta: 'Superpuestas' },
+  ];
+
+  const exportar = () => {
+    // Sale `sesiones` ENTERO, no `sesiones.slice(...)`: el tope de 100 es
+    // para que el navegador no se pegue dibujando, y un archivo no dibuja
+    // nada. Exportar lo que se ve seria exportar un recorte de pantalla.
+    const contenido = armarCsv(sesiones, columnasCsv);
+    descargarCsv(`asistencias_${aplicado.desde}_${aplicado.hasta}.csv`, contenido);
+  };
 
   const columnas = [
     {
@@ -255,6 +307,25 @@ export default function PanelRrhh() {
             ))}
           </TextField>
           <Button type="submit" variant="contained">Ver período</Button>
+
+          {/* El boton DICE CUANTAS va a exportar, y son todas las del
+              periodo, no las 100 que dibuja la tabla. Sin el numero, quien
+              lo aprieta despues de ver "se muestran las primeras 100"
+              razonablemente espera un archivo de 100 filas.
+
+              Deshabilitado mientras carga y cuando no hay nada: un boton que
+              descarga un archivo con solo el encabezado es peor que uno
+              apagado, porque hay que abrirlo para darse cuenta. */}
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={exportar}
+            disabled={reporte.cargando || sesiones.length === 0}
+          >
+            {sesiones.length > 0
+              ? `Exportar ${sesiones.length} ${sesiones.length === 1 ? 'sesión' : 'sesiones'}`
+              : 'Exportar'}
+          </Button>
         </Box>
 
         {reporte.cargando && <Cargando texto="Buscando las sesiones del período..." />}
