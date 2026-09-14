@@ -12,7 +12,9 @@
 
 from flask import Blueprint, jsonify, request
 
-from app.services.rrhh_service import reporte_sesiones
+from app.services.rrhh_service import (
+    listar_observaciones, registrar_observacion, reporte_sesiones,
+)
 from app.utils.security import requiere_rol
 
 rrhh_bp = Blueprint('rrhh', __name__)
@@ -35,3 +37,41 @@ def reporte():
         request.args.get('hasta'),
         request.args.get('id_terapeuta'),
     )), 200
+
+
+# ---------------------------------------------------------------------
+# OBSERVACIONES TECNICAS — el unico camino de ESCRITURA del rol rrhh.
+#
+# Cuelgan de la sesion (`/rrhh/sesiones/<id>/observaciones`) y no de una
+# coleccion propia (`/rrhh/observaciones`) porque una observacion no existe
+# sin la sesion que comenta: la URL dice de que es.
+#
+# Sigue sin haber PUT ni DELETE, y es una decision: una observacion
+# administrativa es una constancia de algo que paso. Editarla o borrarla
+# despues es reescribir el registro, que es justo lo que una constancia no
+# tiene que permitir. Si alguna vez hace falta corregir una, se agrega otra.
+# ---------------------------------------------------------------------
+
+@rrhh_bp.get('/rrhh/sesiones/<int:id_sesion>/observaciones')
+@requiere_rol('rrhh')
+def observaciones(id_sesion):
+    return jsonify(listar_observaciones(id_sesion)), 200
+
+
+@rrhh_bp.post('/rrhh/sesiones/<int:id_sesion>/observaciones')
+@requiere_rol('rrhh')
+def crear_observacion(id_sesion):
+    """
+    Registra una observacion tecnica sobre la sesion.
+
+    El AUTOR no viaja en el cuerpo: sale del token. Aceptarlo del cliente
+    dejaria que cualquiera con rol rrhh firme con el legajo de otro.
+    """
+    datos = request.get_json(silent=True) or {}
+    observacion, mensaje = registrar_observacion(id_sesion, datos)
+
+    return jsonify({
+        'observacion': observacion.to_dict(),
+        # p_mensaje del procedimiento, propagado tal cual
+        'mensaje': mensaje,
+    }), 201

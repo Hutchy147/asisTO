@@ -1,7 +1,7 @@
 // frontend/src/pages/PanelRrhh.jsx
-// Panel de RRHH — consulta de asistencias. SOLO LECTURA.
+// Panel de RRHH — consulta de asistencias.
 //
-// Contrato: docs/api-rrhh.md. Un solo endpoint, GET /rrhh/reporte-sesiones.
+// Contrato: docs/api-rrhh.md.
 //
 // QUE NO HAY EN ESTA PANTALLA, Y ES A PROPOSITO:
 //
@@ -17,9 +17,17 @@
 //     sobre eso mezclaria dos cosas distintas en un solo numero que despues
 //     nadie puede desarmar. Se muestran RECUENTOS.
 //
-//   * NO SE ESCRIBE NADA. `observaciones_rrhh` existe como tabla
-//     (schema.sql) pero no tiene endpoint ni servicio: es un camino de
-//     escritura desde RRHH y eso es otro lote.
+//   * SE ESCRIBE UNA SOLA COSA, y desde el 2026-09-14: la observacion
+//     TECNICA sobre una sesion (ModalObservacionesRrhh). Es el unico camino
+//     de escritura del rol en todo el sistema. NO toca la sesion: es una
+//     fila aparte en `observaciones_rrhh` que la referencia.
+//
+//     La columna del listado se llama `obs_rrhh` y NO `observaciones`, que
+//     seria lo natural. El motivo: en este proyecto `observaciones` ya
+//     significa `evoluciones.observaciones`, que es CLINICO, y un test de
+//     auditoria bloquea ese nombre en el reporte de RRHH. El test tenia
+//     razon — el nombre era ambiguo — asi que se renombro la columna, no se
+//     tocó el test.
 
 import { useEffect, useMemo, useState } from 'react';
 import AppBar from '@mui/material/AppBar';
@@ -39,6 +47,7 @@ import PersonCell from '../components/data/PersonCell.jsx';
 import SesionEstadoChip from '../components/data/SesionEstadoChip.jsx';
 import StatTile from '../components/data/StatTile.jsx';
 import { Aviso, Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
+import ModalObservacionesRrhh from '../components/rrhh/ModalObservacionesRrhh.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { ESTADO_AUSENCIA } from '../services/sesionesService.js';
@@ -91,12 +100,30 @@ export default function PanelRrhh() {
   const [borrador, setBorrador] = useState({ ...inicial, idTerapeuta: '' });
   const [aplicado, setAplicado] = useState({ ...inicial, idTerapeuta: '' });
 
+  // La sesión cuyas observaciones se están mirando. null = modal cerrado.
+  const [sesionObservada, setSesionObservada] = useState(null);
+
+  // Conteo de observaciones corregido a mano, por sesión, después de guardar.
+  //
+  // POR QUÉ NO SE VUELVE A PEDIR EL REPORTE. La primera versión hacía
+  // `reporte.recargar()` al guardar, y **dejaba la pantalla en blanco**: con
+  // 630 sesiones, refetchear y volver a dibujar la grilla entera con el modal
+  // abierto deja al navegador sin responder. Se vio en Chrome real, no se
+  // dedujo. El dato que cambió es UNO —cuántas observaciones tiene ESA
+  // sesión— y pedir de nuevo 630 filas para enterarse es lo que lo rompía.
+  const [conteoObservaciones, setConteoObservaciones] = useState({});
+
   const reporte = usePeticion(
     () => obtenerReporteSesiones(aplicado),
     [aplicado.desde, aplicado.hasta, aplicado.idTerapeuta]
   );
 
-  const sesiones = reporte.datos?.sesiones ?? [];
+  // El conteo corregido pisa al que vino del servidor, cuando hay uno.
+  const sesiones = (reporte.datos?.sesiones ?? []).map((s) => (
+    conteoObservaciones[s.id_sesion] === undefined
+      ? s
+      : { ...s, obs_rrhh: conteoObservaciones[s.id_sesion] }
+  ));
   const resumen = reporte.datos?.resumen;
 
   // Los terapeutas del filtro salen del reporte SIN filtrar. Si salieran del
@@ -155,6 +182,10 @@ export default function PanelRrhh() {
       },
     },
     { clave: 'superposiciones', etiqueta: 'Superpuestas' },
+    // El CONTEO, no el texto. Que el archivo diga cuáles tienen observación
+    // sirve para revisarlas; volcar el texto de todas convertiría el CSV en
+    // un export de comentarios, que no es lo que es.
+    { clave: 'obs_rrhh', etiqueta: 'Observaciones RRHH' },
   ];
 
   const exportar = () => {
@@ -224,6 +255,25 @@ export default function PanelRrhh() {
         s.superposiciones > 0
           ? <Box component="span" sx={{ fontWeight: 600, color: 'warning.main' }}>{s.superposiciones}</Box>
           : <Box component="span" sx={{ color: 'text.disabled' }}>0</Box>
+      ),
+    },
+    {
+      clave: 'obs_rrhh',
+      etiqueta: 'Observ.',
+      ancho: 96,
+      alinear: 'right',
+      // Lo que distingue a una sesión con observación de una sin ella. Se
+      // dibuja como texto y no sólo como número: "2 obs." se entiende sin
+      // leer el encabezado, y un "0" gris no compite visualmente con el
+      // resto de la fila.
+      render: (s) => (
+        s.obs_rrhh > 0
+          ? (
+            <Box component="span" sx={{ fontWeight: 600, color: 'primary.main' }}>
+              {s.obs_rrhh} obs.
+            </Box>
+          )
+          : <Box component="span" sx={{ color: 'text.disabled' }}>—</Box>
       ),
     },
   ];
@@ -392,6 +442,8 @@ export default function PanelRrhh() {
                   columnas={columnas}
                   filas={sesiones.slice(0, MAXIMO_FILAS_VISIBLES)}
                   claveFila={(s) => s.id_sesion}
+                  onAbrirFila={(s) => setSesionObservada(s)}
+                  etiquetaFila={(s) => `Observaciones de la sesión de ${s.paciente} del ${s.fecha}`}
                 />
                 {sesiones.length > MAXIMO_FILAS_VISIBLES && (
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -404,6 +456,19 @@ export default function PanelRrhh() {
             )}
           </>
         )}
+
+        <ModalObservacionesRrhh
+          abierto={Boolean(sesionObservada)}
+          sesion={sesionObservada}
+          onCerrar={() => setSesionObservada(null)}
+          // El modal ya sabe cuántas quedaron —acaba de releer su lista—, así
+          // que pasa el total y acá se corrige esa fila y nada más. Sin esto
+          // la sesión seguiría diciendo "—" y parecería que no se guardó.
+          onGuardado={(total) => setConteoObservaciones((previo) => ({
+            ...previo,
+            [sesionObservada.id_sesion]: total,
+          }))}
+        />
       </Container>
     </Box>
   );

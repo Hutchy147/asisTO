@@ -2577,6 +2577,122 @@ END$$
 
 
 -- ---------------------------------------------------------------------
+-- p_registrar_observacion_rrhh — modulo RRHH
+--
+-- LA UNICA ESCRITURA QUE TIENE EL ROL RRHH EN TODO EL SISTEMA. Hasta hoy
+-- (2026-09-14) ese rol solo leia: `observaciones_rrhh` existia como tabla
+-- desde el schema original y no tenia ningun camino de escritura.
+--
+-- QUE ES Y QUE NO ES. Es un comentario ADMINISTRATIVO sobre una sesion —
+-- llego tarde, faltaba material, se aviso a coordinacion— para dejar
+-- constancia. NO es contenido clinico y NO reemplaza ni toca
+-- `sesiones.notas`, que es del terapeuta. Son dos campos de dos personas
+-- distintas sobre el mismo hecho.
+--
+-- NO TOCA LA SESION. Ni un UPDATE sobre `sesiones`: la observacion es una
+-- fila aparte que la referencia por FK. Una sesion puede tener varias, o
+-- ninguna, y borrar la sesion se las lleva (ON DELETE CASCADE), que es lo
+-- correcto: una observacion sobre una sesion que no existe no significa
+-- nada.
+--
+-- ORDEN DE LOCKS: `sesiones` -> `observaciones_rrhh`.
+--
+-- `observaciones_rrhh` no estaba en el orden canonico porque hasta hoy nada
+-- la escribia. Se ubica AL FINAL, despues de `evoluciones`, y no es una
+-- decision nueva: es el criterio que ya fija el orden —una tabla se toma
+-- despues de todas las que referencia— aplicado a una tabla que referencia
+-- a `sesiones` y a `rrhh` y a la que no apunta nadie.
+--
+-- El SELECT sobre `sesiones` va FOR SHARE y no es decorativo: sin el, la
+-- sesion puede borrarse entre la verificacion y el INSERT, y el INSERT
+-- fallaria por FK con un errno que el usuario no puede interpretar. Con el
+-- lock, o la sesion sigue estando o el rechazo sale con mensaje propio.
+-- ---------------------------------------------------------------------
+CREATE PROCEDURE p_registrar_observacion_rrhh (
+  IN  p_id_sesion      INT UNSIGNED,
+  IN  p_id_rrhh        INT UNSIGNED,
+  IN  p_texto          TEXT,
+  OUT p_id_observacion INT UNSIGNED,
+  OUT p_mensaje        VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error     VARCHAR(255) DEFAULT '';
+  DECLARE v_sesion    INT UNSIGNED DEFAULT NULL;
+  DECLARE v_rrhh      INT UNSIGNED DEFAULT NULL;
+
+  -- Ver CRITERIO GENERAL DE ERRORES
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_id_observacion = NULL;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_id_observacion = NULL;
+    SET p_mensaje = 'No se pudo registrar la observacion por un error interno';
+  END;
+
+  SET p_id_observacion = NULL;
+
+  -- El texto vacio se rechaza ACA y no se deja en la columna NOT NULL: una
+  -- cadena de espacios pasa el NOT NULL y deja una observacion que no dice
+  -- nada, que es peor que no tenerla.
+  IF p_texto IS NULL OR TRIM(p_texto) = '' THEN
+    SET p_mensaje = 'La observacion no puede estar vacia';
+  ELSEIF p_id_rrhh IS NULL THEN
+    SET p_mensaje = 'Falta indicar quien registra la observacion';
+  ELSE
+    START TRANSACTION;
+
+    -- 1) sesiones, primero en el orden y con lock: es la fila de la que
+    --    cuelga todo lo demas.
+    SELECT id INTO v_sesion
+      FROM sesiones
+     WHERE id = p_id_sesion
+     FOR SHARE;
+
+    SELECT id INTO v_rrhh
+      FROM rrhh
+     WHERE id = p_id_rrhh;
+
+    IF v_sesion IS NULL THEN
+      ROLLBACK;
+      SET p_mensaje = 'La sesion indicada no existe';
+    ELSEIF v_rrhh IS NULL THEN
+      ROLLBACK;
+      SET p_mensaje = 'El usuario de RRHH indicado no existe';
+    ELSE
+      -- 2) observaciones_rrhh, ultima. `fecha_registro` la pone la columna
+      --    con su DEFAULT: la hora la decide la base y no el cliente.
+      INSERT INTO observaciones_rrhh (id_sesion, id_rrhh, texto)
+      VALUES (p_id_sesion, p_id_rrhh, TRIM(p_texto));
+
+      SET p_id_observacion = LAST_INSERT_ID();
+
+      COMMIT;
+      SET p_mensaje = 'Observacion registrada correctamente';
+    END IF;
+  END IF;
+END$$
+
+
+-- ---------------------------------------------------------------------
 -- p_reporte_sesiones_periodo — modulo RRHH
 --
 -- LIMITE DURO: este procedimiento NO devuelve contenido clinico. Nada de
@@ -2659,7 +2775,20 @@ BEGIN
          AND s2.id <> s.id
          AND s.hora_inicio < IFNULL(s2.hora_fin, ADDTIME(s2.hora_inicio, '01:00:00'))
          AND IFNULL(s.hora_fin, ADDTIME(s.hora_inicio, '01:00:00')) > s2.hora_inicio
-    )                                    AS superposiciones
+    )                                    AS superposiciones,
+    -- Cuantas observaciones ADMINISTRATIVAS tiene la sesion. Es un CONTEO,
+    -- no el texto: para pintar el listado alcanza con saber si hay o no, y
+    -- traer el texto de todas las sesiones del periodo seria traer cientos
+    -- de campos largos que la grilla no muestra.
+    --
+    -- Esto NO afloja el limite clinico: una observacion de RRHH la escribe
+    -- RRHH y es administrativa. Lo que sigue sin salir por aca es
+    -- `sesiones.notas`, que es del terapeuta.
+    (
+      SELECT COUNT(*)
+        FROM observaciones_rrhh o
+       WHERE o.id_sesion = s.id
+    )                                    AS obs_rrhh
     -- ORDEN DE LOCKS: este SELECT no toma ninguno. No lleva FOR UPDATE ni
     -- FOR SHARE, asi que es una lectura consistente y no entra en el orden
     -- canonico ni puede formar un ciclo con nadie. `pacientes` va escrito

@@ -1,11 +1,18 @@
 // frontend/src/services/rrhhService.js
 // Contrato: docs/api-rrhh.md
 //
-// SOLO LECTURA. RRHH verifica asistencias y no escribe nada: este archivo
-// no exporta un solo POST/PUT/DELETE, y eso es la decisión, no una etapa.
-// El único endpoint del módulo hoy es GET /api/rrhh/reporte-sesiones.
+// CASI SOLO LECTURA, y el "casi" es de una sola cosa.
+//
+// Hasta el 2026-09-14 este archivo decía SOLO LECTURA y era cierto. Hoy
+// exporta UN post: la observación técnica sobre una sesión, que es el único
+// camino de escritura que tiene el rol rrhh en todo el sistema.
+//
+// Lo que sigue sin poder escribir: pacientes, sesiones, objetivos y
+// evoluciones. No es una afirmación de diseño, está medida — los diez
+// endpoints de escritura le contestan 403 al rol rrhh, verificado por HTTP
+// el mismo día que se abrió esta puerta.
 
-import { construirQuery, get } from './api.js';
+import { construirQuery, get, post } from './api.js';
 
 // Los tres orígenes de una ausencia, con el texto que se muestra.
 //
@@ -73,4 +80,28 @@ export function terapeutasDelReporte(sesiones = []) {
   return [...porId.entries()]
     .map(([id, nombre]) => ({ id, nombre }))
     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+}
+
+// ---------------------------------------------------------------------
+// OBSERVACIONES TECNICAS — el unico camino de ESCRITURA del modulo.
+//
+// El encabezado de este archivo decia "SOLO LECTURA" y dejo de ser cierto el
+// 2026-09-14. Lo que NO cambio: sigue habiendo un solo POST, y es este. RRHH
+// no escribe en pacientes, sesiones, objetivos ni evoluciones — verificado
+// por HTTP contra los diez endpoints de escritura, que le contestan 403.
+// ---------------------------------------------------------------------
+
+/** Observaciones de una sesion, de la mas nueva a la mas vieja. */
+export function listarObservaciones(idSesion) {
+  return get(`/rrhh/sesiones/${idSesion}/observaciones`);
+}
+
+/**
+ * Registra una observacion administrativa sobre la sesion.
+ *
+ * El AUTOR no se manda: lo resuelve el servidor desde el token. Mandarlo
+ * dejaria que cualquiera con rol rrhh firme con el legajo de otro.
+ */
+export function registrarObservacion(idSesion, texto) {
+  return post(`/rrhh/sesiones/${idSesion}/observaciones`, { texto });
 }

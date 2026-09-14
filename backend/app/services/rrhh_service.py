@@ -15,10 +15,14 @@
 import datetime as dt
 import logging
 
+from flask import g
 from sqlalchemy import text
 
 from app import db
+from app.models import ObservacionRrhh, Rrhh
+from app.models.observacion_rrhh import MAXIMO_CARACTERES_TEXTO
 from app.models.sesion import ESTADO_AUSENCIA, ORIGENES_AUSENCIA
+from app.utils.db import reintentar_en_deadlock
 from app.utils.errors import ErrorAplicacion
 
 logger = logging.getLogger(__name__)
@@ -55,6 +59,11 @@ COLUMNAS_REPORTE = (
     'paciente',
     'nro_historia',
     'superposiciones',
+    # Cuantas observaciones administrativas tiene la sesion. Es el conteo, no
+    # el texto: sirve para que el panel distinga las sesiones que tienen de
+    # las que no, sin arrastrar cientos de campos largos que la grilla no
+    # muestra. El texto se pide por sesion, cuando alguien la abre.
+    'obs_rrhh',
 )
 
 # La fecha en que `ausencia_de` empezo a existir y a exigirse. Antes de esto
@@ -206,3 +215,102 @@ def _resumir(sesiones, fecha_desde):
             fecha_desde < DESDE_AUSENCIA_DECLARABLE
         ),
     }
+
+
+# =====================================================================
+# OBSERVACIONES TECNICAS — LA UNICA ESCRITURA DEL ROL RRHH
+#
+# Hasta el 2026-09-14 este modulo era de solo lectura y el archivo lo decia
+# en su encabezado. Esto abre la PRIMERA y UNICA puerta de escritura del rol,
+# y conviene tener claro de que tamaño es: escribe filas en
+# `observaciones_rrhh` y en ningun otro lado.
+#
+# LO QUE NO PUEDE ESCRIBIR, y esta verificado por HTTP contra los endpoints
+# reales: pacientes, sesiones, objetivos ni evoluciones. Esos siguen
+# contestando 403 al rol rrhh. Abrir una puerta no abrio las otras.
+# =====================================================================
+
+def rrhh_actual():
+    """
+    Perfil de RRHH del usuario logueado.
+
+    Mismo criterio que `terapeuta_actual()` en sesiones_service: el autor NO
+    viene del cuerpo de la peticion, se resuelve desde el token. Si viniera
+    del cuerpo, cualquiera con rol rrhh podria firmar una observacion con el
+    legajo de otro.
+    """
+    perfil = Rrhh.query.filter_by(id_usuario=g.usuario_actual.id).first()
+    if perfil is None:
+        raise ErrorAplicacion(
+            'El usuario no tiene un perfil de RRHH asociado.', http_status=403
+        )
+    return perfil
+
+
+def listar_observaciones(id_sesion):
+    """Observaciones de una sesion, de la mas nueva a la mas vieja."""
+    observaciones = (
+        ObservacionRrhh.query
+        .filter_by(id_sesion=id_sesion)
+        .order_by(ObservacionRrhh.fecha_registro.desc(), ObservacionRrhh.id.desc())
+        .all()
+    )
+    return {
+        'id_sesion': id_sesion,
+        'observaciones': [o.to_dict() for o in observaciones],
+        'total': len(observaciones),
+    }
+
+
+@reintentar_en_deadlock()
+def registrar_observacion(id_sesion, datos):
+    """
+    Registra una observacion via p_registrar_observacion_rrhh.
+
+    VA POR EL PROCEDIMIENTO Y NO POR `db.session.add()`: es la convencion del
+    proyecto para todo lo que escribe sobre datos ligados a `sesiones`. El
+    procedimiento es ademas el que verifica que la sesion exista tomandola
+    FOR SHARE, cosa que el ORM no puede hacer sin duplicar la logica.
+
+    El decorador envuelve la funcion ENTERA, commit incluido: si el commit
+    quedara afuera, el reintento repetiria solo una parte.
+    """
+    texto = (datos.get('texto') or '').strip()
+
+    if not texto:
+        raise ErrorAplicacion('La observacion no puede estar vacia.', campo='texto')
+
+    if len(texto) > MAXIMO_CARACTERES_TEXTO:
+        raise ErrorAplicacion(
+            f'La observacion no puede superar los {MAXIMO_CARACTERES_TEXTO} caracteres.',
+            campo='texto',
+        )
+
+    autor = rrhh_actual()
+
+    db.session.execute(
+        text(
+            'CALL p_registrar_observacion_rrhh(:id_sesion, :id_rrhh, :texto, '
+            '@p_id_observacion, @p_mensaje)'
+        ),
+        {'id_sesion': id_sesion, 'id_rrhh': autor.id, 'texto': texto},
+    )
+
+    id_creada, mensaje = db.session.execute(
+        text('SELECT @p_id_observacion, @p_mensaje')
+    ).first()
+
+    db.session.commit()
+
+    if id_creada is None:
+        # p_mensaje ya explica por que: sesion inexistente, texto vacio. Se
+        # propaga tal cual.
+        raise ErrorAplicacion(mensaje or 'No se pudo registrar la observacion.')
+
+    observacion = ObservacionRrhh.query.get(int(id_creada))
+    logger.info(
+        'Observacion RRHH %s sobre sesion %s por legajo %s',
+        observacion.id, id_sesion, autor.nro_legajo,
+    )
+
+    return observacion, mensaje
