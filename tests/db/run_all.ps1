@@ -185,4 +185,35 @@ if ($noCorrieron.Count -gt 0) {
     Write-Output "desconocido. Correlo suelto para ver donde se corta."
 }
 
-return $todos
+# EL VEREDICTO SALE POR DOS CANALES, Y LOS DOS HACEN FALTA.
+#
+# Hasta el 2026-09-22 este archivo terminaba en `return $todos` y NADA MAS. O
+# sea que el resultado de la suite mas grande de las cuatro existia unicamente
+# como texto impreso y como objetos en el pipeline: `$LASTEXITCODE` volvia
+# VACIO. Las otras tres suites ya salian con `exit 0` / `exit 1`; esta era la
+# unica que no, y es la que mas tarda y mas cubre.
+#
+# Por que importa, y no es teorico: el README invoca esta suite con
+# `powershell -File tests\db\run_all.ps1`, que es exactamente la forma cuyo
+# resultado se lee por codigo de salida. Cualquier automatizacion encima -- un
+# hook de pre-commit, un workflow -- no tenia de donde leer si paso o fallo
+# salvo parseando la salida. Se engancha con el punto 4 de AUDITORIA.md ("no
+# hay hook ni CI"): el dia que eso se ataque, esta suite no podia informar.
+#
+# 1. Los objetos siguen saliendo por el pipeline. NO se cambio por `exit` a
+#    secas: el comentario de arriba (linea 105) documenta que quien llame a
+#    este script y cuente PASS/FAIL sobre lo devuelto tiene que VER el modulo
+#    que no corrio. Emitir `$todos` antes del `exit` conserva ese contrato --
+#    lo ya escrito al pipeline le llega igual al llamador.
+# 2. El codigo de salida lleva el veredicto. Se copia la forma textual de
+#    tests/contratos y tests/frontend, incluido que NO CORRIO pesa igual que
+#    FAIL: de un modulo que reviento no se sabe cuantas afirmaciones quedaron
+#    sin hacer, asi que para un CI las dos cosas son rojo.
+#
+# FALSADO EN LAS DOS DIRECCIONES el 2026-09-22, que es la mitad que faltaba:
+# un runner que siempre devuelve 0 es indistinguible de uno que anda. Verde ->
+# 0; un modulo forzado a FAIL -> 1; un modulo forzado a NO CORRIO -> 1. El
+# detalle de las tres corridas esta en AUDITORIA.md.
+$todos
+if ($fail -gt 0 -or $caidos -gt 0) { exit 1 }
+exit 0
