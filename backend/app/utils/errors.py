@@ -183,6 +183,9 @@ CAMPO_POR_FRAGMENTO = (
     ('no puede empezar en una fecha futura', 'fecha_desde'),
     ('fecha de fin de la asignacion', 'fecha_hasta'),
 
+    # --- Recuperacion de contrasena (Entrega 3) ---
+    ('enlace de recuperacion no es valido', 'token'),
+
     # --- Rangos de fecha ---
     ('rango de fechas esta invertido', 'desde'),
     ('el rango pedido es de', 'hasta'),

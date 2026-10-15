@@ -17,6 +17,8 @@ import PacienteFicha from './pages/PacienteFicha.jsx';
 import Pacientes from './pages/Pacientes.jsx';
 import Panel from './pages/Panel.jsx';
 import PanelRrhh from './pages/PanelRrhh.jsx';
+import RecuperarContrasena from './pages/RecuperarContrasena.jsx';
+import RestablecerContrasena from './pages/RestablecerContrasena.jsx';
 
 // QUE SE DIBUJA EN CADA RUTA.
 //
@@ -72,6 +74,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/recuperar" element={<RecuperarContrasena />} />
+      <Route path="/restablecer/:token" element={<RestablecerContrasena />} />
       <Route path="/" element={<Inicio />} />
 
       {/* Una sola pasada sobre la lista unica. Los roles y la capacidad de

@@ -181,3 +181,20 @@ export function logout() {
 export function getMe() {
   return request('/auth/me');
 }
+
+// Recuperacion de contrasena (Entrega 3). Publicas: no llevan token.
+export function pedirRecuperacion(email) {
+  return request('/auth/recuperar', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+    omitirAuth: true,
+  });
+}
+
+export function restablecerContrasena(token, contrasenaNueva) {
+  return request('/auth/restablecer', {
+    method: 'POST',
+    body: JSON.stringify({ token, contrasena_nueva: contrasenaNueva }),
+    omitirAuth: true,
+  });
+}

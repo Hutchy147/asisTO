@@ -45,6 +45,14 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = _env_int('JWT_ACCESS_TOKEN_EXPIRES', 3600)
     JWT_ALGORITHM = 'HS256'
 
+    # --- Recuperacion de contrasena ---
+    # Sin servidor de mail, en desarrollo el enlace de recuperacion se
+    # devuelve en la respuesta y se loguea. Por omision sigue a FLASK_DEBUG:
+    # en produccion (FLASK_DEBUG=0) la API NUNCA devuelve el token.
+    RECUPERACION_MOSTRAR_TOKEN = os.getenv(
+        'RECUPERACION_MOSTRAR_TOKEN', os.getenv('FLASK_DEBUG', '1')
+    ) == '1'
+
     # --- Base de datos ---
     DB_HOST = os.getenv('DB_HOST', 'localhost')
     DB_PORT = _env_int('DB_PORT', 3306)

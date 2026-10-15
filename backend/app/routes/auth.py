@@ -4,7 +4,9 @@
 
 from flask import Blueprint, g, jsonify, request
 
-from app.services.auth_service import autenticar, obtener_perfil
+from app.services.auth_service import (
+    autenticar, obtener_perfil, restablecer_contrasena, solicitar_recuperacion,
+)
 from app.utils.security import requiere_rol
 
 auth_bp = Blueprint('auth', __name__)
@@ -53,3 +55,25 @@ def me():
         'usuario': usuario.to_dict(),
         'perfil': obtener_perfil(usuario),
     }), 200
+
+
+@auth_bp.post('/auth/recuperar')
+def recuperar():
+    """Pide un enlace de recuperacion. Responde igual exista o no la cuenta."""
+    datos = request.get_json(silent=True) or {}
+    mensaje, token = solicitar_recuperacion(datos.get('email'))
+
+    cuerpo = {'mensaje': mensaje}
+    if token:
+        # Solo con RECUPERACION_MOSTRAR_TOKEN (desarrollo, sin servidor de mail).
+        cuerpo['token_desarrollo'] = token
+    return jsonify(cuerpo), 200
+
+
+@auth_bp.post('/auth/restablecer')
+def restablecer():
+    datos = request.get_json(silent=True) or {}
+    mensaje = restablecer_contrasena(
+        datos.get('token'), datos.get('contrasena_nueva')
+    )
+    return jsonify({'mensaje': mensaje}), 200

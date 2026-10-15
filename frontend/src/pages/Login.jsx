@@ -10,7 +10,10 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import Link from '@mui/material/Link';
+import { Link as RouterLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
+
+import { hayCapacidad } from '../config/entregas.js';
 
 import { rolPuedeVer } from '../config/rutas.js';
 import { RUTA_POR_ROL, useAuth } from '../context/AuthContext.jsx';
@@ -141,6 +144,12 @@ export default function Login() {
             >
               {enviando ? 'Ingresando...' : 'Ingresar'}
             </Button>
+
+            {hayCapacidad('auth.recuperar') && (
+              <Link component={RouterLink} to="/recuperar" underline="hover" sx={{ textAlign: 'center' }}>
+                ¿Olvidaste tu contraseña?
+              </Link>
+            )}
           </Stack>
         </form>
       </Paper>

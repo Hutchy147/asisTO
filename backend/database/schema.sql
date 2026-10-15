@@ -3136,6 +3136,214 @@ BEGIN
   SET p_mensaje = CONCAT('Se listaron ', v_total, ' sesiones en el periodo');
 END$$
 
+
+-- ---------------------------------------------------------------------
+-- Seguridad de acceso — Entrega 3 (2026-10-15)
+-- Bloqueo por intentos fallidos y recuperacion de contrasena.
+--
+-- Cada procedimiento toca UNA sola fila de `usuarios` con FOR UPDATE: no
+-- hay orden de locks que cuidar, y dos intentos simultaneos se serializan,
+-- asi que el contador no pierde cuentas (sin el lock, 5 intentos en
+-- paralelo podian leer 0 y escribir 1).
+--
+-- El token de recuperacion NUNCA se guarda: llega ya hasheado (SHA-256) desde
+-- la aplicacion. Quien lea la base no puede restablecer ninguna cuenta.
+-- ---------------------------------------------------------------------
+CREATE PROCEDURE p_registrar_login_fallido (
+  IN  p_id_usuario       INT UNSIGNED,
+  IN  p_max_intentos     TINYINT UNSIGNED,
+  IN  p_minutos_bloqueo  SMALLINT UNSIGNED,
+  OUT p_bloqueado        BOOLEAN,
+  OUT p_bloqueado_hasta  DATETIME
+)
+BEGIN
+  DECLARE v_intentos  TINYINT UNSIGNED DEFAULT 0;
+  DECLARE v_hasta     DATETIME         DEFAULT NULL;
+  DECLARE v_existe    INT UNSIGNED     DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  SET p_bloqueado = FALSE;
+  SET p_bloqueado_hasta = NULL;
+
+  START TRANSACTION;
+
+  SELECT id, intentos_fallidos, bloqueado_hasta INTO v_existe, v_intentos, v_hasta
+    FROM usuarios
+   WHERE id = p_id_usuario
+   FOR UPDATE;
+
+  IF v_existe IS NOT NULL THEN
+    IF v_hasta IS NOT NULL AND v_hasta > NOW() THEN
+      -- Ya bloqueado: el intento no suma ni extiende el bloqueo.
+      SET p_bloqueado = TRUE;
+      SET p_bloqueado_hasta = v_hasta;
+    ELSE
+      -- Un bloqueo vencido empieza la cuenta de cero.
+      IF v_hasta IS NOT NULL THEN
+        SET v_intentos = 0;
+      END IF;
+      SET v_intentos = v_intentos + 1;
+
+      IF v_intentos >= p_max_intentos THEN
+        SET v_hasta = NOW() + INTERVAL p_minutos_bloqueo MINUTE;
+        UPDATE usuarios
+           SET intentos_fallidos = 0, bloqueado_hasta = v_hasta
+         WHERE id = p_id_usuario;
+        SET p_bloqueado = TRUE;
+        SET p_bloqueado_hasta = v_hasta;
+      ELSE
+        UPDATE usuarios
+           SET intentos_fallidos = v_intentos, bloqueado_hasta = NULL
+         WHERE id = p_id_usuario;
+      END IF;
+    END IF;
+  END IF;
+
+  COMMIT;
+END$$
+
+
+CREATE PROCEDURE p_registrar_login_ok (
+  IN p_id_usuario INT UNSIGNED
+)
+BEGIN
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  START TRANSACTION;
+  UPDATE usuarios
+     SET intentos_fallidos = 0, bloqueado_hasta = NULL
+   WHERE id = p_id_usuario
+     AND (intentos_fallidos <> 0 OR bloqueado_hasta IS NOT NULL);
+  COMMIT;
+END$$
+
+
+-- Si el email no existe o la cuenta esta inactiva NO es un error: devuelve
+-- p_id_usuario NULL y la aplicacion responde igual que si existiera, para no
+-- revelar que direcciones tienen cuenta.
+CREATE PROCEDURE p_solicitar_recuperacion (
+  IN  p_email          VARCHAR(180),
+  IN  p_token_hash     VARCHAR(255),
+  IN  p_minutos        SMALLINT UNSIGNED,
+  OUT p_id_usuario     INT UNSIGNED
+)
+BEGIN
+  DECLARE v_id INT UNSIGNED DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  SET p_id_usuario = NULL;
+
+  START TRANSACTION;
+
+  SELECT id INTO v_id
+    FROM usuarios
+   WHERE email = p_email AND activo = TRUE
+   FOR UPDATE;
+
+  IF v_id IS NOT NULL THEN
+    -- Un pedido nuevo invalida el anterior: queda un solo token vigente.
+    UPDATE usuarios
+       SET token_recuperacion = p_token_hash,
+           token_expira = NOW() + INTERVAL p_minutos MINUTE
+     WHERE id = v_id;
+    SET p_id_usuario = v_id;
+  END IF;
+
+  COMMIT;
+END$$
+
+
+CREATE PROCEDURE p_restablecer_contrasena (
+  IN  p_token_hash     VARCHAR(255),
+  IN  p_hash_nuevo     VARCHAR(255),
+  OUT p_restablecida   BOOLEAN,
+  OUT p_mensaje        VARCHAR(255)
+)
+BEGIN
+  DECLARE v_id     INT UNSIGNED DEFAULT NULL;
+  DECLARE v_expira DATETIME     DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_restablecida = FALSE;
+    SET p_mensaje = 'No se pudo restablecer la contrasena por un error interno';
+  END;
+
+  SET p_restablecida = FALSE;
+  SET p_mensaje = 'El enlace de recuperacion no es valido o ya vencio';
+
+  IF p_token_hash IS NOT NULL AND p_token_hash <> '' THEN
+    START TRANSACTION;
+
+    SELECT id, token_expira INTO v_id, v_expira
+      FROM usuarios
+     WHERE token_recuperacion = p_token_hash AND activo = TRUE
+     FOR UPDATE;
+
+    IF v_id IS NULL OR v_expira IS NULL OR v_expira < NOW() THEN
+      ROLLBACK;
+    ELSE
+      -- El token es de un solo uso. Restablecer tambien levanta el bloqueo:
+      -- es la salida natural de quien se quedo afuera por intentos fallidos.
+      UPDATE usuarios
+         SET contrasena_hash = p_hash_nuevo,
+             token_recuperacion = NULL,
+             token_expira = NULL,
+             intentos_fallidos = 0,
+             bloqueado_hasta = NULL
+       WHERE id = v_id;
+      COMMIT;
+      SET p_restablecida = TRUE;
+      SET p_mensaje = 'Contrasena actualizada correctamente';
+    END IF;
+  END IF;
+END$$
+
 DELIMITER ;
 
 

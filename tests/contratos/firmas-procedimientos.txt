@@ -70,6 +70,10 @@ p_editar_sesion | 10 | IN p_id_sesion, IN p_id_terapeuta, IN p_estado, IN p_ause
 p_evolucion_paciente | 4 | IN p_id_paciente, IN p_fecha_desde, IN p_fecha_hasta, OUT p_mensaje
 p_reactivar_paciente | 3 | IN p_id_paciente, OUT p_reactivado, OUT p_mensaje
 p_registrar_evolucion | 7 | IN p_id_sesion, IN p_id_objetivo, IN p_valor, IN p_observaciones, IN p_id_terapeuta, OUT p_id_evolucion, OUT p_mensaje
+p_registrar_login_fallido | 5 | IN p_id_usuario, IN p_max_intentos, IN p_minutos_bloqueo, OUT p_bloqueado, OUT p_bloqueado_hasta
+p_registrar_login_ok | 1 | IN p_id_usuario
 p_registrar_observacion_rrhh | 5 | IN p_id_sesion, IN p_id_rrhh, IN p_texto, OUT p_id_observacion, OUT p_mensaje
 p_registrar_sesion | 10 | IN p_id_terapeuta, IN p_id_paciente, IN p_fecha, IN p_hora_inicio, IN p_hora_fin, IN p_estado, IN p_ausencia_de, IN p_notas, OUT p_id_sesion, OUT p_mensaje
 p_reporte_sesiones_periodo | 4 | IN p_fecha_desde, IN p_fecha_hasta, IN p_id_terapeuta, OUT p_mensaje
+p_restablecer_contrasena | 4 | IN p_token_hash, IN p_hash_nuevo, OUT p_restablecida, OUT p_mensaje
+p_solicitar_recuperacion | 4 | IN p_email, IN p_token_hash, IN p_minutos, OUT p_id_usuario
