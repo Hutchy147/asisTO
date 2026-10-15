@@ -152,6 +152,42 @@ INSERT INTO etiquetas (id, nombre, color_hex) VALUES
 
 
 -- =====================================================================
+-- ASIGNACIONES — reemplaza al bloque de duplas_terapeuticas.
+--
+-- Va ACA, ANTES de la generacion de sesiones (2026-09-28, regla 8): el
+-- trigger de sesiones exige una asignacion vigente a la fecha de cada
+-- sesion, y `p_generar_demo()`, mas abajo, crea sesiones para los pacientes
+-- 1 a 15. Si este bloque quedara despues de la generacion -como estaba
+-- hasta esta fecha, junto a "informes"- el primer INSERT de sesiones
+-- rechazaria la fila entera por falta de asignacion.
+--
+-- id_terapeuta apunta a terapeutas(id), igual que sesiones. Las tres
+-- terapeutas del seed de demostracion son las terapeutas 1, 2 y 3.
+--
+-- Una vigente por paciente para los 15, repartidas en round-robin, mas dos
+-- CERRADAS que dejan el caso "cambio de terapeuta" representado sin violar
+-- la regla de una sola vigente por par.
+INSERT INTO asignaciones (id_terapeuta, id_paciente, fecha_desde, fecha_hasta) VALUES
+  (1,  1, '2026-03-02', NULL),
+  (2,  2, '2026-03-16', NULL),
+  (3,  3, '2026-04-06', NULL),
+  (1,  4, '2026-03-09', NULL),
+  (2,  5, '2026-03-23', NULL),
+  (3,  6, '2026-04-13', NULL),
+  (1,  7, '2026-04-20', NULL),
+  (2,  8, '2026-03-30', NULL),
+  (3,  9, '2026-04-27', NULL),
+  (1, 10, '2026-05-04', NULL),
+  (2, 11, '2026-05-11', NULL),
+  (3, 12, '2026-05-18', NULL),
+  (1, 13, '2026-05-25', NULL),
+  (2, 14, '2026-06-01', NULL),
+  (3, 15, '2026-06-08', NULL),
+  (2,  1, '2026-03-02', '2026-05-04'),
+  (1, 11, '2026-04-06', '2026-05-11');
+
+
+-- =====================================================================
 -- GENERACION DE OBJETIVOS, SESIONES Y EVOLUCIONES
 --
 -- Se hace con un procedimiento temporal que se borra al final. Escribir a
@@ -173,6 +209,11 @@ INSERT INTO etiquetas (id, nombre, color_hex) VALUES
 --    sesion (reglas 3 y 4). Los objetivos se archivan DESPUES de generar
 --    las evoluciones, para que queden archivados CON historia — que es el
 --    caso realista.
+--  * Asignacion vigente a la fecha de la sesion (regla 8): la cubre el
+--    bloque de ASIGNACIONES de arriba, cargado ANTES por eso mismo. Las 15
+--    son vigentes sin fecha_hasta desde 2026-03/06, y la ventana que genera
+--    este procedimiento son las ultimas 7 semanas contadas desde CURDATE(),
+--    siempre muy posterior.
 -- =====================================================================
 
 DROP PROCEDURE IF EXISTS p_generar_demo;
@@ -426,10 +467,12 @@ DROP PROCEDURE p_generar_demo;
 -- triggers, no por gusto:
 --   1. objetivos ACTIVOS  (un objetivo no se puede crear sobre un paciente
 --      dado de baja, ni calificar si esta archivado)
---   2. sesiones y evoluciones
---   3. asignacion, que se cierra el dia de la baja
+--   2. asignacion, ANTES de las sesiones (2026-09-28, regla 8: el trigger de
+--      sesiones exige asignacion vigente a la fecha de cada una)
+--   3. sesiones y evoluciones
 --   4. archivado de los objetivos
---   5. la baja del paciente, al final
+--   5. cerrar la asignacion el dia de la baja
+--   6. la baja del paciente, al final
 -- Invertir cualquiera de los pasos hace fallar la carga, no la degrada en
 -- silencio. El seed es, en ese sentido, una prueba de que las reglas estan.
 -- =====================================================================
@@ -443,7 +486,13 @@ INSERT INTO objetivos_terapeuticos (id_paciente, descripcion, activo, fecha_crea
   (16, 'Vestirse y calzarse de forma autonoma antes de salir', TRUE,
    TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 145 DAY), '09:30:00'));
 
--- 2. Ocho sesiones semanales con la terapeuta 2, en una franja que la agenda
+-- 2. Asignacion con la terapeuta 2, ABIERTA por ahora (se cierra en el paso
+--    5, el dia de la baja). Tiene que cubrir las ocho sesiones del paso 3,
+--    de 140 a 91 dias atras: fecha_desde en 150 alcanza sobra.
+INSERT INTO asignaciones (id_terapeuta, id_paciente, fecha_desde, fecha_hasta) VALUES
+  (2, 16, DATE_SUB(CURDATE(), INTERVAL 150 DAY), NULL);
+
+-- 3. Ocho sesiones semanales con la terapeuta 2, en una franja que la agenda
 --    generada no usa en esas fechas porque no llega hasta ahi.
 --
 --    Dos sesiones caen EL MISMO DIA (la de 140 y una segunda a las 18:00):
@@ -481,7 +530,7 @@ INSERT INTO sesiones (id_terapeuta, id_paciente, fecha, hora_inicio, hora_fin, e
   (2, 16, DATE_SUB(CURDATE(), INTERVAL  91 DAY), '17:00:00', '18:00:00', 'completa', NULL,
    'Cierre del tratamiento. Se repasan los tres objetivos.');
 
--- 3. Evoluciones. NO se califican todos los objetivos en todas las sesiones
+-- 4. Evoluciones. NO se califican todos los objetivos en todas las sesiones
 --    —que es lo habitual— asi que el grafico queda con tramos punteados, que
 --    es justamente lo que hay que poder mirar. Las dos ausencias no llevan
 --    evolucion: la regla 2 lo impide.
@@ -509,11 +558,15 @@ SELECT s.id, o.id, x.valor, x.obs
       FROM objetivos_terapeuticos WHERE id_paciente = 16
   ) AS o ON o.n = x.n_obj;
 
--- 4. Asignacion cerrada el dia de la baja: esa terapeuta lo atendio y ya no.
-INSERT INTO asignaciones (id_terapeuta, id_paciente, fecha_desde, fecha_hasta) VALUES
-  (2, 16, DATE_SUB(CURDATE(), INTERVAL 150 DAY), DATE_SUB(CURDATE(), INTERVAL 90 DAY));
+-- 5. Cierra la asignacion abierta en el paso 2: esa terapeuta lo atendio y
+--    ya no. UPDATE y no un segundo INSERT -la fila ya existe desde el
+--    paso 2, y el trigger de asignaciones rechazaria una segunda vigente
+--    para el mismo par mientras la primera siga abierta.
+UPDATE asignaciones
+   SET fecha_hasta = DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+ WHERE id_terapeuta = 2 AND id_paciente = 16 AND fecha_hasta IS NULL;
 
--- 5. Archivado de los objetivos. Son DOS updates y el segundo no sobra: el
+-- 6. Archivado de los objetivos. Son DOS updates y el segundo no sobra: el
 --    primero archiva y el trigger le pone a fecha_archivado el NOW() de la
 --    carga; el segundo la fija en el dia de la baja. Con activo pasando de
 --    FALSE a FALSE ninguna rama del trigger se dispara, asi que el valor
@@ -526,7 +579,7 @@ UPDATE objetivos_terapeuticos
    SET fecha_archivado = TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 90 DAY), '12:00:00')
  WHERE id_paciente = 16;
 
--- 6. Y recien ahora, la baja.
+-- 7. Y recien ahora, la baja.
 UPDATE pacientes
    SET activo = FALSE,
        fecha_baja = DATE_SUB(CURDATE(), INTERVAL 90 DAY)
@@ -589,6 +642,23 @@ INSERT INTO objetivos_terapeuticos (id_paciente, descripcion, activo, fecha_crea
    'oportunidades, durante el primer semestre del 2026.',
    TRUE, TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 4 DAY), '22:20:00'));
 
+-- ASIGNACION DEL PACIENTE 17 (2026-09-28, regla 8 — asignacion vigente a la
+-- fecha de la sesion).
+--
+-- Hasta esta fecha el paciente 17 quedaba activo y con objetivos, pero sin
+-- ninguna fila en `asignaciones` (medido el 2026-09-22, ver ESTADO.md). Con
+-- la regla 8 en el trigger de sesiones eso lo vuelve INATENDIBLE: ningun
+-- terapeuta podria registrarle una sesion nueva, en un seed cuyo relato es
+-- justo "paciente recien ingresado, todavia sin agenda".
+--
+-- Terapeuta 2 por el mismo round-robin que el bloque de arriba
+-- (id_paciente % 3 == 2 -> terapeuta 2). Misma fecha que el alta, relativa
+-- a CURDATE() como el resto de este paciente: fijarla en un literal la
+-- desincroniza de `fecha_alta` la proxima vez que alguien cargue este seed
+-- en otro dia, y una asignacion anterior al alta no tiene sentido clinico.
+INSERT INTO asignaciones (id_terapeuta, id_paciente, fecha_desde, fecha_hasta) VALUES
+  (2, 17, DATE_SUB(CURDATE(), INTERVAL 4 DAY), NULL);
+
 
 -- =====================================================================
 -- VINCULOS FAMILIARES, NOTIFICACIONES Y RESTO
@@ -632,33 +702,6 @@ INSERT INTO informes
   (7, 2, '2026-T2', NULL,
    'Progreso en lenguaje y coordinacion durante el periodo.',
    'borrador', '2026-07-02 10:15:00', NULL);
-
--- ASIGNACIONES — reemplaza al bloque de duplas_terapeuticas.
---
--- id_terapeuta apunta a terapeutas(id), igual que sesiones. Las tres
--- terapeutas del seed de demostracion son las terapeutas 1, 2 y 3.
---
--- Una vigente por paciente para los 15, repartidas en round-robin, mas dos
--- CERRADAS que dejan el caso "cambio de terapeuta" representado sin violar
--- la regla de una sola vigente por par.
-INSERT INTO asignaciones (id_terapeuta, id_paciente, fecha_desde, fecha_hasta) VALUES
-  (1,  1, '2026-03-02', NULL),
-  (2,  2, '2026-03-16', NULL),
-  (3,  3, '2026-04-06', NULL),
-  (1,  4, '2026-03-09', NULL),
-  (2,  5, '2026-03-23', NULL),
-  (3,  6, '2026-04-13', NULL),
-  (1,  7, '2026-04-20', NULL),
-  (2,  8, '2026-03-30', NULL),
-  (3,  9, '2026-04-27', NULL),
-  (1, 10, '2026-05-04', NULL),
-  (2, 11, '2026-05-11', NULL),
-  (3, 12, '2026-05-18', NULL),
-  (1, 13, '2026-05-25', NULL),
-  (2, 14, '2026-06-01', NULL),
-  (3, 15, '2026-06-08', NULL),
-  (2,  1, '2026-03-02', '2026-05-04'),
-  (1, 11, '2026-04-06', '2026-05-11');
 
 INSERT INTO plantillas_objetivos (area, descripcion) VALUES
   ('Motricidad fina',       'Mejorar la pinza fina para la escritura'),

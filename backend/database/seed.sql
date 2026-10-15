@@ -168,6 +168,44 @@ INSERT INTO objetivos_terapeuticos
 
 
 -- =====================================================================
+-- ASIGNACIONES
+--
+-- Va ANTES de SESIONES (2026-09-28, regla 8): el trigger de sesiones exige
+-- una asignacion vigente a la fecha de cada sesion, asi que si este bloque
+-- quedara mas abajo en el archivo -como estaba hasta esta fecha- el INSERT
+-- de sesiones rechazaria la primera fila por falta de asignacion, aunque el
+-- archivo terminara consistente al final. El orden de carga importa tanto
+-- como el estado final.
+--
+-- Reemplaza al bloque de duplas_terapeuticas, que sembraba dos terapeutas
+-- sobre un paciente: el caso interdisciplinario, fuera del alcance.
+--
+-- id_terapeuta apunta a terapeutas(id), igual que sesiones. Son las dos
+-- terapeutas del seed chico: terapeuta 1 (Laura) y terapeuta 2 (Diego).
+--
+-- La segunda fila esta CERRADA (fecha_hasta no nula) a proposito: deja el
+-- caso "el paciente 1 paso de una terapeuta a otra" sin violar la regla de
+-- una sola asignacion vigente por par.
+-- =====================================================================
+INSERT INTO asignaciones
+  (id, id_terapeuta, id_paciente, fecha_desde, fecha_hasta) VALUES
+  (1, 1, 1, '2026-03-02', NULL),
+  (2, 2, 1, '2026-03-02', '2026-05-04'),
+  (3, 2, 2, '2026-03-16', NULL),
+  (4, 1, 3, '2026-04-06', NULL),
+  -- Paciente 4: cerrada el mismo dia de la baja, que es lo que hace
+  -- p_baja_paciente. "Vigente" es fecha_hasta IS NULL y nada mas.
+  --
+  -- OJO CON LA FECHA DE BAJA (2026-07-20): la sesion 4 de este paciente,
+  -- mas abajo, es del 2026-06-19, bastante antes. La regla 8 evalua contra
+  -- la fecha de la SESION, no contra hoy, asi que esta asignacion tiene que
+  -- cubrir ese rango completo -- fecha_desde <= toda fecha de sesion de este
+  -- paciente <= fecha_hasta -- y lo cubre: las tres sesiones del paciente 4
+  -- caen entre el 2026-06-05 y el 2026-06-19, dentro de [03-05, 07-20].
+  (5, 1, 4, '2026-03-05', '2026-07-20');
+
+
+-- =====================================================================
 -- SESIONES — 10 sesiones
 -- Incluye 2 ausencias (id 4 y 7) y 1 incompleta (id 3).
 -- Terapeuta 1: pacientes 1 y 3. Terapeuta 2: paciente 2.
@@ -335,30 +373,6 @@ INSERT INTO informes
    NULL,
    'Valentina registra dos sesiones completas y una ausencia en el periodo. Se observa mejor tolerancia a estimulos auditivos.',
    'borrador', '2026-07-01 08:45:00', NULL);
-
-
--- =====================================================================
--- ASIGNACIONES
---
--- Reemplaza al bloque de duplas_terapeuticas, que sembraba dos terapeutas
--- sobre un paciente: el caso interdisciplinario, fuera del alcance.
---
--- id_terapeuta apunta a terapeutas(id), igual que sesiones. Son las dos
--- terapeutas del seed chico: terapeuta 1 (Laura) y terapeuta 2 (Diego).
---
--- La segunda fila esta CERRADA (fecha_hasta no nula) a proposito: deja el
--- caso "el paciente 1 paso de una terapeuta a otra" sin violar la regla de
--- una sola asignacion vigente por par.
--- =====================================================================
-INSERT INTO asignaciones
-  (id, id_terapeuta, id_paciente, fecha_desde, fecha_hasta) VALUES
-  (1, 1, 1, '2026-03-02', NULL),
-  (2, 2, 1, '2026-03-02', '2026-05-04'),
-  (3, 2, 2, '2026-03-16', NULL),
-  (4, 1, 3, '2026-04-06', NULL),
-  -- Paciente 4: cerrada el mismo dia de la baja, que es lo que hace
-  -- p_baja_paciente. "Vigente" es fecha_hasta IS NULL y nada mas.
-  (5, 1, 4, '2026-03-05', '2026-07-20');
 
 
 -- =====================================================================

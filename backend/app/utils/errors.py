@@ -170,6 +170,13 @@ CAMPO_POR_FRAGMENTO = (
     ('el estado tiene que ser uno de', 'estado'),
     ('ya tiene evoluciones cargadas', 'estado'),
     ('la sesion indicada no existe', 'id_sesion'),
+    # Regla 8 (2026-09-28), solo el mensaje del trigger de INSERT de
+    # sesiones. El mensaje de evoluciones ('el terapeuta de la sesion no
+    # tenia asignado...') queda A PROPOSITO sin entrada propia: no hay un
+    # campo del formulario de evolucion que el usuario pueda corregir para
+    # esto, el mismo motivo por el que 'la sesion esta marcada como
+    # ausencia' tampoco tiene entrada en esta tabla.
+    ('no tiene asignado a este paciente', 'id_paciente'),
 
     # --- Rangos de fecha ---
     ('rango de fechas esta invertido', 'desde'),
