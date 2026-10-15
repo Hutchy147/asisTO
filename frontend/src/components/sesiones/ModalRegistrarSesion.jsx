@@ -115,6 +115,9 @@ export default function ModalRegistrarSesion({
         etiqueta="Paciente"
         select
         obligatorio
+        ayuda={pacientes.length === 0
+          ? 'No tenés pacientes asignados. Asignate uno desde su ficha, en la pestaña Asignación.'
+          : undefined}
         valor={valores.id_paciente}
         onChange={setCampo('id_paciente')}
         error={errorDe('id_paciente')}

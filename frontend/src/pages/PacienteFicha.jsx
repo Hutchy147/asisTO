@@ -14,6 +14,8 @@ import Typography from '@mui/material/Typography';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import AccountFlag from '../components/data/AccountFlag.jsx';
+import SeccionAsignaciones from '../components/asignaciones/SeccionAsignaciones.jsx';
+import ModalAsignar from '../components/asignaciones/ModalAsignar.jsx';
 import DataTable from '../components/data/DataTable.jsx';
 import GoalMeter from '../components/data/GoalMeter.jsx';
 import GraficoEvolucion from '../components/data/GraficoEvolucion.jsx';
@@ -28,7 +30,11 @@ import ModalDetalleSesion from '../components/sesiones/ModalDetalleSesion.jsx';
 import ModalEditarSesion from '../components/sesiones/ModalEditarSesion.jsx';
 import { hayCapacidad } from '../config/entregas.js';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
+import { useAuth } from '../context/AuthContext.jsx';
 import { usePeticion } from '../hooks/usePeticion.js';
+import {
+  cerrarAsignacion, listarAsignacionesDePaciente, listarTerapeutas,
+} from '../services/asignacionesService.js';
 import { archivarObjetivo, listarObjetivosDePaciente } from '../services/objetivosService.js';
 import {
   darDeBajaPaciente, listarSesionesDePaciente, obtenerEvolucionDePaciente,
@@ -94,6 +100,13 @@ export default function PacienteFicha() {
   const objetivos = usePeticion(() => listarObjetivosDePaciente(id), [id]);
   const sesiones = usePeticion(() => listarSesionesDePaciente(id), [id]);
   const evolucion = usePeticion(() => obtenerEvolucionDePaciente(id), [id]);
+  const asignaciones = usePeticion(() => listarAsignacionesDePaciente(id), [id]);
+  const terapeutas = usePeticion(listarTerapeutas, []);
+  const { perfil } = useAuth();
+  const idTerapeutaActual = perfil?.id ?? null;
+  const [asignando, setAsignando] = useState(false);
+  const [aCerrarAsignacion, setACerrarAsignacion] = useState(null);
+  const [cerrandoAsignacion, setCerrandoAsignacion] = useState(false);
 
   const [pestania, setPestania] = useState('objetivos');
   const [modalObjetivo, setModalObjetivo] = useState(null); // null | { objetivo? }
@@ -120,6 +133,7 @@ export default function PacienteFicha() {
   const verProgreso = hayCapacidad('evoluciones.historial');
   const puedeEditar = hayCapacidad('pacientes.editar');
   const puedeDarDeBaja = hayCapacidad('pacientes.baja');
+  const verAsignaciones = hayCapacidad('asignaciones.gestionar');
 
   if (objetivos.cargando) {
     return (
@@ -194,6 +208,30 @@ export default function PacienteFicha() {
       setProcesandoEstado(false);
     }
   };
+
+  const confirmarCierreDeAsignacion = async () => {
+    setCerrandoAsignacion(true);
+    try {
+      const respuesta = await cerrarAsignacion(aCerrarAsignacion.id);
+      setACerrarAsignacion(null);
+      asignaciones.recargar();
+      setAviso(respuesta?.mensaje ?? 'Asignación cerrada.');
+    } catch (error) {
+      setACerrarAsignacion(null);
+      setAviso(error.message);
+    } finally {
+      setCerrandoAsignacion(false);
+    }
+  };
+
+  // El paciente no está asignado a quien mira la ficha: la lectura sigue
+  // abierta, pero no va a poder registrarle sesiones ni evoluciones.
+  const esMio = Boolean(
+    asignaciones.datos?.asignaciones?.some(
+      (a) => a.vigente && a.id_terapeuta === idTerapeutaActual,
+    ),
+  );
+  const avisarNoEsMio = verAsignaciones && !soloLectura && asignaciones.datos && !esMio;
 
   const confirmarArchivado = async () => {
     setArchivando(true);
@@ -296,6 +334,15 @@ export default function PacienteFicha() {
           reactivalo.
         </Alert>
       )}
+      {avisarNoEsMio && (
+        <Alert severity="info" sx={{ mb: 2.5 }}>
+          <strong>Este paciente no está asignado a vos.</strong>{' '}
+          {asignaciones.datos.vigentes > 0
+            ? 'Lo podés consultar entero, pero solo su terapeuta responsable puede registrarle sesiones y evoluciones.'
+            : 'Todavía no tiene terapeuta responsable: hasta que se le asigne uno, nadie puede registrarle sesiones.'}
+          {' '}Se gestiona en la pestaña Asignación.
+        </Alert>
+      )}
       {/* --- Cabecera con los datos del paciente --- */}
       <Box
         sx={(t) => ({
@@ -354,7 +401,27 @@ export default function PacienteFicha() {
           />
         )}
         {verProgreso && <Tab value="progreso" label="Progreso" />}
+        {verAsignaciones && <Tab value="asignacion" label="Asignación" />}
       </Tabs>
+
+      {/* --- Pestaña Asignación (HDU 11) --- */}
+      {verAsignaciones && pestania === 'asignacion' && (
+        <>
+          {asignaciones.cargando && <Cargando texto="Cargando las asignaciones..." />}
+          {asignaciones.error && (
+            <EstadoError error={asignaciones.error} onReintentar={asignaciones.recargar} />
+          )}
+          {asignaciones.datos && !asignaciones.cargando && !asignaciones.error && (
+            <SeccionAsignaciones
+              datos={asignaciones.datos}
+              soloLectura={soloLectura}
+              idTerapeutaActual={idTerapeutaActual}
+              onAsignar={() => setAsignando(true)}
+              onCerrar={setACerrarAsignacion}
+            />
+          )}
+        </>
+      )}
 
       {/* --- Pestaña Progreso --- */}
       {verProgreso && pestania === 'progreso' && (
@@ -679,6 +746,35 @@ export default function PacienteFicha() {
           setAviso(respuesta?.mensaje ?? 'Evolución registrada correctamente');
         }}
       />
+
+      <ModalAsignar
+        key={`asignar-${paciente.id}`}
+        abierto={asignando}
+        paciente={paciente}
+        terapeutas={terapeutas.datos?.terapeutas ?? []}
+        idTerapeutaActual={idTerapeutaActual}
+        onCerrar={() => setAsignando(false)}
+        onAsignado={(respuesta) => {
+          asignaciones.recargar();
+          setAviso(respuesta?.mensaje ?? 'Asignación abierta.');
+        }}
+      />
+
+      <DialogoConfirmacion
+        abierto={Boolean(aCerrarAsignacion)}
+        titulo="¿Cerrar esta asignación?"
+        etiquetaConfirmar="Cerrar asignación"
+        etiquetaProcesando="Cerrando…"
+        procesando={cerrandoAsignacion}
+        onConfirmar={confirmarCierreDeAsignacion}
+        onCancelar={() => setACerrarAsignacion(null)}
+      >
+        <strong>{aCerrarAsignacion?.terapeuta}</strong> deja de ser responsable de{' '}
+        {paciente.nombre} a partir de hoy. Sus sesiones y evoluciones ya cargadas no se
+        tocan, y puede seguir cargando las de fechas anteriores al cierre. Si no queda
+        otro terapeuta asignado, nadie podrá registrarle sesiones nuevas hasta que se
+        asigne uno.
+      </DialogoConfirmacion>
 
       <DialogoConfirmacion
         abierto={Boolean(aArchivar)}

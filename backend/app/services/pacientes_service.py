@@ -42,10 +42,25 @@ def listar_pacientes():
 
     conteos = _contar_objetivos_activos_por_paciente()
 
+    # Import local: asignaciones_service importa obtener_paciente de este
+    # modulo, y el import de arriba formaria un ciclo.
+    from app.services.asignaciones_service import (
+        ids_de_pacientes_asignados, responsables_vigentes,
+    )
+    from app.services.sesiones_service import terapeuta_actual
+
+    mios = ids_de_pacientes_asignados(terapeuta_actual().id)
+    responsables = responsables_vigentes()
+
     resultado = []
     for paciente in pacientes:
         datos = paciente.to_dict_clinico()
         datos['objetivos_activos'] = conteos.get(paciente.id, 0)
+        # HDU 11: la escritura clinica solo es de quien tiene asignado al
+        # paciente. La lectura sigue abierta, asi que el listado trae a todos
+        # y marca cuales son "mios".
+        datos['asignado_a_mi'] = paciente.id in mios
+        datos['responsables'] = responsables.get(paciente.id, [])
         resultado.append(datos)
 
     return resultado
@@ -203,6 +218,25 @@ def alta_paciente(datos):
 
     paciente = Paciente.query.get(int(id_creado))
     logger.info('Paciente %s dado de alta (%s)', paciente.id, paciente.nro_historia)
+
+    # HDU 11: sin terapeuta asignado nadie puede registrarle sesiones, asi que
+    # el alta deja al paciente asignado al responsable elegido (por omision,
+    # quien lo da de alta). Si la asignacion falla, el paciente YA existe: no
+    # se deshace, se avisa en el mensaje y se asigna desde la ficha.
+    from app.services import asignaciones_service
+    from app.services.sesiones_service import terapeuta_actual
+
+    id_terapeuta = datos.get('id_terapeuta') or terapeuta_actual().id
+    try:
+        asignaciones_service.abrir_asignacion(
+            paciente.id, {'id_terapeuta': id_terapeuta}
+        )
+    except ErrorAplicacion as error:
+        db.session.rollback()
+        mensaje = (
+            f'{mensaje} Pero no se pudo asignar el terapeuta responsable: '
+            f'{error.mensaje} Asignalo desde la ficha.'
+        )
 
     return paciente, mensaje
 

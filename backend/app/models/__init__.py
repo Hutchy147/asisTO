@@ -17,8 +17,9 @@ from app.models.objetivo import ObjetivoTerapeutico
 from app.models.sesion import Sesion
 from app.models.evolucion import Evolucion
 from app.models.observacion_rrhh import ObservacionRrhh
+from app.models.asignacion import Asignacion
 
 __all__ = [
     'Usuario', 'Terapeuta', 'Rrhh', 'Familiar', 'Paciente',
-    'ObjetivoTerapeutico', 'Sesion', 'Evolucion', 'ObservacionRrhh',
+    'ObjetivoTerapeutico', 'Sesion', 'Evolucion', 'ObservacionRrhh', 'Asignacion',
 ]

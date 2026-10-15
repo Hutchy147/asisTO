@@ -61,8 +61,10 @@
 # "no esta en el manifiesto" el mismo dia.
 # ----------------------------------------------------------------------
 
+p_abrir_asignacion | 5 | IN p_id_paciente, IN p_id_terapeuta, IN p_fecha_desde, OUT p_id_asignacion, OUT p_mensaje
 p_alta_paciente | 8 | IN p_nombre, IN p_apellido, IN p_fecha_nacimiento, IN p_diagnostico, IN p_nro_historia, IN p_id_usuario, OUT p_id_paciente, OUT p_mensaje
 p_baja_paciente | 4 | IN p_id_paciente, OUT p_objetivos_archivados, OUT p_asignaciones_cerradas, OUT p_mensaje
+p_cerrar_asignacion | 4 | IN p_id_asignacion, IN p_fecha_hasta, OUT p_cerrada, OUT p_mensaje
 p_editar_paciente | 9 | IN p_id_paciente, IN p_nombre, IN p_apellido, IN p_fecha_nacimiento, IN p_diagnostico, IN p_obra_social, IN p_nro_historia, OUT p_editado, OUT p_mensaje
 p_editar_sesion | 10 | IN p_id_sesion, IN p_id_terapeuta, IN p_estado, IN p_ausencia_de, IN p_notas, IN p_fecha, IN p_hora_inicio, IN p_hora_fin, OUT p_editado, OUT p_mensaje
 p_evolucion_paciente | 4 | IN p_id_paciente, IN p_fecha_desde, IN p_fecha_hasta, OUT p_mensaje

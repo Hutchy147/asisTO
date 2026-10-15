@@ -4,6 +4,8 @@
 import { useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Switch from '@mui/material/Switch';
 import InputAdornment from '@mui/material/InputAdornment';
 import TextField from '@mui/material/TextField';
 import { useNavigate } from 'react-router-dom';
@@ -18,14 +20,21 @@ import PersonCell from '../components/data/PersonCell.jsx';
 import AppLayout from '../components/layout/AppLayout.jsx';
 import ModalAltaPaciente from '../components/pacientes/ModalAltaPaciente.jsx';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
+import { hayCapacidad } from '../config/entregas.js';
 import { usePeticion } from '../hooks/usePeticion.js';
+import { useAuth } from '../context/AuthContext.jsx';
+import { listarTerapeutas } from '../services/asignacionesService.js';
 import { listarPacientes } from '../services/pacientesService.js';
 import { textoEdad } from '../utils/fechas.js';
 
 export default function Pacientes() {
   const navigate = useNavigate();
   const { datos, cargando, error, recargar } = usePeticion(listarPacientes, []);
+  const terapeutas = usePeticion(listarTerapeutas, []);
+  const { perfil } = useAuth();
   const [busqueda, setBusqueda] = useState('');
+  const [soloMios, setSoloMios] = useState(false);
+  const conAsignaciones = hayCapacidad('asignaciones.gestionar');
   const [modalAbierto, setModalAbierto] = useState(false);
   const [aviso, setAviso] = useState('');
 
@@ -46,11 +55,14 @@ export default function Pacientes() {
   // El backend todavia no filtra por servidor, asi que se filtra aca.
   const filtrados = useMemo(() => {
     const texto = busqueda.trim().toLowerCase();
-    if (!texto) return pacientes;
-    return pacientes.filter((p) =>
-      `${p.nombre_completo} ${p.nro_historia}`.toLowerCase().includes(texto)
-    );
-  }, [pacientes, busqueda]);
+    return pacientes.filter((p) => {
+      if (conAsignaciones && soloMios && !p.asignado_a_mi) return false;
+      if (!texto) return true;
+      return `${p.nombre_completo} ${p.nro_historia}`.toLowerCase().includes(texto);
+    });
+  }, [pacientes, busqueda, soloMios, conAsignaciones]);
+
+  const hayFiltro = Boolean(busqueda.trim()) || (conAsignaciones && soloMios);
 
   const columnas = [
     {
@@ -78,6 +90,17 @@ export default function Pacientes() {
       truncar: true,
       render: (p) => p.diagnostico || '—',
     },
+    ...(conAsignaciones
+      ? [{
+          clave: 'responsable',
+          etiqueta: 'Responsable',
+          ancho: 200,
+          truncar: true,
+          render: (p) => (p.responsables?.length
+            ? p.responsables.join(', ')
+            : <Box component="span" sx={{ color: 'warning.main' }}>Sin asignar</Box>),
+        }]
+      : []),
     {
       clave: 'objetivos_activos',
       etiqueta: 'Objetivos activos',
@@ -95,7 +118,7 @@ export default function Pacientes() {
   const total = datos?.total ?? 0;
   const subtitulo = cargando
     ? 'Cargando...'
-    : busqueda.trim()
+    : hayFiltro
       ? `${filtrados.length} de ${total} pacientes`
       : `${total} ${total === 1 ? 'paciente activo' : 'pacientes activos'}`;
 
@@ -134,6 +157,12 @@ export default function Pacientes() {
                   ),
                 }}
               />
+              {conAsignaciones && (
+                <FormControlLabel
+                  control={<Switch checked={soloMios} onChange={(e) => setSoloMios(e.target.checked)} />}
+                  label="Mis pacientes"
+                />
+              )}
             </Box>
           )}
 
@@ -150,10 +179,12 @@ export default function Pacientes() {
           ) : filtrados.length === 0 ? (
             <EstadoVacio
               titulo="Ningún paciente coincide con la búsqueda"
-              descripcion={`No encontramos a nadie que coincida con “${busqueda.trim()}”. Probá con parte del apellido o con el número de historia.`}
+              descripcion={soloMios && !busqueda.trim()
+                ? 'No tenés pacientes asignados. Podés asignarte uno desde su ficha, en la pestaña Asignación.'
+                : `No encontramos a nadie que coincida con “${busqueda.trim()}”. Probá con parte del apellido o con el número de historia.`}
               acciones={
-                <Button variant="outlined" onClick={() => setBusqueda('')}>
-                  Limpiar búsqueda
+                <Button variant="outlined" onClick={() => { setBusqueda(''); setSoloMios(false); }}>
+                  Limpiar filtros
                 </Button>
               }
             />
@@ -172,6 +203,8 @@ export default function Pacientes() {
         abierto={modalAbierto}
         onCerrar={() => setModalAbierto(false)}
         onCreado={alCrear}
+        terapeutas={terapeutas.datos?.terapeutas ?? []}
+        idTerapeutaActual={perfil?.id ?? null}
       />
 
       <Snackbar

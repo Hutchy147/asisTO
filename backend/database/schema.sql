@@ -615,6 +615,7 @@ DELIMITER $$
 -- Todo lo de este schema lo respeta:
 --      pacientes   -> objetivos_terapeuticos   (triggers de objetivos)
 --      pacientes   -> asignaciones             (triggers de asignaciones)
+--      terapeutas  -> asignaciones             (trigger de sesiones, regla 8)
 --      terapeutas  -> sesiones                 (triggers de sesiones)
 --      sesiones    -> objetivos_terapeuticos   (triggers de evoluciones)
 --      pacientes   -> asignaciones
@@ -623,6 +624,16 @@ DELIMITER $$
 -- Invertirlo introduce deadlocks. No es teorico: una transaccion que toma
 -- objetivos_terapeuticos y despues sesiones, contra un INSERT de evolucion
 -- concurrente, termina en ERROR 1213. Esta reproducido.
+--
+-- DOS EXCEPCIONES FORZADAS, documentadas junto al trigger que las tiene, no
+-- aca: trg_sesiones_solape_update toma sesiones antes que pacientes (ver su
+-- NOTA PARA LA ENTREGA 4), y trg_evoluciones_validar_insert/_update, desde
+-- la regla 8, toman sesiones antes que asignaciones (ver el bloque REGLA 8
+-- en el trigger de INSERT). Las dos comparten el motivo: el dato que decide
+-- QUE fila pedir en la tabla de mas arriba en el orden sale de una fila que
+-- ya hubo que leer de una tabla de mas abajo. Ninguna de las dos abre un
+-- ciclo de dos actores porque ningun escritor de la tabla "de arriba" toma
+-- nunca un lock de la tabla "de abajo" en esa transaccion.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -796,6 +807,7 @@ BEGIN
   DECLARE v_lock         INT UNSIGNED DEFAULT NULL;
   DECLARE v_activo_pac   BOOLEAN      DEFAULT NULL;
   DECLARE v_fecha_baja   DATE         DEFAULT NULL;
+  DECLARE v_asignacion   INT UNSIGNED DEFAULT NULL;
 
   -- =====================================================================
   -- AUSENCIA Y QUIEN FALTO TIENEN QUE VIAJAR JUNTOS (2026-09-10)
@@ -858,6 +870,59 @@ BEGIN
       SET MESSAGE_TEXT = 'El terapeuta indicado no existe';
   END IF;
 
+  -- =====================================================================
+  -- REGLA 8 — ASIGNACION VIGENTE A LA FECHA DE LA SESION (2026-09-28)
+  --
+  -- Un terapeuta solo puede REGISTRAR una sesion de un paciente que tiene
+  -- asignado. Decision de producto, respaldada por el relevamiento: hoy
+  -- cualquier terapeuta podia atender a cualquier paciente (medido el
+  -- 2026-09-22, ver ESTADO.md "Medicion de la relacion paciente-terapeuta"),
+  -- y en el rubro no es asi.
+  --
+  -- LA LECTURA NO SE TOCA. Esta regla es de ESCRITURA solamente: ver la
+  -- sesion, el historial, el grafico y las observaciones clinicas de un
+  -- colega sigue abierto entre terapeutas. Esa apertura ya esta decidida y
+  -- escrita en `sesiones_service.obtener_detalle` y `listar_por_paciente`.
+  --
+  -- CONTRA LA FECHA DE LA SESION, NO CONTRA HOY. NEW.fecha, no CURDATE(): es
+  -- el mismo criterio que ya usa el chequeo de paciente dado de baja, de
+  -- arriba, y por el mismo motivo. La carga retroactiva SI tiene que entrar
+  -- (la terapeuta que atendio el viernes y recien carga el lunes), asi que
+  -- lo que se evalua es si la asignacion CUBRIA esa fecha, vigente o no hoy.
+  --
+  -- SOLO ALTAS NUEVAS. Por eso vive en el trigger de INSERT y
+  -- trg_sesiones_solape_update NO tiene este chequeo (ver la nota puesta
+  -- ahi). Hay 425 de 647 sesiones en `asisto` sin asignacion vigente ese
+  -- dia (medido el 2026-09-22): exigirselo a una EDICION habria congelado
+  -- gran parte del historial ya cargado, y editar sesion es entregable
+  -- aprobado de la Entrega 2.
+  --
+  -- ORDEN DE LOCKS: se LEE aca, en el lugar canonico
+  -- (pacientes -> terapeutas -> asignaciones -> sesiones), inmediatamente
+  -- despues de terapeutas y antes del chequeo de solape sobre la propia
+  -- tabla. Pero el SIGNAL se deja para el final del trigger, no aca: esta
+  -- regla es ESTRICTAMENTE ADITIVA y no tiene que taparle el mensaje a un
+  -- rechazo mas especifico (paciente de baja, terapeuta inexistente, hora
+  -- invertida o solapamiento) que esta misma fila ya iba a recibir. Mismo
+  -- criterio que ordena regla 4 antes que regla 3 en el trigger de
+  -- evoluciones: la que se reporta es la condicion mas util para quien
+  -- corrige, y una fila que ya se rechazaba por otro motivo no cambia de
+  -- veredicto por esta regla.
+  --
+  -- FOR SHARE y no FOR UPDATE: se lee OTRA tabla (no la del propio
+  -- trigger), y esto es una existencia puntual, no un conteo que necesite
+  -- serializar contra otro INSERT de sesiones del mismo par. Ver NOTA DE
+  -- CONCURRENCIA.
+  -- =====================================================================
+  SELECT id INTO v_asignacion
+    FROM asignaciones
+   WHERE id_terapeuta = NEW.id_terapeuta
+     AND id_paciente = NEW.id_paciente
+     AND fecha_desde <= NEW.fecha
+     AND (fecha_hasta IS NULL OR fecha_hasta >= NEW.fecha)
+   LIMIT 1
+   FOR SHARE;
+
   SET v_hora_fin = IFNULL(NEW.hora_fin, ADDTIME(NEW.hora_inicio, '01:00:00'));
 
   IF v_hora_fin <= NEW.hora_inicio THEN
@@ -878,11 +943,24 @@ BEGIN
       SET MESSAGE_TEXT =
         'El terapeuta ya tiene sesiones que se superponen con ese horario';
   END IF;
+
+  -- Regla 8, recien aca: ver el bloque de arriba, es estrictamente aditiva.
+  IF v_asignacion IS NULL THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT =
+        'El terapeuta no tiene asignado a este paciente en la fecha de la sesion';
+  END IF;
 END$$
 
 
 -- ---------------------------------------------------------------------
 -- Regla 6 en UPDATE + regla 2 al cambiar el estado a 'ausencia'
+--
+-- REGLA 8 (2026-09-28) NO VA ACA, A PROPOSITO: es solo de ALTAS NUEVAS.
+-- Ver el bloque grande en trg_sesiones_solape_insert. Agregarla aca
+-- congelaria el historial ya cargado (425 de 647 sesiones de `asisto` sin
+-- asignacion vigente el dia en que ocurrieron) y le pondria una regla nueva
+-- a editar sesion, que es entregable aprobado de la Entrega 2.
 --
 -- El chequeo de solape solo corre si cambio algo del horario: mover una
 -- sesion de dia u hora. Un UPDATE que solo toca notas o estado no paga el
@@ -1185,11 +1263,13 @@ FOR EACH ROW
 BEGIN
   DECLARE v_estado_sesion     ENUM('completa','incompleta','ausencia') DEFAULT NULL;
   DECLARE v_paciente_sesion   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_terapeuta_sesion  INT UNSIGNED DEFAULT NULL;
   DECLARE v_paciente_objetivo INT UNSIGNED DEFAULT NULL;
   DECLARE v_objetivo_activo   BOOLEAN      DEFAULT NULL;
   DECLARE v_fecha_sesion      DATE         DEFAULT NULL;
   DECLARE v_hora_sesion       TIME         DEFAULT NULL;
   DECLARE v_objetivo_creado   DATETIME     DEFAULT NULL;
+  DECLARE v_asignacion        INT UNSIGNED DEFAULT NULL;
 
   -- Los dos SELECT llevan FOR SHARE, y no es decorativo. Ver NOTA DE
   -- CONCURRENCIA: sin lock, estas serian lecturas consistentes de MVCC y
@@ -1211,11 +1291,53 @@ BEGIN
   --
   -- ORDEN: sesiones primero, objetivos_terapeuticos despues. Igual en los
   -- dos triggers de evoluciones. Invertirlo en uno solo crea un deadlock.
-  SELECT estado, id_paciente, fecha, hora_inicio
-    INTO v_estado_sesion, v_paciente_sesion, v_fecha_sesion, v_hora_sesion
+  SELECT estado, id_paciente, fecha, hora_inicio, id_terapeuta
+    INTO v_estado_sesion, v_paciente_sesion, v_fecha_sesion, v_hora_sesion, v_terapeuta_sesion
     FROM sesiones
    WHERE id = NEW.id_sesion
    FOR SHARE;
+
+  -- =====================================================================
+  -- REGLA 8 — ASIGNACION VIGENTE A LA FECHA DE LA SESION (2026-09-28)
+  --
+  -- Ver el bloque grande en trg_sesiones_solape_insert: misma regla, mismo
+  -- criterio (fecha de la sesion, no hoy), misma disciplina de "solo altas
+  -- nuevas" (trg_evoluciones_validar_update NO la tiene, ver la nota ahi).
+  --
+  -- EL TERAPEUTA ES EL DE LA SESION, no un parametro de esta tabla:
+  -- `evoluciones` no tiene columna id_terapeuta. p_registrar_evolucion ya
+  -- exige que quien carga sea el terapeuta de la sesion (autoria), asi que
+  -- validar contra v_terapeuta_sesion cubre tambien un INSERT directo que
+  -- se salte esa capa — el mismo motivo por el que esta regla vive en el
+  -- trigger y no solo en el procedimiento.
+  --
+  -- ORDEN DE LOCKS, Y POR QUE QUEDA INVERTIDO CONTRA sesiones. El canonico
+  -- es pacientes -> terapeutas -> asignaciones -> sesiones ->
+  -- objetivos_terapeuticos. Aca la consulta de abajo necesita id_paciente e
+  -- id_terapeuta, y los dos salen de la fila de `sesiones` que se acaba de
+  -- leer: no hay forma de pedir este lock ANTES sin adivinar esos dos
+  -- valores. Es la misma clase de inversion forzada que ya tiene
+  -- trg_sesiones_solape_update contra `pacientes` (ver su NOTA PARA LA
+  -- ENTREGA 4), y por el mismo motivo no es peligrosa: ningun escritor de
+  -- `asignaciones` (solo p_baja_paciente, que cierra vigentes por paciente)
+  -- toma nunca un lock de `sesiones` ni de `terapeutas`, asi que no hay
+  -- ciclo de dos actores posible entre esta lectura y una baja concurrente
+  -- — como mucho, esta transaccion espera detras de la baja o la baja
+  -- espera detras de esta, nunca las dos a la vez. Cualquier deadlock
+  -- residual que igual apareciera queda cubierto por
+  -- @reintentar_en_deadlock en el endpoint, igual que el resto del schema.
+  --
+  -- Se preserva el orden canonico contra `objetivos_terapeuticos`: esta
+  -- lectura va ANTES que esa, no despues, porque nada la obliga a esperar.
+  SELECT id INTO v_asignacion
+    FROM asignaciones
+   WHERE id_terapeuta = v_terapeuta_sesion
+     AND id_paciente = v_paciente_sesion
+     AND fecha_desde <= v_fecha_sesion
+     AND (fecha_hasta IS NULL OR fecha_hasta >= v_fecha_sesion)
+   LIMIT 1
+   FOR SHARE;
+  -- =====================================================================
 
   SELECT id_paciente, activo, fecha_creacion
     INTO v_paciente_objetivo, v_objetivo_activo, v_objetivo_creado
@@ -1261,13 +1383,21 @@ BEGIN
         'El objetivo evaluado no pertenece al paciente de esta sesion';
   END IF;
 
-  -- Objetivo posterior a la sesion. VA ULTIMA a proposito: ver el bloque
-  -- del encabezado. Es la unica de las cuatro que no cambia el veredicto
-  -- de ninguna entrada que las otras tres ya rechazaban.
+  -- Objetivo posterior a la sesion. VA ULTIMA de las tres primeras a
+  -- proposito: ver el bloque del encabezado. No cambia el veredicto de
+  -- ninguna entrada que las otras tres ya rechazaban.
   IF v_objetivo_creado > TIMESTAMP(v_fecha_sesion, v_hora_sesion) THEN
     SIGNAL SQLSTATE '45000'
       SET MESSAGE_TEXT =
         'No se puede cargar evolucion: el objetivo se creo despues de esa sesion';
+  END IF;
+
+  -- Regla 8, recien aca: estrictamente aditiva, igual que la de arriba. No
+  -- le cambia el mensaje a ninguna fila que ya se rechazaba por otro motivo.
+  IF v_asignacion IS NULL THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT =
+        'No se puede cargar evolucion: el terapeuta de la sesion no tenia asignado a este paciente en esa fecha';
   END IF;
 END$$
 
@@ -1284,6 +1414,10 @@ END$$
 --
 -- Sin esto, un solo UPDATE de id_objetivo puede violar la regla 3 y la
 -- regla 4 al mismo tiempo.
+--
+-- REGLA 8 (2026-09-28) NO VA ACA, A PROPOSITO: es solo de ALTAS NUEVAS. Ver
+-- el bloque grande en trg_evoluciones_validar_insert. Este trigger sigue
+-- siendo espejo de las reglas 2, 3, 4 y 7 unicamente.
 -- ---------------------------------------------------------------------
 CREATE TRIGGER trg_evoluciones_validar_update
 BEFORE UPDATE ON evoluciones
@@ -2687,6 +2821,197 @@ BEGIN
 
       COMMIT;
       SET p_mensaje = 'Observacion registrada correctamente';
+    END IF;
+  END IF;
+END$$
+
+
+-- ---------------------------------------------------------------------
+-- p_abrir_asignacion / p_cerrar_asignacion — HDU 11 (2026-10-15)
+--
+-- Unico camino de escritura sobre `asignaciones` desde la aplicacion (con
+-- p_baja_paciente, que cierra todas las vigentes de un paciente). Existen
+-- por la misma razon que el resto de los procedimientos de escritura: el
+-- orden de locks y la relectura dentro del lock no se pueden garantizar
+-- desde un UPDATE del ORM.
+--
+-- ORDEN DE LOCKS: pacientes -> terapeutas -> asignaciones, el canonico. Los
+-- triggers de asignaciones vuelven a tomar `pacientes FOR UPDATE` dentro de
+-- la misma transaccion; es el mismo lock que ya se tiene, no abre nada.
+--
+-- Las reglas de fondo (una sola vigente por par, nada abierto sobre un
+-- paciente de baja, fecha_hasta >= fecha_desde) las siguen aplicando los
+-- triggers: aca solo se validan las existencias, para devolver un mensaje
+-- propio en vez de dejar que la FK falle con un errno ilegible.
+--
+-- p_fecha_desde NULL = hoy. No se acepta una fecha futura: una asignacion
+-- afirma que esa terapeuta atiende al paciente, y a futuro no se sabe.
+-- ---------------------------------------------------------------------
+CREATE PROCEDURE p_abrir_asignacion (
+  IN  p_id_paciente    INT UNSIGNED,
+  IN  p_id_terapeuta   INT UNSIGNED,
+  IN  p_fecha_desde    DATE,
+  OUT p_id_asignacion  INT UNSIGNED,
+  OUT p_mensaje        VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error      VARCHAR(255) DEFAULT '';
+  DECLARE v_paciente   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_terapeuta  INT UNSIGNED DEFAULT NULL;
+  DECLARE v_activo     BOOLEAN      DEFAULT NULL;
+  DECLARE v_desde      DATE         DEFAULT NULL;
+
+  -- Ver CRITERIO GENERAL DE ERRORES
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_id_asignacion = NULL;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_id_asignacion = NULL;
+    SET p_mensaje = 'No se pudo abrir la asignacion por un error interno';
+  END;
+
+  SET p_id_asignacion = NULL;
+  SET v_desde = IFNULL(p_fecha_desde, CURRENT_DATE);
+
+  IF v_desde > CURRENT_DATE THEN
+    SET p_mensaje = 'La asignacion no puede empezar en una fecha futura';
+  ELSE
+    START TRANSACTION;
+
+    -- 1) pacientes, con lock: lo toman igual los triggers de asignaciones
+    SELECT id, activo INTO v_paciente, v_activo
+      FROM pacientes
+     WHERE id = p_id_paciente
+     FOR UPDATE;
+
+    -- 2) terapeutas
+    SELECT id INTO v_terapeuta
+      FROM terapeutas
+     WHERE id = p_id_terapeuta
+     FOR SHARE;
+
+    IF v_paciente IS NULL THEN
+      ROLLBACK;
+      SET p_mensaje = 'El paciente indicado no existe';
+    ELSEIF v_terapeuta IS NULL THEN
+      ROLLBACK;
+      SET p_mensaje = 'El terapeuta indicado no existe';
+    ELSEIF v_activo = FALSE THEN
+      ROLLBACK;
+      SET p_mensaje = 'El paciente esta dado de baja: no se le pueden abrir asignaciones';
+    ELSE
+      -- 3) asignaciones. Los triggers rechazan la segunda vigente del par.
+      INSERT INTO asignaciones (id_terapeuta, id_paciente, fecha_desde)
+      VALUES (p_id_terapeuta, p_id_paciente, v_desde);
+
+      SET p_id_asignacion = LAST_INSERT_ID();
+
+      COMMIT;
+      SET p_mensaje = 'Asignacion abierta correctamente';
+    END IF;
+  END IF;
+END$$
+
+
+-- p_fecha_hasta NULL = hoy, pero nunca antes de fecha_desde (mismo criterio
+-- que p_baja_paciente: GREATEST). Si se pasa una fecha explicita anterior al
+-- inicio, el trigger de UPDATE la rechaza con su mensaje.
+CREATE PROCEDURE p_cerrar_asignacion (
+  IN  p_id_asignacion  INT UNSIGNED,
+  IN  p_fecha_hasta    DATE,
+  OUT p_cerrada        BOOLEAN,
+  OUT p_mensaje        VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error       VARCHAR(255) DEFAULT '';
+  DECLARE v_paciente    INT UNSIGNED DEFAULT NULL;
+  DECLARE v_lock        INT UNSIGNED DEFAULT NULL;
+  DECLARE v_desde       DATE         DEFAULT NULL;
+  DECLARE v_hasta       DATE         DEFAULT NULL;
+  DECLARE v_existe      INT UNSIGNED DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_cerrada = FALSE;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_cerrada = FALSE;
+    SET p_mensaje = 'No se pudo cerrar la asignacion por un error interno';
+  END;
+
+  SET p_cerrada = FALSE;
+
+  -- El paciente hay que conocerlo ANTES del lock para respetar el orden
+  -- (pacientes primero). Esta lectura es sin lock y se REPITE adentro.
+  SELECT id_paciente INTO v_paciente
+    FROM asignaciones
+   WHERE id = p_id_asignacion;
+
+  IF v_paciente IS NULL THEN
+    SET p_mensaje = 'La asignacion indicada no existe';
+  ELSE
+    START TRANSACTION;
+
+    SELECT id INTO v_lock
+      FROM pacientes
+     WHERE id = v_paciente
+     FOR UPDATE;
+
+    -- Relectura dentro del lock: dos cierres simultaneos no pueden los dos
+    -- ver la asignacion vigente.
+    SELECT id, fecha_desde, fecha_hasta INTO v_existe, v_desde, v_hasta
+      FROM asignaciones
+     WHERE id = p_id_asignacion
+     FOR UPDATE;
+
+    IF v_hasta IS NOT NULL THEN
+      ROLLBACK;
+      SET p_mensaje = 'La asignacion ya estaba cerrada';
+    ELSE
+      UPDATE asignaciones
+         SET fecha_hasta = IFNULL(p_fecha_hasta, GREATEST(v_desde, CURRENT_DATE))
+       WHERE id = p_id_asignacion;
+
+      COMMIT;
+      SET p_cerrada = TRUE;
+      SET p_mensaje = 'Asignacion cerrada correctamente';
     END IF;
   END IF;
 END$$

@@ -2,9 +2,12 @@
 // Alta de paciente. Es el más simple de los cuatro modales y el que fija
 // el patrón: ver useFormularioModal y ModalFormulario.
 
+import MenuItem from '@mui/material/MenuItem';
+
 import CampoTexto from '../forms/CampoTexto.jsx';
 import ModalFormulario from '../modal/ModalFormulario.jsx';
 import { useFormularioModal } from '../../hooks/useFormularioModal.js';
+import { hayCapacidad } from '../../config/entregas.js';
 import { crearPaciente } from '../../services/pacientesService.js';
 
 const INICIAL = {
@@ -13,6 +16,7 @@ const INICIAL = {
   fecha_nacimiento: '',
   nro_historia: '',
   diagnostico: '',
+  id_terapeuta: '',
 };
 
 // El diagnóstico es el único opcional: se puede completar después desde la
@@ -24,9 +28,13 @@ const OBLIGATORIOS = ['nombre', 'apellido', 'fecha_nacimiento', 'nro_historia'];
 // había una heurística que miraba el texto del mensaje y se rompía en
 // silencio si el mensaje de un trigger cambiaba.
 
-export default function ModalAltaPaciente({ abierto, onCerrar, onCreado }) {
+export default function ModalAltaPaciente({
+  abierto, onCerrar, onCreado, terapeutas = [], idTerapeutaActual = null,
+}) {
+  // HDU 11: el responsable se elige en el alta; por omision, quien lo da de alta.
+  const conAsignaciones = hayCapacidad('asignaciones.gestionar');
   const formulario = useFormularioModal({
-    inicial: INICIAL,
+    inicial: { ...INICIAL, id_terapeuta: idTerapeutaActual ?? '' },
     obligatorios: OBLIGATORIOS,
     onEnviar: (valores) =>
       crearPaciente({
@@ -35,6 +43,7 @@ export default function ModalAltaPaciente({ abierto, onCerrar, onCreado }) {
         fecha_nacimiento: valores.fecha_nacimiento,
         nro_historia: valores.nro_historia.trim(),
         diagnostico: valores.diagnostico.trim() || null,
+        id_terapeuta: conAsignaciones && valores.id_terapeuta ? Number(valores.id_terapeuta) : null,
         id_usuario: null, // el alta no crea cuenta: es un registro clínico
       }),
     onExito: (respuesta) => {
@@ -118,6 +127,22 @@ export default function ModalAltaPaciente({ abierto, onCerrar, onCreado }) {
         onChange={setCampo('diagnostico')}
         deshabilitado={guardando}
       />
+      {conAsignaciones && (
+        <CampoTexto
+          id="paciente-responsable"
+          etiqueta="Terapeuta responsable"
+          select
+          ayuda="Solo quien tiene asignado al paciente puede registrarle sesiones."
+          valor={valores.id_terapeuta}
+          onChange={setCampo('id_terapeuta')}
+          error={errorDe('id_terapeuta')}
+          deshabilitado={guardando}
+        >
+          {terapeutas.map((t) => (
+            <MenuItem key={t.id} value={t.id}>{t.nombre_completo ?? t.nombre}</MenuItem>
+          ))}
+        </CampoTexto>
+      )}
     </ModalFormulario>
   );
 }

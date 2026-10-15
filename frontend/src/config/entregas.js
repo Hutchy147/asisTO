@@ -77,7 +77,7 @@ export const ENTREGA_COMPLETA = 6;
 export const NOMBRE_DE_ENTREGA = {
   1: 'Entrega 1 — Módulo Clínico',
   2: 'Entrega 2 — Gestión y RRHH',
-  3: 'Entrega 3 — Seguridad, notas y agenda',
+  3: 'Entrega 3 — Seguridad y corrección del flujo',
   4: 'Entrega 4 — Portal Familiar',
   5: 'Entrega 5 — Duplas y plantillas',
   6: 'Entrega 6 — Informes con IA y portal del paciente',
@@ -149,6 +149,11 @@ export const CAPACIDADES = {
   // intentos. Las tres son del mismo bloque de seguridad, así que el
   // agrupamiento se sostiene solo.
   'auditoria.accesos': { entrega: 3, nombre: 'auditoría de accesos' },
+  // HDU 11 (nueva en la V3): asignación paciente–terapeuta. Cubre la pestaña
+  // "Asignación" de la ficha, el responsable en el listado y el selector del
+  // alta. La regla 8 (escribir solo sobre pacientes asignados) vive en la
+  // base y rige en cualquier modo; esta clave solo muestra u oculta pantallas.
+  'asignaciones.gestionar': { entrega: 3, nombre: 'asignación de pacientes a terapeuta responsable (HDU 11)' },
 
   // --- Versión 4 (19/10) ---
   // LAS DOS DEL FAMILIAR VENÍAN EN 3 Y PASAN A 4. En el plan de cuatro, el

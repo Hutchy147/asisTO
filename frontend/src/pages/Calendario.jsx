@@ -13,6 +13,7 @@ import AppLayout from '../components/layout/AppLayout.jsx';
 import ModalRegistrarSesion from '../components/sesiones/ModalRegistrarSesion.jsx';
 import { Cargando, EstadoError } from '../components/estado/index.js';
 import { usePeticion } from '../hooks/usePeticion.js';
+import { hayCapacidad } from '../config/entregas.js';
 import { listarPacientes } from '../services/pacientesService.js';
 import { ETIQUETA_ESTADO, faltaEvolucion, listarSesiones } from '../services/sesionesService.js';
 import { formatearFecha, formatearFechaCorta } from '../utils/fechas.js';
@@ -528,7 +529,12 @@ export default function Calendario() {
       <ModalRegistrarSesion
         key={`${modalSesion?.fecha ?? ''}-${modalSesion?.hora ?? ''}`}
         abierto={Boolean(modalSesion)}
-        pacientes={pacientes.datos?.pacientes ?? []}
+        // HDU 11: solo se registran sesiones de pacientes asignados al
+        // terapeuta; el servidor igual lo valida (regla 8). Sin la capacidad
+        // (entregas previas) el selector sigue mostrando a todos.
+        pacientes={(pacientes.datos?.pacientes ?? []).filter(
+          (p) => !hayCapacidad('asignaciones.gestionar') || p.asignado_a_mi,
+        )}
         fechaInicial={modalSesion?.fecha ?? ''}
         horaInicial={modalSesion?.hora ?? ''}
         onCerrar={() => setModalSesion(null)}
