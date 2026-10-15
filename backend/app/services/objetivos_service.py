@@ -292,6 +292,8 @@ def archivar_objetivo(id_objetivo):
     if not objetivo.activo:
         raise ErrorAplicacion('El objetivo ya estaba archivado.', http_status=409)
 
+    # El trigger exige el minimo de 3 activos (bajo lock del paciente); su
+    # SIGNAL lo traduce el handler global de SQLAlchemyError.
     objetivo.activo = False
     db.session.commit()
 

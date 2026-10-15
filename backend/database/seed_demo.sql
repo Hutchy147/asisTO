@@ -441,7 +441,10 @@ BEGIN
       FROM objetivos_terapeuticos
      WHERE id_paciente = v_pac AND activo = TRUE;
 
-    IF v_id_obj IS NOT NULL THEN
+    -- Solo si quedan al menos 3 activos (minimo de la Entrega 3).
+    IF v_id_obj IS NOT NULL AND (
+         SELECT COUNT(*) FROM objetivos_terapeuticos
+          WHERE id_paciente = v_pac AND activo = TRUE) > 3 THEN
       UPDATE objetivos_terapeuticos SET activo = FALSE WHERE id = v_id_obj;
     END IF;
 
@@ -576,6 +579,14 @@ UPDATE asignaciones
 --    carga; el segundo la fija en el dia de la baja. Con activo pasando de
 --    FALSE a FALSE ninguna rama del trigger se dispara, asi que el valor
 --    queda como se escribe y el fixture no cambia de contenido en cada carga.
+--    La baja va ANTES: con el paciente de baja el trigger no exige el minimo
+--    de 3 objetivos activos al archivar (rige solo en tratamiento).
+UPDATE pacientes
+   SET activo = FALSE,
+       fecha_baja = DATE_SUB(CURDATE(), INTERVAL 90 DAY),
+       tipo_cierre = 'alta'
+ WHERE id = 16;
+
 UPDATE objetivos_terapeuticos
    SET activo = FALSE
  WHERE id_paciente = 16 AND activo = TRUE;
@@ -583,12 +594,6 @@ UPDATE objetivos_terapeuticos
 UPDATE objetivos_terapeuticos
    SET fecha_archivado = TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 90 DAY), '12:00:00')
  WHERE id_paciente = 16;
-
--- 7. Y recien ahora, la baja.
-UPDATE pacientes
-   SET activo = FALSE,
-       fecha_baja = DATE_SUB(CURDATE(), INTERVAL 90 DAY)
- WHERE id = 16;
 
 
 -- =====================================================================

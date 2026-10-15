@@ -21,6 +21,9 @@ export default function DialogoConfirmacion({
   // dato— y confirmar a ciegas sería justo lo que la confirmación evita.
   // Distinto de `procesando`, que además bloquea Cancelar y el Escape.
   confirmarDeshabilitado = false,
+  // Contenido interactivo (un campo de texto, por ejemplo) debajo del texto.
+  // Va aparte de `children` porque este va dentro de un <p>.
+  extra = null,
   onConfirmar,
   onCancelar,
 }) {
@@ -38,6 +41,7 @@ export default function DialogoConfirmacion({
         <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
           {children}
         </Typography>
+        {extra}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
         <Button variant="outlined" onClick={onCancelar} disabled={procesando}>

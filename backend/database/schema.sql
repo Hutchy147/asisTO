@@ -145,6 +145,16 @@ CREATE TABLE pacientes (
   activo            BOOLEAN      NOT NULL DEFAULT TRUE,
   fecha_alta        DATE         NOT NULL DEFAULT (CURRENT_DATE),
   fecha_baja        DATE         NULL DEFAULT NULL,
+  -- COMO SE CERRO (Entrega 3, semantica del rubro). fecha_baja es la fecha
+  -- del cierre en los dos casos; este campo dice de que cierre se trata:
+  --   'pausa' = la baja: el tratamiento se interrumpe y se puede retomar.
+  --             Lleva MOTIVO obligatorio y no toca objetivos ni asignacion.
+  --   'alta'  = el cierre del tratamiento (el egreso): archiva los objetivos
+  --             y cierra la asignacion. Es lo que hacia p_baja_paciente.
+  -- NULL con activo = FALSE son bajas anteriores a la Entrega 3: se leen
+  -- como 'alta', que es lo que hacian. Siempre NULL mientras esta activo.
+  tipo_cierre       ENUM('pausa','alta') NULL DEFAULT NULL,
+  motivo_baja       VARCHAR(200) NULL DEFAULT NULL,
 
   PRIMARY KEY (id),
   UNIQUE KEY uq_pacientes_usuario (id_usuario),
@@ -153,7 +163,12 @@ CREATE TABLE pacientes (
   KEY idx_pacientes_apellido (apellido, nombre),
   CONSTRAINT fk_pacientes_usuario
     FOREIGN KEY (id_usuario) REFERENCES usuarios (id)
-    ON DELETE SET NULL ON UPDATE CASCADE
+    ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT chk_pacientes_cierre_inactivo
+    CHECK (activo = FALSE OR (tipo_cierre IS NULL AND motivo_baja IS NULL)),
+  CONSTRAINT chk_pacientes_pausa_con_motivo
+    CHECK (tipo_cierre IS NULL OR tipo_cierre <> 'pausa'
+           OR (motivo_baja IS NOT NULL AND CHAR_LENGTH(TRIM(motivo_baja)) > 0))
 ) ENGINE=InnoDB;
 
 
@@ -817,6 +832,35 @@ BEGIN
       SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT =
           'No se puede mover el objetivo a otro paciente: ya tiene evoluciones registradas';
+    END IF;
+  END IF;
+
+  -- MINIMO DE 3 OBJETIVOS ACTIVOS (Entrega 3). Archivar uno no puede dejar a
+  -- un paciente EN TRATAMIENTO con menos de 3: hay que crear el reemplazo
+  -- antes (por eso el tope de 4 deja margen). No rige cuando el paciente ya
+  -- esta de baja, y por eso el cierre (p_baja_paciente) que archiva todo no
+  -- se rechaza: marca la baja primero y archiva despues. Los pacientes que ya
+  -- tenian menos de 3 siguen validos; solo no pueden archivar hasta llegar a 3.
+  IF OLD.activo = TRUE AND NEW.activo = FALSE AND NEW.id_paciente = OLD.id_paciente THEN
+    -- Ver NOTA DE CONCURRENCIA
+    SELECT id, activo INTO v_lock, v_paciente_activo
+      FROM pacientes
+     WHERE id = NEW.id_paciente
+     FOR UPDATE;
+
+    IF v_paciente_activo = TRUE THEN
+      SELECT COUNT(*) INTO v_activos
+        FROM objetivos_terapeuticos
+       WHERE id_paciente = NEW.id_paciente
+         AND activo = TRUE
+         AND id <> OLD.id
+       FOR SHARE;
+
+      IF v_activos < 3 THEN
+        SIGNAL SQLSTATE '45000'
+          SET MESSAGE_TEXT =
+            'El paciente tiene que mantener al menos 3 objetivos activos: cree el reemplazo antes de archivar este';
+      END IF;
     END IF;
   END IF;
 
@@ -2128,9 +2172,13 @@ BEGIN
       SET p_mensaje = 'El paciente ya estaba dado de baja';
     ELSE
 
+    -- Este procedimiento es el CIERRE del tratamiento (el alta del rubro).
+    -- La pausa tiene el suyo: p_pausar_paciente.
     UPDATE pacientes
        SET activo = FALSE,
-           fecha_baja = CURRENT_DATE
+           fecha_baja = CURRENT_DATE,
+           tipo_cierre = 'alta',
+           motivo_baja = NULL
      WHERE id = p_id_paciente;
 
     -- 2) asignaciones: vigente es fecha_hasta IS NULL y nada mas
@@ -2244,12 +2292,109 @@ BEGIN
     ELSE
       UPDATE pacientes
          SET activo = TRUE,
-             fecha_baja = NULL
+             fecha_baja = NULL,
+             tipo_cierre = NULL,
+             motivo_baja = NULL
        WHERE id = p_id_paciente;
 
       COMMIT;
       SET p_reactivado = 1;
       SET p_mensaje = 'Paciente reactivado correctamente';
+    END IF;
+  END IF;
+END$$
+
+
+-- ---------------------------------------------------------------------
+-- p_pausar_paciente — la BAJA del rubro: el tratamiento se interrumpe
+--
+-- Distinta del cierre (p_baja_paciente, el alta): pausar es reversible y no
+-- desarma nada. El paciente deja de figurar en los listados operativos y no
+-- admite sesiones nuevas, pero conserva sus objetivos activos y su
+-- asignacion, para retomar donde quedo con p_reactivar_paciente. Por eso el
+-- MOTIVO es obligatorio: es lo que explica la interrupcion cuando se vuelve
+-- a mirar la ficha.
+--
+-- Mismos handlers y mismo orden de locks que p_baja_paciente. Con
+-- p_pausado en NULL se rechazo; no se deduce del texto de p_mensaje.
+-- ---------------------------------------------------------------------
+CREATE PROCEDURE p_pausar_paciente (
+  IN  p_id_paciente  INT UNSIGNED,
+  IN  p_motivo       VARCHAR(255),
+  OUT p_pausado      TINYINT UNSIGNED,
+  OUT p_mensaje      VARCHAR(255)
+)
+BEGIN
+  DECLARE v_existe  INT UNSIGNED DEFAULT 0;
+  DECLARE v_activo  BOOLEAN      DEFAULT NULL;
+  DECLARE v_lock    INT UNSIGNED DEFAULT NULL;
+  DECLARE v_error   VARCHAR(255) DEFAULT '';
+  DECLARE v_motivo  VARCHAR(255) DEFAULT TRIM(COALESCE(p_motivo, ''));
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_pausado = NULL;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_pausado = NULL;
+    SET p_mensaje = 'No se pudo pausar el tratamiento por un error interno';
+  END;
+
+  SET p_pausado = NULL;
+
+  SELECT COUNT(*), MAX(activo) INTO v_existe, v_activo
+    FROM pacientes
+   WHERE id = p_id_paciente;
+
+  IF v_existe = 0 THEN
+    SET p_mensaje = 'El paciente indicado no existe';
+  ELSEIF CHAR_LENGTH(v_motivo) = 0 THEN
+    SET p_mensaje = 'La baja necesita un motivo';
+  ELSEIF CHAR_LENGTH(v_motivo) > 200 THEN
+    SET p_mensaje = 'El motivo de la baja no puede superar los 200 caracteres';
+  ELSEIF v_activo = FALSE THEN
+    SET p_mensaje = 'El paciente ya estaba dado de baja';
+  ELSE
+    START TRANSACTION;
+
+    SELECT id, activo INTO v_lock, v_activo
+      FROM pacientes
+     WHERE id = p_id_paciente
+     FOR UPDATE;
+
+    -- Relectura dentro del lock: ver p_baja_paciente.
+    IF v_activo = FALSE THEN
+      ROLLBACK;
+      SET p_mensaje = 'El paciente ya estaba dado de baja';
+    ELSE
+      UPDATE pacientes
+         SET activo = FALSE,
+             fecha_baja = CURRENT_DATE,
+             tipo_cierre = 'pausa',
+             motivo_baja = v_motivo
+       WHERE id = p_id_paciente;
+
+      COMMIT;
+      SET p_pausado = 1;
+      SET p_mensaje = 'Tratamiento pausado correctamente';
     END IF;
   END IF;
 END$$

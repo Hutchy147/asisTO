@@ -144,6 +144,8 @@ export const CAPACIDADES = {
   // --- Versión 3 (05/10) ---
   'calendario.agenda': { entrega: 3, nombre: 'calendario solo para agendar, lunes a viernes, 45 minutos' },
   // Agenda semanal recurrente: los turnos fijos de la semana y su generación.
+  'pacientes.pausa': { entrega: 3, nombre: 'pausar tratamiento (baja con motivo) y dar el alta' },
+  'objetivos.minimo': { entrega: 3, nombre: 'aviso de mínimo de 3 objetivos activos' },
   'agenda.recurrente': { entrega: 3, nombre: 'agenda semanal recurrente' },
   'auth.recuperar': { entrega: 3, nombre: 'recuperar contraseña y bloqueo de intentos' },
   'notas.campo': { entrega: 3, nombre: 'notas de campo' },

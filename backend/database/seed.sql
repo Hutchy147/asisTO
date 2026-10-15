@@ -401,6 +401,14 @@ INSERT INTO informes
 --
 -- La asignacion ya entro cerrada mas arriba, asi que no hace falta tocarla.
 -- =====================================================================
+-- La baja va PRIMERO: con el paciente de baja el trigger no exige el minimo
+-- de 3 objetivos activos al archivar (rige solo para pacientes en tratamiento).
+UPDATE pacientes
+   SET activo = FALSE,
+       fecha_baja = '2026-07-20',
+       tipo_cierre = 'alta'
+ WHERE id = 4;
+
 UPDATE objetivos_terapeuticos
    SET activo = FALSE
  WHERE id_paciente = 4 AND activo = TRUE;
@@ -408,11 +416,6 @@ UPDATE objetivos_terapeuticos
 UPDATE objetivos_terapeuticos
    SET fecha_archivado = '2026-07-20 09:00:00'
  WHERE id_paciente = 4;
-
-UPDATE pacientes
-   SET activo = FALSE,
-       fecha_baja = '2026-07-20'
- WHERE id = 4;
 
 
 -- =====================================================================

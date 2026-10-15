@@ -99,16 +99,17 @@ export function editarPaciente(idPaciente, {
 }
 
 /**
- * Baja LOGICA del paciente. Nunca borra.
- *
- * Arrastra dos efectos que el usuario no pidio explicitamente: cierra las
- * asignaciones vigentes y archiva los objetivos activos. Por eso la respuesta
- * los devuelve contados, para poder decirle que paso.
+ * Cierra el tratamiento. `tipo` es obligatorio desde la Entrega 3:
+ *  - 'alta'  : egreso. Cierra las asignaciones vigentes y archiva los
+ *              objetivos activos (la respuesta los devuelve contados).
+ *  - 'pausa' : baja reversible, con `motivo` obligatorio. No toca objetivos
+ *              ni asignaciones.
+ * El valor por defecto es 'alta' porque es lo que hacia la baja antes.
  *
  * -> { paciente, objetivos_archivados, asignaciones_cerradas, mensaje }
  */
-export function darDeBajaPaciente(idPaciente) {
-  return post(`/pacientes/${idPaciente}/baja`);
+export function darDeBajaPaciente(idPaciente, { tipo = 'alta', motivo } = {}) {
+  return post(`/pacientes/${idPaciente}/baja`, { tipo, motivo });
 }
 
 /**

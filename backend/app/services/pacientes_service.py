@@ -31,6 +31,11 @@ def _contar_objetivos_activos_por_paciente():
     return {id_paciente: cantidad for id_paciente, cantidad in filas}
 
 
+# Minimo de objetivos activos de un paciente en tratamiento (Entrega 3). La
+# regla vive en el trigger de objetivos; aca solo se informa cuanto falta.
+MINIMO_OBJETIVOS = 3
+
+
 def listar_pacientes():
     """Pacientes activos, con su cantidad de objetivos activos."""
     pacientes = (
@@ -56,6 +61,7 @@ def listar_pacientes():
     for paciente in pacientes:
         datos = paciente.to_dict_clinico()
         datos['objetivos_activos'] = conteos.get(paciente.id, 0)
+        datos['faltan_objetivos'] = max(0, MINIMO_OBJETIVOS - datos['objetivos_activos'])
         # HDU 11: la escritura clinica solo es de quien tiene asignado al
         # paciente. La lectura sigue abierta, asi que el listado trae a todos
         # y marca cuales son "mios".
@@ -141,6 +147,10 @@ def obtener_detalle(id_paciente):
         # La interfaz necesita saber que esta en modo lectura ANTES de dibujar
         # los botones, no cuando el servidor le rechace la accion.
         'solo_lectura': not paciente.activo,
+        'minimo_objetivos': MINIMO_OBJETIVOS,
+        'faltan_objetivos': (
+            max(0, MINIMO_OBJETIVOS - len(objetivos)) if paciente.activo else 0
+        ),
         # Que va a arrastrar la baja, para poder decirlo ANTES de pedir la
         # confirmacion. Sin estos dos numeros el dialogo tendria que hablar en
         # abstracto ("se van a archivar sus objetivos") y el terapeuta se
@@ -331,19 +341,64 @@ def editar_paciente(id_paciente, datos):
     return paciente, mensaje
 
 
+def baja_paciente(id_paciente, datos=None):
+    """
+    Cierra el tratamiento. `datos['tipo']` es obligatorio (Entrega 3):
+      - 'pausa': baja reversible, con motivo (p_pausar_paciente).
+      - 'alta' : egreso, archiva objetivos y cierra asignaciones
+                 (p_baja_paciente).
+
+    Devuelve (paciente, resumen). Para la pausa los conteos son 0: no toca
+    nada mas que al paciente.
+    """
+    datos = datos or {}
+    tipo = datos.get('tipo')
+    if tipo not in ('pausa', 'alta'):
+        raise ErrorAplicacion(
+            "Indicá si es una pausa o el alta del tratamiento.", campo='tipo'
+        )
+
+    if tipo == 'pausa':
+        return _pausar(id_paciente, datos.get('motivo'))
+    return _alta(id_paciente)
+
+
 @reintentar_en_deadlock()
-def baja_paciente(id_paciente):
-    """
-    Baja LOGICA via p_baja_paciente. Nunca borra.
+def _pausar(id_paciente, motivo):
+    motivo = (motivo or '').strip() if isinstance(motivo, str) else ''
+    if not motivo:
+        raise ErrorAplicacion('La baja necesita un motivo', campo='motivo')
+    if len(motivo) > 200:
+        raise ErrorAplicacion(
+            'El motivo de la baja no puede superar los 200 caracteres', campo='motivo'
+        )
 
-    El procedimiento hace las tres escrituras —paciente, asignaciones y
-    objetivos— en una sola transaccion y en el orden de locks; aca no se
-    replica ninguna de esas reglas. Ver p_baja_paciente en schema.sql.
+    db.session.execute(
+        text('CALL p_pausar_paciente(:id, :motivo, @p_pausado, @p_mensaje)'),
+        {'id': id_paciente, 'motivo': motivo},
+    )
+    pausado, mensaje = db.session.execute(
+        text('SELECT @p_pausado, @p_mensaje')
+    ).first()
+    db.session.commit()
 
-    Devuelve (paciente, resumen) donde resumen trae los conteos de lo que
-    arrastro la baja, para poder decirselo al usuario en vez de dejarlo
-    descubrir solo que se le archivaron los objetivos.
-    """
+    # NULL = rechazo. No se compara el texto de p_mensaje.
+    if pausado is None:
+        raise ErrorAplicacion(mensaje or 'No se pudo pausar el tratamiento.')
+
+    paciente = Paciente.query.get(id_paciente)
+    db.session.refresh(paciente)
+    logger.info('Paciente %s pausado', id_paciente)
+    return paciente, {
+        'objetivos_archivados': 0,
+        'asignaciones_cerradas': 0,
+        'mensaje': mensaje,
+    }
+
+
+@reintentar_en_deadlock()
+def _alta(id_paciente):
+    """Cierre via p_baja_paciente. Nunca borra. Ver schema.sql."""
     db.session.execute(
         text(
             'CALL p_baja_paciente(:id_paciente, @p_objetivos, '
@@ -355,22 +410,17 @@ def baja_paciente(id_paciente):
     objetivos, asignaciones, mensaje = db.session.execute(
         text('SELECT @p_objetivos, @p_asignaciones, @p_mensaje')
     ).first()
-
-    # El procedimiento hace su propio COMMIT/ROLLBACK. Este cierra la
-    # transaccion que SQLAlchemy abrio para leer las variables de salida.
     db.session.commit()
 
-    # NULL en los contadores = el procedimiento rechazo la baja. No se compara
-    # el texto de p_mensaje: ver la nota de p_reactivar_paciente en schema.sql.
     if objetivos is None:
-        raise ErrorAplicacion(mensaje or 'No se pudo dar de baja el paciente.')
+        raise ErrorAplicacion(mensaje or 'No se pudo dar de alta el paciente.')
 
     paciente = Paciente.query.get(id_paciente)
+    db.session.refresh(paciente)
     logger.info(
-        'Paciente %s dado de baja (%s objetivos archivados, %s asignaciones cerradas)',
+        'Paciente %s dado de alta (%s objetivos archivados, %s asignaciones cerradas)',
         id_paciente, objetivos, asignaciones,
     )
-
     return paciente, {
         'objetivos_archivados': int(objetivos),
         'asignaciones_cerradas': int(asignaciones),

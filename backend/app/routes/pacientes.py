@@ -75,7 +75,10 @@ def baja(id_paciente):
     historia entera, y hasta se puede reactivar. Un DELETE que no borra es
     una promesa falsa en el contrato de la API.
     """
-    paciente, resumen = baja_paciente(id_paciente)
+    # Entrega 3: el cuerpo dice si es pausa (con motivo) o alta.
+    paciente, resumen = baja_paciente(
+        id_paciente, request.get_json(silent=True) or {}
+    )
 
     return jsonify({
         'paciente': paciente.to_dict_clinico(),

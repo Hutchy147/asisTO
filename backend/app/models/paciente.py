@@ -63,6 +63,11 @@ class Paciente(db.Model):
     # CAMPO_POR_FRAGMENTO lo atribuye a `descripcion`, no a este campo. Esta
     # anotado en errors.py.
     obra_social = db.Column(db.String(MAXIMO_CARACTERES_OBRA_SOCIAL), nullable=True)
+    # Como se cerro el tratamiento (Entrega 3): 'pausa' = baja reversible con
+    # motivo; 'alta' = egreso. NULL mientras esta activo. Una baja anterior a
+    # la Entrega 3 queda NULL con activo = FALSE y se lee como 'alta'.
+    tipo_cierre = db.Column(db.String(10), nullable=True)
+    motivo_baja = db.Column(db.String(200), nullable=True)
     nro_historia = db.Column(
         db.String(MAXIMO_CARACTERES_NRO_HISTORIA), nullable=False, unique=True
     )
@@ -110,6 +115,9 @@ class Paciente(db.Model):
             # la fecha, la interfaz puede decir que esta dado de baja pero no
             # desde cuando, y es el dato que la ficha necesita mostrar.
             'fecha_baja': self.fecha_baja.isoformat() if self.fecha_baja else None,
+            # 'pausa' | 'alta' | None. Dado de baja sin tipo = alta historica.
+            'tipo_cierre': (self.tipo_cierre or 'alta') if not self.activo else None,
+            'motivo_baja': self.motivo_baja,
         }
 
     def to_dict_clinico(self):

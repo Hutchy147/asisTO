@@ -10,6 +10,7 @@ import Chip from '@mui/material/Chip';
 import Snackbar from '@mui/material/Snackbar';
 import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
+import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -125,6 +126,9 @@ export default function PacienteFicha() {
   const [confirmandoBaja, setConfirmandoBaja] = useState(null);
   const [procesandoEstado, setProcesandoEstado] = useState(false);
   const [confirmandoReactivacion, setConfirmandoReactivacion] = useState(false);
+  // Pausa (Entrega 3): diálogo propio con motivo obligatorio.
+  const [pausando, setPausando] = useState(false);
+  const [motivoPausa, setMotivoPausa] = useState('');
 
   // Qué partes de esta ficha existen en la entrega que se está mostrando.
   // Las claves salen de la tabla única de src/config/entregas.js; acá no se
@@ -133,6 +137,9 @@ export default function PacienteFicha() {
   const verProgreso = hayCapacidad('evoluciones.historial');
   const puedeEditar = hayCapacidad('pacientes.editar');
   const puedeDarDeBaja = hayCapacidad('pacientes.baja');
+  // Entrega 3: la baja se parte en pausa (reversible, con motivo) y alta.
+  const conPausa = hayCapacidad('pacientes.pausa');
+  const verMinimo = hayCapacidad('objetivos.minimo');
   const verAsignaciones = hayCapacidad('asignaciones.gestionar');
 
   if (objetivos.cargando) {
@@ -173,10 +180,28 @@ export default function PacienteFicha() {
     }
   };
 
+  const confirmarPausa = async () => {
+    setProcesandoEstado(true);
+    try {
+      const respuesta = await darDeBajaPaciente(paciente.id, {
+        tipo: 'pausa', motivo: motivoPausa.trim(),
+      });
+      setPausando(false);
+      setMotivoPausa('');
+      objetivos.recargar();
+      sesiones.recargar();
+      setAviso(`${respuesta.mensaje}. Sus objetivos y su asignación quedaron como estaban.`);
+    } catch (error) {
+      setAviso(error.message);
+    } finally {
+      setProcesandoEstado(false);
+    }
+  };
+
   const confirmarBaja = async () => {
     setProcesandoEstado(true);
     try {
-      const respuesta = await darDeBajaPaciente(paciente.id);
+      const respuesta = await darDeBajaPaciente(paciente.id, { tipo: 'alta' });
       setConfirmandoBaja(null);
       objetivos.recargar();
       sesiones.recargar();
@@ -315,9 +340,14 @@ export default function PacienteFicha() {
               {/* Sin color de alarma: dar de baja es una acción clínica
                   normal —un tratamiento que termina— y no un borrado. Lo que
                   la hace segura es la confirmación con números, no el rojo. */}
+              {puedeDarDeBaja && conPausa && (
+                <Button variant="outlined" onClick={() => setPausando(true)}>
+                  Pausar tratamiento
+                </Button>
+              )}
               {puedeDarDeBaja && (
                 <Button variant="outlined" onClick={pedirConfirmacionDeBaja}>
-                  Dar de baja
+                  {conPausa ? 'Dar el alta' : 'Dar de baja'}
                 </Button>
               )}
             </>
@@ -325,13 +355,28 @@ export default function PacienteFicha() {
         </Box>
       }
     >
-      {soloLectura && (
+      {soloLectura && paciente.tipo_cierre === 'pausa' && conPausa ? (
         <Alert severity="info" sx={{ mb: 2.5 }}>
-          <strong>Paciente dado de baja</strong>
+          <strong>Tratamiento en pausa</strong>
+          {paciente.fecha_baja ? ` desde el ${formatearFecha(paciente.fecha_baja)}` : ''}.
+          {' '}Motivo: {paciente.motivo_baja}. Sus objetivos y su asignación siguen como
+          estaban; al reactivarlo retoma donde quedó. Mientras tanto, la historia
+          clínica se consulta entera pero no se modifica.
+        </Alert>
+      ) : soloLectura && (
+        <Alert severity="info" sx={{ mb: 2.5 }}>
+          <strong>{conPausa ? 'Paciente dado de alta' : 'Paciente dado de baja'}</strong>
           {paciente.fecha_baja ? ` el ${formatearFecha(paciente.fecha_baja)}` : ''}. Su
           historia clínica se sigue consultando entera —objetivos archivados y todas
           sus sesiones— pero no se puede modificar. Para retomar el tratamiento,
           reactivalo.
+        </Alert>
+      )}
+      {verMinimo && !soloLectura && activos.length < 3 && (
+        <Alert severity="warning" sx={{ mb: 2.5 }}>
+          <strong>Faltan {3 - activos.length} objetivo(s) activo(s).</strong> Un paciente en
+          tratamiento tiene que tener al menos 3. Mientras no llegue a 3 no se pueden
+          archivar objetivos.
         </Alert>
       )}
       {avisarNoEsMio && (
@@ -658,9 +703,9 @@ export default function PacienteFicha() {
 
       <DialogoConfirmacion
         abierto={Boolean(confirmandoBaja)}
-        titulo="¿Dar de baja a este paciente?"
-        etiquetaConfirmar="Dar de baja"
-        etiquetaProcesando="Dando de baja…"
+        titulo={conPausa ? '¿Dar el alta a este paciente?' : '¿Dar de baja a este paciente?'}
+        etiquetaConfirmar={conPausa ? 'Dar el alta' : 'Dar de baja'}
+        etiquetaProcesando={conPausa ? 'Dando el alta…' : 'Dando de baja…'}
         procesando={procesandoEstado}
         // Mientras no lleguen los números no se puede confirmar: el sentido
         // del diálogo es decir qué va a pasar, y sin ellos no lo dice.
@@ -692,6 +737,35 @@ export default function PacienteFicha() {
       </DialogoConfirmacion>
 
       <DialogoConfirmacion
+        abierto={pausando}
+        titulo="Pausar el tratamiento"
+        etiquetaConfirmar="Pausar"
+        etiquetaProcesando="Pausando…"
+        procesando={procesandoEstado}
+        confirmarDeshabilitado={!motivoPausa.trim()}
+        onConfirmar={confirmarPausa}
+        onCancelar={() => { setPausando(false); setMotivoPausa(''); }}
+        extra={(
+          <TextField
+            label="Motivo de la baja"
+            value={motivoPausa}
+            onChange={(e) => setMotivoPausa(e.target.value)}
+            inputProps={{ maxLength: 200 }}
+            helperText={`${motivoPausa.length}/200`}
+            fullWidth
+            required
+            autoFocus
+            sx={{ mt: 2 }}
+          />
+        )}
+      >
+        El tratamiento se interrumpe con la fecha de hoy y el paciente deja de
+        figurar en los listados. No se archiva ningún objetivo ni se cierra la
+        asignación: al reactivarlo retoma donde quedó. Si el tratamiento terminó,
+        usá «Dar el alta».
+      </DialogoConfirmacion>
+
+      <DialogoConfirmacion
         abierto={confirmandoReactivacion}
         titulo="¿Reactivar a este paciente?"
         etiquetaConfirmar="Reactivar"
@@ -701,9 +775,15 @@ export default function PacienteFicha() {
         onCancelar={() => setConfirmandoReactivacion(false)}
       >
         Vuelve a estar en tratamiento y su ficha se puede volver a editar.
-        <strong> Los objetivos archivados no se reactivan solos:</strong> elegí
-        cuáles retomar creándolos de nuevo. Las asignaciones cerradas tampoco se
-        reabren.
+        {conPausa && paciente.tipo_cierre === 'pausa' ? (
+          <> Como estaba en pausa, sus objetivos y su asignación siguen como estaban.</>
+        ) : (
+          <>
+            <strong> Los objetivos archivados no se reactivan solos:</strong> elegí
+            cuáles retomar creándolos de nuevo. Las asignaciones cerradas tampoco se
+            reabren.
+          </>
+        )}
       </DialogoConfirmacion>
 
       <ModalDetalleSesion

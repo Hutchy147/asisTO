@@ -158,6 +158,9 @@ CAMPO_POR_FRAGMENTO = (
     ('ya tiene evoluciones registradas', 'id_paciente'),
 
     # --- Pacientes ---
+    ('necesita un motivo', 'motivo'),
+    ('motivo de la baja no puede superar', 'motivo'),
+    ('tiene que mantener al menos 3 objetivos', 'id_objetivo'),
     ('numero de historia', 'nro_historia'),
     ('ya existe un paciente con ese numero', 'nro_historia'),
     ('el paciente indicado no existe', 'id_paciente'),

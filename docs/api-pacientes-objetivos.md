@@ -484,3 +484,42 @@ Estados que las pantallas tienen que contemplar:
    interfaz debería explicar que contra un archivado sí se puede.
 5. **401 vs 403** — el primero va al login, el segundo a la pantalla de 403.
 6. **Paciente de baja** — mensaje distinto al de inexistente.
+
+
+---
+
+## Entrega 3 — Pausa, alta y mínimo de 3 objetivos
+
+### `POST /api/pacientes/{id}/baja` (cambia el cuerpo)
+
+Ahora el cuerpo es obligatorio:
+
+| Campo | Regla |
+|---|---|
+| `tipo` | `"pausa"` o `"alta"`. Sin él → `400`, `campo: "tipo"`. |
+| `motivo` | Solo para `pausa`: obligatorio, hasta 200 caracteres. → `400`, `campo: "motivo"`. |
+
+- **`pausa`** (`p_pausar_paciente`): el tratamiento se interrumpe y se puede
+  retomar. NO archiva objetivos ni cierra la asignación. Respuesta con
+  `objetivos_archivados: 0` y `asignaciones_cerradas: 0`.
+- **`alta`** (`p_baja_paciente`, sin cambios de comportamiento): archiva los
+  objetivos activos y cierra las asignaciones vigentes.
+
+`POST /pacientes/{id}/reactivacion` limpia `tipo_cierre` y `motivo_baja`.
+
+### Campos nuevos del paciente
+
+`tipo_cierre` (`"pausa"`, `"alta"` o `null` si está activo) y `motivo_baja`.
+Una baja anterior a la Entrega 3 (sin tipo) se devuelve como `"alta"`.
+
+### Mínimo de objetivos
+
+- Regla en el trigger `trg_objetivos_limite_activos_update`: archivar un
+  objetivo de un paciente **en tratamiento** que deje menos de 3 activos se
+  rechaza (`400`, `campo: "id_objetivo"`: «El paciente tiene que mantener al
+  menos 3 objetivos activos: cree el reemplazo antes de archivar este»).
+  No rige con el paciente de baja, así que el alta no se frena.
+- Los pacientes que ya tienen menos de 3 siguen siendo válidos: no se les
+  exige crear, solo no pueden archivar hasta llegar a 3.
+- `GET /pacientes/{id}` trae `minimo_objetivos` (3) y `faltan_objetivos`;
+  el listado trae `faltan_objetivos` por paciente.
