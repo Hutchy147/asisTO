@@ -147,7 +147,7 @@ export default function Panel() {
       ? [{
           clave: 'renglones',
           etiqueta: 'Notas',
-          ancho: 190,
+          ancho: 240,
           render: (s) => {
             const r = s.renglones ?? { plan: 0, registro: 0, arrastre: 0 };
             const partes = [
@@ -155,11 +155,11 @@ export default function Panel() {
               r.registro > 0 && `registro ${r.registro}`,
             ].filter(Boolean);
             return (
-              <Box sx={{ fontSize: 12, color: 'text.secondary' }}>
-                {partes.length ? partes.join(' · ') : '—'}
+              <Box sx={{ fontSize: 12, color: 'text.secondary', whiteSpace: 'nowrap' }}>
+                {partes.length ? partes.join(' · ') : (r.arrastre > 0 ? '' : '—')}
                 {r.arrastre > 0 && (
-                  <Box component="span" sx={{ ml: 0.75, fontWeight: 600, color: 'text.primary' }}>
-                    · arrastra {r.arrastre}
+                  <Box component="span" sx={{ ml: partes.length ? 0.75 : 0, fontWeight: 600, color: 'text.primary' }}>
+                    {partes.length ? '· ' : ''}arrastra {r.arrastre}
                   </Box>
                 )}
               </Box>
