@@ -143,6 +143,8 @@ export const CAPACIDADES = {
 
   // --- Versión 3 (05/10) ---
   'calendario.agenda': { entrega: 3, nombre: 'calendario solo para agendar, lunes a viernes, 45 minutos' },
+  // Agenda semanal recurrente: los turnos fijos de la semana y su generación.
+  'agenda.recurrente': { entrega: 3, nombre: 'agenda semanal recurrente' },
   'auth.recuperar': { entrega: 3, nombre: 'recuperar contraseña y bloqueo de intentos' },
   'notas.campo': { entrega: 3, nombre: 'notas de campo' },
   // VENÍA EN 4 Y PASA A 3: el reparto de seis pone la auditoría de accesos en

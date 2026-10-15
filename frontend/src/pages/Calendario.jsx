@@ -18,6 +18,7 @@ import Typography from '@mui/material/Typography';
 import ModalCargarEvolucion from '../components/evoluciones/ModalCargarEvolucion.jsx';
 import AppLayout from '../components/layout/AppLayout.jsx';
 import ModalAgendarSesion from '../components/sesiones/ModalAgendarSesion.jsx';
+import ModalAgendaSemanal from '../components/sesiones/ModalAgendaSemanal.jsx';
 import ModalDetalleSesion from '../components/sesiones/ModalDetalleSesion.jsx';
 import ModalEditarSesion from '../components/sesiones/ModalEditarSesion.jsx';
 import ModalRegistrarSesion from '../components/sesiones/ModalRegistrarSesion.jsx';
@@ -170,6 +171,7 @@ function Leyenda() {
 export default function Calendario() {
   const [lunes, setLunes] = useState(() => inicioDeSemana(new Date()));
   const [modalSesion, setModalSesion] = useState(null); // null | {fecha, hora}
+  const [agendaSemanal, setAgendaSemanal] = useState(false);
   const [idEvolucion, setIdEvolucion] = useState(null);
   const [idDetalle, setIdDetalle] = useState(null);
   const [sesionAEditar, setSesionAEditar] = useState(null);
@@ -237,9 +239,16 @@ export default function Calendario() {
       titulo="Calendario"
       subtitulo={`${formatearFecha(desde)} al ${formatearFecha(hasta)}${sesiones.datos ? ` · ${sesiones.datos.total} sesiones` : ''}`}
       acciones={
-        <Button variant="contained" onClick={() => abrirAlta()}>
-          {soloAgenda ? 'Agendar sesión' : 'Registrar sesión'}
-        </Button>
+        <>
+          {hayCapacidad('agenda.recurrente') && (
+            <Button variant="outlined" onClick={() => setAgendaSemanal(true)} sx={{ mr: 1 }}>
+              Agenda semanal
+            </Button>
+          )}
+          <Button variant="contained" onClick={() => abrirAlta()}>
+            {soloAgenda ? 'Agendar sesión' : 'Registrar sesión'}
+          </Button>
+        </>
       }
     >
       {/* --- Navegación entre semanas ---
@@ -585,6 +594,15 @@ export default function Calendario() {
             recargar();
             setAviso(respuesta?.mensaje ?? 'Sesión registrada correctamente');
           }}
+        />
+      )}
+
+      {hayCapacidad('agenda.recurrente') && agendaSemanal && (
+        <ModalAgendaSemanal
+          abierto
+          pacientes={pacientesAsignados(pacientes.datos?.pacientes)}
+          onCerrar={() => setAgendaSemanal(false)}
+          onGenerada={recargar}
         />
       )}
 

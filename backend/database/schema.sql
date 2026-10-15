@@ -523,6 +523,44 @@ CREATE TABLE sesion_renglones (
 ) ENGINE=InnoDB;
 
 
+-- ---------------------------------------------------------------------
+-- AGENDA_RECURRENTE — agenda semanal recurrente (Entrega 3)
+--
+-- La plantilla de la semana de una terapeuta: "los lunes a las 9 viene
+-- este paciente". NO es una sesion: no cuenta como asistencia ni aparece en
+-- los listados de sesiones. Sirve para GENERAR sesiones futuras (de lunes a
+-- viernes) con el servicio, que las agenda una por una a traves de
+-- p_registrar_sesion, asi que superposicion, paciente de baja y asignacion
+-- siguen aplicandolas el procedimiento y los triggers.
+--
+-- dia_semana: 1 = lunes ... 5 = viernes. Sabado y domingo no se agendan.
+-- Borrar una plantilla la desactiva (activo = FALSE): las sesiones ya
+-- generadas no se tocan.
+-- ---------------------------------------------------------------------
+CREATE TABLE agenda_recurrente (
+  id              INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  id_terapeuta    INT UNSIGNED NOT NULL,
+  id_paciente     INT UNSIGNED NOT NULL,
+  dia_semana      TINYINT UNSIGNED NOT NULL,
+  hora_inicio     TIME         NOT NULL,
+  hora_fin        TIME         NOT NULL,
+  activo          BOOLEAN      NOT NULL DEFAULT TRUE,
+  fecha_creacion  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (id),
+  KEY idx_agenda_rec_terapeuta (id_terapeuta, activo, dia_semana),
+  KEY idx_agenda_rec_paciente (id_paciente),
+  CONSTRAINT fk_agenda_rec_terapeuta
+    FOREIGN KEY (id_terapeuta) REFERENCES terapeutas (id)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_agenda_rec_paciente
+    FOREIGN KEY (id_paciente) REFERENCES pacientes (id)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT chk_agenda_rec_dia CHECK (dia_semana BETWEEN 1 AND 5),
+  CONSTRAINT chk_agenda_rec_horas CHECK (hora_fin > hora_inicio)
+) ENGINE=InnoDB;
+
+
 -- =====================================================================
 -- 6. INFORMES, PLANTILLAS Y AUDITORIA (Entrega 4)
 -- =====================================================================

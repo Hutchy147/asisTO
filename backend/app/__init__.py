@@ -109,6 +109,7 @@ def registrar_manejadores_de_error(app):
 
 def register_blueprints(app):
     """Registra los blueprints de cada modulo bajo el prefijo /api."""
+    from app.routes.agenda_recurrente import agenda_recurrente_bp
     from app.routes.asignaciones import asignaciones_bp
     from app.routes.renglones import renglones_bp
     from app.routes.auth import auth_bp
@@ -124,6 +125,7 @@ def register_blueprints(app):
     app.register_blueprint(pacientes_bp, url_prefix='/api')
     app.register_blueprint(asignaciones_bp, url_prefix='/api')
     app.register_blueprint(renglones_bp, url_prefix='/api')
+    app.register_blueprint(agenda_recurrente_bp, url_prefix='/api')
     app.register_blueprint(objetivos_bp, url_prefix='/api')
     app.register_blueprint(sesiones_bp, url_prefix='/api')
     app.register_blueprint(evoluciones_bp, url_prefix='/api')
