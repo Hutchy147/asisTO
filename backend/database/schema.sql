@@ -481,6 +481,48 @@ CREATE TABLE sesiones_etiquetas (
 ) ENGINE=InnoDB;
 
 
+-- ---------------------------------------------------------------------
+-- RENGLONES DE LA SESION — notas de campo (Entrega 3)
+--
+-- La unidad de escritura clinica de la terapeuta es el RENGLON: fragmentos
+-- de tres a ocho palabras, no parrafos (relevamiento con la TO, cuaderno en
+-- fotos). Cada renglon es una fila propia, y eso no es estilo sino modelo:
+-- sin filas no se puede arrastrar lo pendiente ni destacar un fragmento.
+--
+-- `momento` separa los dos tiempos de UN mismo objeto, la sesion:
+--   'plan'     lo que se piensa hacer. Se puede escribir antes, y despues.
+--   'registro' lo que paso. Solo cuando la sesion ya ocurrio y no fue ausencia.
+-- `cierre` solo existe para el plan: NULL = pendiente (se ARRASTRA a la
+-- proxima sesion del mismo paciente), 'hecho' o 'descartado' = resuelto.
+-- `destacado` es la marca del resaltador del cuaderno: un booleano, no
+-- colores libres (decision de producto).
+--
+-- Se escribe SOLO por p_agregar_renglon / p_editar_renglon / p_cerrar_renglon
+-- / p_borrar_renglon. Contenido clinico: RRHH no lo ve.
+-- ---------------------------------------------------------------------
+CREATE TABLE sesion_renglones (
+  id              INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  id_sesion       INT UNSIGNED NOT NULL,
+  momento         ENUM('plan','registro') NOT NULL,
+  texto           VARCHAR(160) NOT NULL,
+  destacado       BOOLEAN      NOT NULL DEFAULT FALSE,
+  cierre          ENUM('hecho','descartado') NULL DEFAULT NULL,
+  orden           SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+  fecha_creacion  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (id),
+  KEY idx_renglones_sesion (id_sesion, momento, orden),
+  KEY idx_renglones_pendientes (momento, cierre),
+  CONSTRAINT fk_renglones_sesion
+    FOREIGN KEY (id_sesion) REFERENCES sesiones (id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT chk_renglones_cierre_solo_plan
+    CHECK (cierre IS NULL OR momento = 'plan'),
+  CONSTRAINT chk_renglones_texto
+    CHECK (CHAR_LENGTH(TRIM(texto)) > 0)
+) ENGINE=InnoDB;
+
+
 -- =====================================================================
 -- 6. INFORMES, PLANTILLAS Y AUDITORIA (Entrega 4)
 -- =====================================================================
@@ -973,6 +1015,7 @@ BEGIN
   DECLARE v_hora_fin     TIME         DEFAULT NULL;
   DECLARE v_superpuestas INT UNSIGNED DEFAULT 0;
   DECLARE v_evoluciones  INT UNSIGNED DEFAULT 0;
+  DECLARE v_renglones    INT UNSIGNED DEFAULT 0;
   DECLARE v_lock         INT UNSIGNED DEFAULT NULL;
   DECLARE v_activo_pac   BOOLEAN      DEFAULT NULL;
   DECLARE v_fecha_baja   DATE         DEFAULT NULL;
@@ -1043,6 +1086,22 @@ BEGIN
       SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT =
           'No se puede marcar la sesion como ausencia: ya tiene evoluciones cargadas';
+    END IF;
+
+    -- Entrega 3: "Ausente" cierra la sesion, y una sesion que ya tiene
+    -- registro escrito no puede pasar a ausencia (mismo criterio que con las
+    -- evoluciones). El PLAN no cuenta: una sesion planificada a la que el
+    -- paciente falto conserva su plan, que se arrastra. Ultimo en el orden
+    -- de locks: sesion_renglones va despues de evoluciones.
+    SELECT COUNT(*) INTO v_renglones
+      FROM sesion_renglones
+     WHERE id_sesion = OLD.id AND momento = 'registro'
+       FOR SHARE;
+
+    IF v_renglones > 0 THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+          'No se puede marcar la sesion como ausencia: ya tiene renglones de registro';
     END IF;
   END IF;
 
@@ -3359,6 +3418,304 @@ BEGIN
   IF p_resultado IN ('exitoso', 'fallido', 'bloqueado') THEN
     INSERT INTO auditoria_accesos (id_usuario, email, resultado, ip)
     VALUES (p_id_usuario, p_email, p_resultado, p_ip);
+  END IF;
+END$$
+
+
+-- ---------------------------------------------------------------------
+-- Renglones de la sesion — Entrega 3 (ver CREATE TABLE sesion_renglones)
+--
+-- ORDEN DE LOCKS: sesiones -> sesion_renglones, el canonico (sesion_renglones
+-- va despues de evoluciones). Estos procedimientos no escriben `sesiones`: la
+-- fila se toma solo para leerla y para SERIALIZAR a quienes escriben renglones
+-- de una misma sesion, asi el tope por sesion es exacto. Es UN solo lock sobre
+-- sesiones y no se espera a nadie mientras se lo tiene: no puede cerrar un ciclo.
+--
+-- Autoria: solo el terapeuta de la sesion escribe renglones; la lectura es
+-- abierta (ver renglones_service).
+-- ---------------------------------------------------------------------
+CREATE PROCEDURE p_agregar_renglon (
+  IN  p_id_sesion     INT UNSIGNED,
+  IN  p_id_terapeuta  INT UNSIGNED,
+  IN  p_momento       VARCHAR(10),
+  IN  p_texto         VARCHAR(500),
+  IN  p_destacado     BOOLEAN,
+  OUT p_id_renglon    INT UNSIGNED,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_texto      VARCHAR(500)  DEFAULT TRIM(IFNULL(p_texto, ''));
+  DECLARE v_ter        INT UNSIGNED  DEFAULT NULL;
+  DECLARE v_estado     VARCHAR(12)   DEFAULT NULL;
+  DECLARE v_fecha      DATE          DEFAULT NULL;
+  DECLARE v_cantidad   INT UNSIGNED  DEFAULT 0;
+  DECLARE v_orden      INT UNSIGNED  DEFAULT 1;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_id_renglon = NULL;
+    SET p_mensaje = 'No se pudo guardar el renglon por un error interno';
+  END;
+
+  SET p_id_renglon = NULL;
+
+  IF p_momento IS NULL OR p_momento NOT IN ('plan', 'registro') THEN
+    SET p_mensaje = 'El momento del renglon tiene que ser plan o registro';
+  ELSEIF v_texto = '' THEN
+    SET p_mensaje = 'El renglon no puede estar vacio';
+  ELSEIF CHAR_LENGTH(v_texto) > 160 THEN
+    SET p_mensaje = 'El renglon no puede superar los 160 caracteres';
+  ELSE
+    START TRANSACTION;
+
+    SELECT id_terapeuta, estado, fecha INTO v_ter, v_estado, v_fecha
+      FROM sesiones
+     WHERE id = p_id_sesion
+     FOR UPDATE;
+
+    IF v_ter IS NULL THEN
+      ROLLBACK;
+      SET p_mensaje = 'La sesion indicada no existe';
+    ELSEIF v_ter <> p_id_terapeuta THEN
+      ROLLBACK;
+      SET p_mensaje = 'Solo el terapeuta que atendio la sesion puede cargarle renglones';
+    ELSEIF p_momento = 'registro' AND v_estado = 'ausencia' THEN
+      ROLLBACK;
+      SET p_mensaje = 'La sesion esta marcada como ausencia: no admite registro';
+    ELSEIF p_momento = 'registro' AND v_fecha > CURRENT_DATE THEN
+      ROLLBACK;
+      SET p_mensaje = 'La sesion todavia no ocurrio: solo admite plan';
+    ELSE
+      SELECT COUNT(*), IFNULL(MAX(orden), 0) + 1 INTO v_cantidad, v_orden
+        FROM sesion_renglones
+       WHERE id_sesion = p_id_sesion AND momento = p_momento;
+
+      IF v_cantidad >= 30 THEN
+        ROLLBACK;
+        SET p_mensaje = CONCAT('La sesion ya tiene 30 renglones de ', p_momento);
+      ELSE
+        INSERT INTO sesion_renglones (id_sesion, momento, texto, destacado, orden)
+        VALUES (p_id_sesion, p_momento, v_texto, IFNULL(p_destacado, FALSE), v_orden);
+        SET p_id_renglon = LAST_INSERT_ID();
+        COMMIT;
+        SET p_mensaje = 'Renglon guardado correctamente';
+      END IF;
+    END IF;
+  END IF;
+END$$
+
+
+-- Edita texto y marca. No mueve el renglon de momento ni de sesion.
+CREATE PROCEDURE p_editar_renglon (
+  IN  p_id_renglon    INT UNSIGNED,
+  IN  p_id_terapeuta  INT UNSIGNED,
+  IN  p_texto         VARCHAR(500),
+  IN  p_destacado     BOOLEAN,
+  OUT p_editado       BOOLEAN,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_texto   VARCHAR(500) DEFAULT TRIM(IFNULL(p_texto, ''));
+  DECLARE v_sesion  INT UNSIGNED DEFAULT NULL;
+  DECLARE v_ter     INT UNSIGNED DEFAULT NULL;
+  DECLARE v_existe  INT UNSIGNED DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_editado = FALSE;
+    SET p_mensaje = 'No se pudo editar el renglon por un error interno';
+  END;
+
+  SET p_editado = FALSE;
+
+  IF v_texto = '' THEN
+    SET p_mensaje = 'El renglon no puede estar vacio';
+  ELSEIF CHAR_LENGTH(v_texto) > 160 THEN
+    SET p_mensaje = 'El renglon no puede superar los 160 caracteres';
+  ELSE
+    -- La sesion se conoce ANTES del lock para respetar el orden (sesiones
+    -- primero); la lectura es sin lock y se REPITE adentro.
+    SELECT id_sesion INTO v_sesion FROM sesion_renglones WHERE id = p_id_renglon;
+
+    IF v_sesion IS NULL THEN
+      SET p_mensaje = 'El renglon indicado no existe';
+    ELSE
+      START TRANSACTION;
+
+      SELECT id_terapeuta INTO v_ter FROM sesiones WHERE id = v_sesion FOR UPDATE;
+
+      SELECT id INTO v_existe FROM sesion_renglones WHERE id = p_id_renglon FOR UPDATE;
+
+      IF v_existe IS NULL THEN
+        ROLLBACK;
+        SET p_mensaje = 'El renglon indicado no existe';
+      ELSEIF v_ter <> p_id_terapeuta THEN
+        ROLLBACK;
+        SET p_mensaje = 'Solo el terapeuta que atendio la sesion puede editar sus renglones';
+      ELSE
+        UPDATE sesion_renglones
+           SET texto = v_texto, destacado = IFNULL(p_destacado, FALSE)
+         WHERE id = p_id_renglon;
+        COMMIT;
+        SET p_editado = TRUE;
+        SET p_mensaje = 'Renglon actualizado correctamente';
+      END IF;
+    END IF;
+  END IF;
+END$$
+
+
+-- Cierra un renglon de PLAN ('hecho' o 'descartado') o lo reabre ('').
+CREATE PROCEDURE p_cerrar_renglon (
+  IN  p_id_renglon    INT UNSIGNED,
+  IN  p_id_terapeuta  INT UNSIGNED,
+  IN  p_cierre        VARCHAR(10),
+  OUT p_cerrado       BOOLEAN,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_sesion   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_ter      INT UNSIGNED DEFAULT NULL;
+  DECLARE v_momento  VARCHAR(10)  DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_cerrado = FALSE;
+    SET p_mensaje = 'No se pudo cerrar el renglon por un error interno';
+  END;
+
+  SET p_cerrado = FALSE;
+
+  IF p_cierre IS NULL OR p_cierre NOT IN ('hecho', 'descartado', '') THEN
+    SET p_mensaje = 'El cierre tiene que ser hecho, descartado o vacio (para reabrir)';
+  ELSE
+    SELECT id_sesion INTO v_sesion FROM sesion_renglones WHERE id = p_id_renglon;
+
+    IF v_sesion IS NULL THEN
+      SET p_mensaje = 'El renglon indicado no existe';
+    ELSE
+      START TRANSACTION;
+
+      SELECT id_terapeuta INTO v_ter FROM sesiones WHERE id = v_sesion FOR UPDATE;
+
+      SELECT momento INTO v_momento FROM sesion_renglones WHERE id = p_id_renglon FOR UPDATE;
+
+      IF v_momento IS NULL THEN
+        ROLLBACK;
+        SET p_mensaje = 'El renglon indicado no existe';
+      ELSEIF v_ter <> p_id_terapeuta THEN
+        ROLLBACK;
+        SET p_mensaje = 'Solo el terapeuta que atendio la sesion puede cerrar sus renglones';
+      ELSEIF v_momento <> 'plan' THEN
+        ROLLBACK;
+        SET p_mensaje = 'Solo los renglones de plan se cierran';
+      ELSE
+        UPDATE sesion_renglones
+           SET cierre = NULLIF(p_cierre, '')
+         WHERE id = p_id_renglon;
+        COMMIT;
+        SET p_cerrado = TRUE;
+        SET p_mensaje = IF(p_cierre = '', 'Renglon reabierto', 'Renglon cerrado');
+      END IF;
+    END IF;
+  END IF;
+END$$
+
+
+CREATE PROCEDURE p_borrar_renglon (
+  IN  p_id_renglon    INT UNSIGNED,
+  IN  p_id_terapeuta  INT UNSIGNED,
+  OUT p_borrado       BOOLEAN,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_sesion   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_ter      INT UNSIGNED DEFAULT NULL;
+  DECLARE v_existe   INT UNSIGNED DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_borrado = FALSE;
+    SET p_mensaje = 'No se pudo borrar el renglon por un error interno';
+  END;
+
+  SET p_borrado = FALSE;
+
+  SELECT id_sesion INTO v_sesion FROM sesion_renglones WHERE id = p_id_renglon;
+
+  IF v_sesion IS NULL THEN
+    SET p_mensaje = 'El renglon indicado no existe';
+  ELSE
+    START TRANSACTION;
+
+    SELECT id_terapeuta INTO v_ter FROM sesiones WHERE id = v_sesion FOR UPDATE;
+
+    SELECT id INTO v_existe FROM sesion_renglones WHERE id = p_id_renglon FOR UPDATE;
+
+    IF v_existe IS NULL THEN
+      ROLLBACK;
+      SET p_mensaje = 'El renglon indicado no existe';
+    ELSEIF v_ter <> p_id_terapeuta THEN
+      ROLLBACK;
+      SET p_mensaje = 'Solo el terapeuta que atendio la sesion puede borrar sus renglones';
+    ELSE
+      DELETE FROM sesion_renglones WHERE id = p_id_renglon;
+      COMMIT;
+      SET p_borrado = TRUE;
+      SET p_mensaje = 'Renglon borrado';
+    END IF;
   END IF;
 END$$
 

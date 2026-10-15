@@ -19,9 +19,10 @@ from app.models.evolucion import Evolucion
 from app.models.observacion_rrhh import ObservacionRrhh
 from app.models.asignacion import Asignacion
 from app.models.auditoria_acceso import AuditoriaAcceso
+from app.models.sesion_renglon import SesionRenglon
 
 __all__ = [
     'Usuario', 'Terapeuta', 'Rrhh', 'Familiar', 'Paciente',
     'ObjetivoTerapeutico', 'Sesion', 'Evolucion', 'ObservacionRrhh', 'Asignacion',
-    'AuditoriaAcceso',
+    'AuditoriaAcceso', 'SesionRenglon',
 ]

@@ -237,6 +237,40 @@ def listar_por_rango(desde, hasta):
     }
 
 
+def _resumen_de_renglones(sesiones):
+    """
+    Por sesion: cuantos renglones de plan y de registro tiene, y cuantos
+    renglones de plan PENDIENTES arrastra de sesiones anteriores del mismo
+    paciente (mismo terapeuta). Dos consultas fijas, no una por sesion.
+    """
+    if not sesiones:
+        return {}
+    ids = [s.id for s in sesiones]
+    resumen = {s.id: {'plan': 0, 'registro': 0, 'arrastre': 0} for s in sesiones}
+
+    filas = db.session.execute(
+        text(
+            'SELECT id_sesion, momento, COUNT(*) FROM sesion_renglones '
+            'WHERE id_sesion IN :ids GROUP BY id_sesion, momento'
+        ).bindparams(bindparam('ids', expanding=True)),
+        {'ids': ids},
+    ).fetchall()
+    for id_sesion, momento, cantidad in filas:
+        resumen[id_sesion][momento] = int(cantidad)
+
+    for sesion in sesiones:
+        resumen[sesion.id]['arrastre'] = int(db.session.execute(
+            text(
+                'SELECT COUNT(*) FROM sesion_renglones r '
+                'JOIN sesiones s2 ON s2.id = r.id_sesion '
+                "WHERE r.momento = 'plan' AND r.cierre IS NULL "
+                'AND s2.id_paciente = :p AND s2.id_terapeuta = :t AND s2.fecha < :f'
+            ),
+            {'p': sesion.id_paciente, 't': sesion.id_terapeuta, 'f': sesion.fecha},
+        ).scalar() or 0)
+    return resumen
+
+
 def listar_de_hoy():
     terapeuta = terapeuta_actual()
     hoy = dt.date.today()
@@ -248,9 +282,14 @@ def listar_de_hoy():
         .all()
     )
 
+    datos = _serializar_lista(sesiones)
+    resumen = _resumen_de_renglones(sesiones)
+    for item in datos:
+        item['renglones'] = resumen.get(item['id'])
+
     return {
         'fecha': hoy.isoformat(),
-        'sesiones': _serializar_lista(sesiones),
+        'sesiones': datos,
         'total': len(sesiones),
     }
 

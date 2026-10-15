@@ -178,6 +178,16 @@ CAMPO_POR_FRAGMENTO = (
     # ausencia' tampoco tiene entrada en esta tabla.
     ('no tiene asignado a este paciente', 'id_paciente'),
 
+    # --- Renglones de la sesion (Entrega 3) ---
+    ('renglon no puede estar vacio', 'texto'),
+    ('renglon no puede superar', 'texto'),
+    ('ya tiene renglones de registro', 'estado'),
+    ('ya tiene 30 renglones', 'texto'),
+    ('momento del renglon', 'momento'),
+    ('no admite registro', 'momento'),
+    ('todavia no ocurrio', 'momento'),
+    ('el cierre tiene que ser', 'cierre'),
+
     # --- Asignaciones (HDU 11) ---
     ('ya tiene una asignacion vigente', 'id_terapeuta'),
     ('no puede empezar en una fecha futura', 'fecha_desde'),

@@ -16,6 +16,8 @@ import SesionEstadoChip from '../components/data/SesionEstadoChip.jsx';
 import StatTile from '../components/data/StatTile.jsx';
 import ModalCargarEvolucion from '../components/evoluciones/ModalCargarEvolucion.jsx';
 import AppLayout from '../components/layout/AppLayout.jsx';
+import ModalRegistroDia from '../components/sesiones/ModalRegistroDia.jsx';
+import { hayCapacidad } from '../config/entregas.js';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { listarPacientes } from '../services/pacientesService.js';
@@ -87,7 +89,14 @@ function Bloque({ titulo, descripcion, acciones, children }) {
 export default function Panel() {
   const navigate = useNavigate();
   const [idEvolucion, setIdEvolucion] = useState(null);
+  const [idRegistro, setIdRegistro] = useState(null);
   const [aviso, setAviso] = useState('');
+
+  // Entrega 3 (`notas.campo`): una sesión se abre en el REGISTRO DEL DÍA
+  // (plan, registro, ausente, arrastre) y desde ahí se carga la evolución.
+  // Antes se abría directo la carga de evolución.
+  const conRegistro = hayCapacidad('notas.campo');
+  const abrirSesion = (id) => (conRegistro ? setIdRegistro(id) : setIdEvolucion(id));
 
   const semana = useMemo(semanaEnCurso, []);
 
@@ -134,6 +143,30 @@ export default function Panel() {
       etiqueta: 'Paciente',
       render: (s) => <PersonCell nombre={s.paciente.nombre_completo} meta={s.paciente.nro_historia} />,
     },
+    ...(conRegistro
+      ? [{
+          clave: 'renglones',
+          etiqueta: 'Notas',
+          ancho: 190,
+          render: (s) => {
+            const r = s.renglones ?? { plan: 0, registro: 0, arrastre: 0 };
+            const partes = [
+              r.plan > 0 && `plan ${r.plan}`,
+              r.registro > 0 && `registro ${r.registro}`,
+            ].filter(Boolean);
+            return (
+              <Box sx={{ fontSize: 12, color: 'text.secondary' }}>
+                {partes.length ? partes.join(' · ') : '—'}
+                {r.arrastre > 0 && (
+                  <Box component="span" sx={{ ml: 0.75, fontWeight: 600, color: 'text.primary' }}>
+                    · arrastra {r.arrastre}
+                  </Box>
+                )}
+              </Box>
+            );
+          },
+        }]
+      : []),
     {
       clave: 'objetivos',
       etiqueta: 'Objetivos',
@@ -223,7 +256,7 @@ export default function Panel() {
                 <EstadoVacio
                   plano
                   titulo="No hay sesiones hoy"
-                  descripcion="Es lo normal un fin de semana o un día sin agenda. Podés registrar una desde el calendario."
+                  descripcion="Es lo normal un fin de semana o un día sin agenda. Podés agendar una desde el calendario."
                   acciones={
                     <Button variant="outlined" onClick={() => navigate('/calendario')}>
                       Ir al calendario
@@ -234,7 +267,7 @@ export default function Panel() {
                 <DataTable
                   columnas={columnasHoy}
                   filas={hoy.datos.sesiones}
-                  onAbrirFila={(s) => setIdEvolucion(s.id)}
+                  onAbrirFila={(s) => abrirSesion(s.id)}
                   etiquetaFila={(s) => `Abrir la sesión de ${s.paciente.nombre_completo}`}
                 />
               )
@@ -273,8 +306,8 @@ export default function Panel() {
                         key={sesion.id}
                         component="button"
                         type="button"
-                        aria-label={`Cargar evolución de ${sesion.paciente.nombre_completo}`}
-                        onClick={() => setIdEvolucion(sesion.id)}
+                        aria-label={`${conRegistro ? 'Abrir' : 'Cargar evolución de'} ${sesion.paciente.nombre_completo}`}
+                        onClick={() => abrirSesion(sesion.id)}
                         sx={(t) => ({
                           display: 'flex',
                           alignItems: 'center',
@@ -386,6 +419,21 @@ export default function Panel() {
           </Box>
         </Grid>
       </Grid>
+
+      {conRegistro && (
+        <ModalRegistroDia
+          key={`registro-${idRegistro ?? 'sin-sesion'}`}
+          abierto={Boolean(idRegistro)}
+          idSesion={idRegistro}
+          onCerrar={() => setIdRegistro(null)}
+          onCambio={recargarTodo}
+          // Un diálogo a la vez: se cierra el registro y se abre la carga.
+          onCargarEvolucion={(id) => {
+            setIdRegistro(null);
+            setIdEvolucion(id);
+          }}
+        />
+      )}
 
       <ModalCargarEvolucion
         key={idEvolucion ?? 'sin-sesion'}
