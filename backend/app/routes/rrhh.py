@@ -12,6 +12,7 @@
 
 from flask import Blueprint, jsonify, request
 
+from app.services.auditoria_service import listar_accesos
 from app.services.rrhh_service import (
     listar_observaciones, registrar_observacion, reporte_sesiones,
 )
@@ -75,3 +76,22 @@ def crear_observacion(id_sesion):
         # p_mensaje del procedimiento, propagado tal cual
         'mensaje': mensaje,
     }), 201
+
+
+@rrhh_bp.get('/rrhh/auditoria-accesos')
+@requiere_rol('rrhh')
+def auditoria_accesos():
+    """
+    Auditoria de accesos: quien intento entrar, cuando y con que resultado.
+
+    Query: desde, hasta (AAAA-MM-DD; por omision los ultimos 7 dias),
+    resultado (exitoso|fallido|bloqueado), email (parcial), limite (max 500).
+    No expone contrasenas: la tabla nunca las guarda.
+    """
+    return jsonify(listar_accesos(
+        request.args.get('desde'),
+        request.args.get('hasta'),
+        request.args.get('resultado'),
+        request.args.get('email'),
+        request.args.get('limite'),
+    )), 200

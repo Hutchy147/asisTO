@@ -144,5 +144,66 @@ class SeguridadApi(BaseApi):
         self.assertNotIn('token_desarrollo', self._pedir(EMAILS['familiar']).get_json())
 
 
+class AuditoriaAccesosApi(BaseApi):
+    def setUp(self):
+        self.cliente = self.app.test_client()
+        self.sql("DELETE FROM auditoria_accesos")
+        self.sql("UPDATE usuarios SET intentos_fallidos=0, bloqueado_hasta=NULL")
+
+    def tearDown(self):
+        self.sql("UPDATE usuarios SET intentos_fallidos=0, bloqueado_hasta=NULL")
+
+    def _login(self, email, clave):
+        return self.cliente.post('/api/auth/login', json={'email': email, 'contrasena': clave})
+
+    def test_registra_exitoso_fallido_bloqueado_e_inexistente(self):
+        self._login(EMAILS['laura'], CONTRASENA)                 # exitoso
+        self._login('nadie@asisto.local', 'x')                   # fallido, sin usuario
+        for _ in range(5):
+            self._login(EMAILS['diego'], 'mala')                 # 4 fallidos + 1 que bloquea
+        self._login(EMAILS['diego'], CONTRASENA)                 # bloqueado aun con clave buena
+        filas = self.sql("SELECT resultado, id_usuario IS NULL, email FROM auditoria_accesos ORDER BY id")
+        self.assertEqual([f[0] for f in filas],
+                         ['exitoso', 'fallido', 'fallido', 'fallido', 'fallido', 'fallido', 'bloqueado', 'bloqueado'])
+        self.assertEqual(filas[1][1], 1)                         # el inexistente no tiene id_usuario
+        self.assertEqual(filas[1][2], 'nadie@asisto.local')
+        self.assertEqual(filas[0][1], 0)
+
+    def test_nunca_guarda_la_contrasena(self):
+        self._login(EMAILS['laura'], 'ContrasenaSecretaXYZ')
+        cols = self.sql("SELECT CONCAT_WS('|', id_usuario, email, resultado, ip) FROM auditoria_accesos")
+        self.assertNotIn('ContrasenaSecretaXYZ', ' '.join(c[0] for c in cols))
+
+    def test_consulta_solo_rrhh_con_resumen_y_filtros(self):
+        self._login(EMAILS['laura'], CONTRASENA)
+        self._login(EMAILS['laura'], 'mala')
+        self._login(EMAILS['diego'], CONTRASENA)
+        url = '/api/rrhh/auditoria-accesos'
+        # roles: rrhh entra, terapeuta y sin sesion no
+        self.assertEqual(self.llamar('laura', 'get', url).status_code, 403)
+        self.assertEqual(self.llamar(None, 'get', url).status_code, 401)
+        r = self.llamar('rrhh', 'get', url)                      # control positivo
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        d = r.get_json()
+        # el login de rrhh que hizo el propio test tambien queda registrado
+        self.assertEqual(d['resumen']['fallido'], 1)
+        self.assertGreaterEqual(d['resumen']['exitoso'], 3)
+        self.assertEqual(d['resumen']['total'], len(d['accesos']))
+        f = self.llamar('rrhh', 'get', url + '?resultado=fallido').get_json()
+        self.assertEqual([a['resultado'] for a in f['accesos']], ['fallido'])
+        f = self.llamar('rrhh', 'get', url + '?email=diego').get_json()
+        self.assertTrue(all('diego' in a['email'] for a in f['accesos']))
+        f = self.llamar('rrhh', 'get', url + '?email=%25').get_json()   # '%' es literal
+        self.assertEqual(f['accesos'], [])
+        f = self.llamar('rrhh', 'get', url + '?limite=1').get_json()
+        self.assertEqual(len(f['accesos']), 1)
+        self.assertGreater(f['resumen']['total'], 1)             # el resumen no se recorta
+        # validaciones con campo
+        for q, campo in (('resultado=raro', 'resultado'), ('desde=ayer', 'desde'),
+                         ('desde=2026-12-01&hasta=2026-01-01', 'desde'), ('limite=abc', 'limite')):
+            r = self.llamar('rrhh', 'get', url + '?' + q)
+            self.assertEqual((r.status_code, r.get_json()['campo']), (400, campo), q)
+
+
 if __name__ == '__main__':
     unittest.main()

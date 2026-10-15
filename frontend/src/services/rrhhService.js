@@ -105,3 +105,11 @@ export function listarObservaciones(idSesion) {
 export function registrarObservacion(idSesion, texto) {
   return post(`/rrhh/sesiones/${idSesion}/observaciones`, { texto });
 }
+
+/**
+ * Auditoría de accesos (Entrega 3). Solo lectura.
+ * -> { desde, hasta, limite, resumen: {exitoso, fallido, bloqueado, total}, accesos: [...] }
+ */
+export function obtenerAuditoriaAccesos({ desde, hasta, resultado, email, limite } = {}) {
+  return get(`/rrhh/auditoria-accesos${construirQuery({ desde, hasta, resultado, email, limite })}`);
+}

@@ -43,6 +43,7 @@ export const RUTAS_PROTEGIDAS = [
   { ruta: '/pacientes/:id', roles: ['terapeuta'], capacidad: 'pacientes.listado' },
   { ruta: '/calendario', roles: ['terapeuta'], capacidad: 'calendario' },
   { ruta: '/rrhh', roles: ['rrhh'], capacidad: 'rrhh.consulta' },
+  { ruta: '/rrhh/auditoria', roles: ['rrhh'], capacidad: 'auditoria.accesos' },
   { ruta: '/familiar', roles: ['familiar'], capacidad: 'familiar.portal' },
   { ruta: '/paciente', roles: ['paciente'], capacidad: 'paciente.portal' },
 ];

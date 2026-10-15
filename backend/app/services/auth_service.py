@@ -7,7 +7,7 @@ import logging
 import re
 import secrets
 
-from flask import current_app
+from flask import current_app, request
 from sqlalchemy import text
 
 from app import db
@@ -73,6 +73,30 @@ def _segundos_de_bloqueo(id_usuario):
     return restantes if restantes and restantes > 0 else 0
 
 
+def _auditar(id_usuario, email, resultado):
+    """
+    Deja constancia del intento en auditoria_accesos (p_registrar_acceso).
+
+    Si la auditoria falla NO se rompe el login: se loguea y se sigue. La
+    alternativa —que una falla de auditoria impida entrar a todos— es peor
+    que perder una fila.
+    """
+    try:
+        db.session.execute(
+            text('CALL p_registrar_acceso(:id, :email, :resultado, :ip)'),
+            {
+                'id': id_usuario,
+                'email': (email or '')[:180],
+                'resultado': resultado,
+                'ip': (request.remote_addr or '')[:45] or None,
+            },
+        )
+        db.session.commit()
+    except Exception:  # noqa: BLE001 - la auditoria nunca debe tumbar el login
+        db.session.rollback()
+        logger.exception('No se pudo registrar el acceso en la auditoria')
+
+
 @reintentar_en_deadlock()
 def _registrar_fallo(id_usuario):
     """Suma un intento fallido via procedimiento. -> (bloqueado, segundos)."""
@@ -103,7 +127,8 @@ def autenticar(email, contrasena):
     if not email or not contrasena:
         raise ErrorAplicacion(MENSAJE_CREDENCIALES, http_status=401)
 
-    usuario = Usuario.query.filter_by(email=email.strip().lower()).first()
+    email = email.strip().lower()
+    usuario = Usuario.query.filter_by(email=email).first()
 
     # El mensaje identico no alcanza: el TIEMPO tambien delata. Sin esta
     # llamada, cuando el email no existe se sale sin ejecutar bcrypt y la
@@ -119,6 +144,7 @@ def autenticar(email, contrasena):
     if usuario is None:
         consumir_tiempo_de_verificacion(contrasena)
         logger.info('Login fallido: email inexistente')
+        _auditar(None, email, 'fallido')
         raise ErrorAplicacion(MENSAJE_CREDENCIALES, http_status=401)
 
     id_usuario = usuario.id
@@ -130,11 +156,13 @@ def autenticar(email, contrasena):
     segundos = _segundos_de_bloqueo(id_usuario)
     if segundos:
         logger.info('Login rechazado: usuario %s bloqueado', id_usuario)
+        _auditar(id_usuario, email, 'bloqueado')
         raise ErrorAplicacion(_mensaje_bloqueo(segundos), http_status=429)
 
     if not contrasena_ok:
         bloqueado = _registrar_fallo(id_usuario)
         logger.info('Login fallido: contrasena incorrecta para usuario %s', id_usuario)
+        _auditar(id_usuario, email, 'bloqueado' if bloqueado else 'fallido')
         if bloqueado:
             raise ErrorAplicacion(
                 _mensaje_bloqueo(BLOQUEO_MINUTOS * 60), http_status=429
@@ -145,10 +173,12 @@ def autenticar(email, contrasena):
     # importa: adelantarlo haria que la cuenta deshabilitada respondiera sin
     # pagar el costo de bcrypt, reabriendo el mismo canal por otra rama.
     if not usuario.activo:
-        logger.info('Login rechazado: usuario %s esta inactivo', usuario.id)
+        logger.info('Login rechazado: usuario %s esta inactivo', id_usuario)
+        _auditar(id_usuario, email, 'fallido')
         raise ErrorAplicacion(MENSAJE_CREDENCIALES, http_status=401)
 
     _registrar_acierto(id_usuario)
+    _auditar(id_usuario, email, 'exitoso')
     token = generar_token(usuario)
     logger.info('Login exitoso: usuario %s (rol %s)', usuario.id, usuario.rol)
 

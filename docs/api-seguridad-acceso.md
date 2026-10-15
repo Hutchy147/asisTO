@@ -26,3 +26,11 @@
 ## Pruebas
 
 `tests/nube/test_seguridad_api.py` (9 casos) y `tests/nube/ui_seguridad.py` (Chromium; **cambia la clave de paula.cabrera en la base demo**: volver a correr `generar_hashes.py --aplicar --todos`).
+
+## Auditoría de accesos
+
+Cada intento de login deja una fila en `auditoria_accesos` (`p_registrar_acceso`): `exitoso`; `fallido` (contraseña mala, email inexistente o cuenta inactiva); `bloqueado` (el intento que dispara el bloqueo y los que llegan con la cuenta bloqueada). Guarda email, IP y `id_usuario` (NULL si el email no existe). **Nunca la contraseña.** Si la auditoría falla, el login sigue: se loguea el error.
+
+`GET /api/rrhh/auditoria-accesos` (solo rol `rrhh`): `desde`, `hasta` (por omisión los últimos 7 días), `resultado`, `email` (contiene), `limite` (100 por omisión, máx. 500). Devuelve `{resumen: {exitoso, fallido, bloqueado, total}, accesos}`; el resumen cuenta **todo el filtro**, no solo las filas devueltas. Pantalla `/rrhh/auditoria` (capacidad `auditoria.accesos`) con botón en el panel de RRHH.
+
+Límites conocidos: la IP es `remote_addr` (detrás de un proxy hay que configurar `ProxyFix`); la tabla no se purga sola; un atacante puede llenarla con emails inventados.

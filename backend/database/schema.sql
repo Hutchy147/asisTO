@@ -3344,6 +3344,24 @@ BEGIN
   END IF;
 END$$
 
+
+-- Auditoria de accesos (HDU de seguridad, Entrega 3). Una fila por intento de
+-- login. Nunca guarda la contrasena. `id_usuario` es NULL cuando el email no
+-- existe. La aplicacion no puede fallar un login porque falle su auditoria:
+-- lo captura y lo loguea; aca solo se inserta.
+CREATE PROCEDURE p_registrar_acceso (
+  IN p_id_usuario  INT UNSIGNED,
+  IN p_email       VARCHAR(180),
+  IN p_resultado   VARCHAR(10),
+  IN p_ip          VARCHAR(45)
+)
+BEGIN
+  IF p_resultado IN ('exitoso', 'fallido', 'bloqueado') THEN
+    INSERT INTO auditoria_accesos (id_usuario, email, resultado, ip)
+    VALUES (p_id_usuario, p_email, p_resultado, p_ip);
+  END IF;
+END$$
+
 DELIMITER ;
 
 

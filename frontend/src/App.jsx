@@ -9,6 +9,7 @@ import RutaProtegida from './components/RutaProtegida.jsx';
 import { validarRutas } from './config/entregas.js';
 import { RUTAS_PROTEGIDAS } from './config/rutas.js';
 import { RUTA_POR_ROL, useAuth } from './context/AuthContext.jsx';
+import AuditoriaAccesos from './pages/AuditoriaAccesos.jsx';
 import Calendario from './pages/Calendario.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Login from './pages/Login.jsx';
@@ -36,6 +37,7 @@ const ELEMENTO_POR_RUTA = {
   '/pacientes/:id': <PacienteFicha />,
   '/calendario': <Calendario />,
   '/rrhh': <PanelRrhh />,
+  '/rrhh/auditoria': <AuditoriaAccesos />,
   '/familiar': <Dashboard rol="familiar" />,
   '/paciente': <Dashboard rol="paciente" />,
 };

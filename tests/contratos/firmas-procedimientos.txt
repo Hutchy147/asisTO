@@ -62,6 +62,7 @@
 # ----------------------------------------------------------------------
 
 p_abrir_asignacion | 5 | IN p_id_paciente, IN p_id_terapeuta, IN p_fecha_desde, OUT p_id_asignacion, OUT p_mensaje
+p_registrar_acceso | 4 | IN p_id_usuario, IN p_email, IN p_resultado, IN p_ip
 p_alta_paciente | 8 | IN p_nombre, IN p_apellido, IN p_fecha_nacimiento, IN p_diagnostico, IN p_nro_historia, IN p_id_usuario, OUT p_id_paciente, OUT p_mensaje
 p_baja_paciente | 4 | IN p_id_paciente, OUT p_objetivos_archivados, OUT p_asignaciones_cerradas, OUT p_mensaje
 p_cerrar_asignacion | 4 | IN p_id_asignacion, IN p_fecha_hasta, OUT p_cerrada, OUT p_mensaje

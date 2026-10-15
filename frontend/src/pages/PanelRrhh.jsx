@@ -30,6 +30,7 @@
 //     tocó el test.
 
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AppBar from '@mui/material/AppBar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -48,6 +49,7 @@ import SesionEstadoChip from '../components/data/SesionEstadoChip.jsx';
 import StatTile from '../components/data/StatTile.jsx';
 import { Aviso, Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import ModalObservacionesRrhh from '../components/rrhh/ModalObservacionesRrhh.jsx';
+import { hayCapacidad } from '../config/entregas.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { ESTADO_AUSENCIA } from '../services/sesionesService.js';
@@ -92,6 +94,7 @@ function ventanaInicial() {
 
 export default function PanelRrhh() {
   const { usuario, perfil, logout } = useAuth();
+  const navigate = useNavigate();
   const inicial = useMemo(ventanaInicial, []);
 
   // El filtro que se EDITA y el que se APLICO son dos cosas distintas: sin
@@ -300,6 +303,11 @@ export default function PanelRrhh() {
             <Typography variant="body2" className="texto-libre" noWrap>
               {usuario?.nombre_completo}
             </Typography>
+            {hayCapacidad('auditoria.accesos') && (
+              <Button color="inherit" variant="outlined" onClick={() => navigate('/rrhh/auditoria')}>
+                Auditoría de accesos
+              </Button>
+            )}
             <Button color="inherit" variant="outlined" onClick={logout}>
               Cerrar sesión
             </Button>
