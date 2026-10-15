@@ -7,8 +7,10 @@ ocupacional. Práctica Profesionalizante III — IES 9-023, Mendoza.
 - **Backend:** Python + Flask + SQLAlchemy
 - **Base de datos:** MySQL 8.0+ (una instancia local por integrante)
 
-**Estado: `entrega-1` cortada.** El módulo clínico funciona de punta a
-punta. Ver [Qué funciona hoy](#qué-funciona-hoy) antes de tocar nada.
+**Estado: `entrega-3` (seguridad y corrección del flujo).** El módulo clínico
+funciona de punta a punta, con asignaciones, recuperación de contraseña,
+bloqueo por intentos, auditoría de accesos, agenda semanal recurrente,
+registro del día y pausa/alta de tratamiento. Ver [Qué funciona hoy](#qué-funciona-hoy) antes de tocar nada.
 
 ---
 
@@ -27,7 +29,12 @@ real, no está mockeado.
 | Objetivos: crear, editar, archivar, reactivar | ✅ |
 | Calendario semanal y alta de sesiones | ✅ |
 | Carga de evolución sobre objetivos | ✅ |
-| Las 6 reglas de negocio, aplicadas **en la base** | ✅ |
+| Las reglas de negocio, aplicadas **en la base** | ✅ |
+| Editar paciente, pausar tratamiento, dar el alta y reactivar | ✅ (Entrega 2–3) |
+| Asignación paciente–terapeuta; escribir solo sobre pacientes asignados | ✅ (Entrega 3) |
+| Recuperación de contraseña, bloqueo por intentos, auditoría de accesos | ✅ (Entrega 3) |
+| Registro del día con notas en renglones; agenda semanal recurrente | ✅ (Entrega 3) |
+| Mínimo de 3 y máximo de 4 objetivos activos por paciente | ✅ (Entrega 3) |
 
 **Lo que todavía no está, y es esperado:**
 
@@ -35,11 +42,9 @@ real, no está mockeado.
   explícitamente que su módulo llega en una entrega posterior. No es una
   pantalla rota: el rol y el control de acceso ya funcionan, falta el
   contenido.
-- **Editar y dar de baja pacientes** desde la interfaz — Entrega 2.
-- **Recuperación de contraseña** y el **límite de intentos fallidos**. Las
-  columnas existen en el schema (`intentos_fallidos`, `bloqueado_hasta`,
-  `token_recuperacion`) pero la lógica es de la Entrega 3.
-- **Informes con IA y export PDF** — Entrega 4.
+- **Portal familiar y notificaciones** — Entrega 4.
+- **Duplas, plantillas de objetivos y tendencias** — Entrega 5.
+- **Informes (mensual, semestral, PTI), IA y export PDF** — Entrega 6.
 
 ---
 
@@ -105,10 +110,10 @@ todo lo que haya cargado.
 ```powershell
 cd C:\dev\asisTO
 mysql --login-path=asisto -e "source backend/database/schema.sql"
-mysql --login-path=asisto -e "source backend/database/seed.sql"
+mysql --login-path=asisto asisto -e "source backend/database/seed.sql"
 ```
 
-El primero deja **18 tablas, 2 vistas, 6 triggers y 5 procedimientos
+El primero deja **20 tablas, 2 vistas, 8 triggers y 22 procedimientos
 almacenados**. El segundo carga datos de prueba con id fijos, para que las
 cuatro instancias locales arranquen idénticas.
 
@@ -140,7 +145,7 @@ Para cargar los datos de demostración:
 
 ```powershell
 mysql --login-path=asisto -e "source backend/database/schema.sql"
-mysql --login-path=asisto -e "source backend/database/seed_demo.sql"
+mysql --login-path=asisto asisto -e "source backend/database/seed_demo.sql"
 ```
 
 Trae 3 terapeutas, agenda de lunes a viernes con días de hasta 8 sesiones,
@@ -314,7 +319,7 @@ comporta exactamente como en los pasos de arriba.
 |---|---|---|
 | `ASISTO_PUERTO_VITE` | Puerto en el que corre Vite | `5173` |
 | `ASISTO_API_URL` | Destino del proxy `/api` | `http://127.0.0.1:5000` |
-| `VITE_ENTREGA` | Muestra la app como en una entrega anterior (`1` a `4`) | versión completa |
+| `VITE_ENTREGA` | Muestra la app como en una entrega anterior (`1` a `6`) | versión completa |
 
 `VITE_ENTREGA` es solo para hacer una demostración de una entrega vieja sin
 tocar ramas: sigue siendo la app de hoy, con la interfaz recortada del lado
