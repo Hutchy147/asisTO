@@ -142,6 +142,7 @@ export const CAPACIDADES = {
   'rrhh.export': { entrega: 2, nombre: 'export de RRHH' },
 
   // --- Versión 3 (05/10) ---
+  'calendario.agenda': { entrega: 3, nombre: 'calendario solo para agendar, lunes a viernes, 45 minutos' },
   'auth.recuperar': { entrega: 3, nombre: 'recuperar contraseña y bloqueo de intentos' },
   'notas.campo': { entrega: 3, nombre: 'notas de campo' },
   // VENÍA EN 4 Y PASA A 3: el reparto de seis pone la auditoría de accesos en

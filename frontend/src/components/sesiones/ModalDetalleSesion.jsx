@@ -157,14 +157,18 @@ export default function ModalDetalleSesion({
   const esPropia = sesion?.es_propia !== false;
   // Solo se ofrece cargar cuando el servidor lo va a aceptar. Las tres
   // condiciones son las mismas que aplica el backend.
-  const puedeCargar = Boolean(sesion && esPropia && admite && sinCalificar.length > 0);
+  // Y solo si quien abre este modal ofrece el camino: el calendario (agenda)
+  // pasa solo `onEditar`, y un botón sin destino no se dibuja.
+  const puedeCargar = Boolean(
+    onCargarEvolucion && sesion && esPropia && admite && sinCalificar.length > 0
+  );
   // Editar no depende de admite_evolucion ni de sinCalificar: se puede
   // editar una ausencia o una sesión ya calificada del todo. Lo único que
   // la habilita es ser propia (el backend da 403 si no) y que la entrega
   // activa ya la muestre. NO ALCANZA CON DESHABILITAR EL BOTÓN si no es
   // propia: no se dibuja directamente, porque no hay garantía de que un
   // botón deshabilitado no se pueda forzar desde la consola.
-  const puedeEditar = Boolean(sesion && esPropia) && hayCapacidad('sesiones.editar');
+  const puedeEditar = Boolean(onEditar && sesion && esPropia) && hayCapacidad('sesiones.editar');
 
   const subtitulo = datos
     ? `${datos.paciente.nombre_completo} · ${formatearFecha(sesion.fecha)} · ${sesion.hora_inicio?.slice(0, 5)}`
@@ -269,7 +273,7 @@ export default function ModalDetalleSesion({
           {(puedeEditar || puedeCargar) && (
             <Box sx={{ display: 'flex', justifyContent: 'flex-start', gap: 1, pt: 0.5 }}>
               {puedeEditar && (
-                <Button variant="outlined" onClick={() => onEditar?.(sesion)}>
+                <Button variant="outlined" onClick={() => onEditar?.(sesion, datos.paciente)}>
                   Editar sesión
                 </Button>
               )}

@@ -283,7 +283,7 @@ la salida del procedimiento.
 | `id_paciente` | sí | |
 | `fecha` | sí | `AAAA-MM-DD` |
 | `hora_inicio` | sí | `HH:MM:SS` |
-| `hora_fin` | no | Si falta, se asume **una hora** de duración |
+| `hora_fin` | no | Si falta, la API la completa con **45 minutos** (Entrega 3). Las sesiones viejas sin hora de fin siguen leyéndose como una hora |
 | `estado` | **sí** | `completa`, `incompleta` o `ausencia`. Sin default: hasta el 2026-09-10 un estado ausente se guardaba como `incompleta` sin que nadie lo haya declarado — ver el hallazgo A de `AUDITORIA.md`. Ahora se rechaza igual que cualquier otro obligatorio faltante |
 | `ausencia_de` | **condicional** (2026-09-11) | `paciente` o `terapeuta`. **Obligatorio si y solo si `estado = "ausencia"`.** Fuera de una ausencia tiene que venir `null`/ausente: mandarlo con cualquier otro estado se rechaza. Es un eje distinto de `estado` (QUIÉN faltó, no QUÉ pasó con la sesión) — ver la columna en `schema.sql` |
 | `notas` | no | Contenido clínico |
@@ -636,3 +636,11 @@ Estados que las pantallas tienen que contemplar:
 7. **Superposición al registrar** — el mensaje trae cuántas sesiones chocan;
    conviene mostrarlo junto al campo de horario.
 8. **Rango de fechas inválido** — devuelve `400`, no lista vacía.
+
+
+## Norma de agenda (Entrega 3)
+
+- **Lunes a viernes:** `POST /api/sesiones` rechaza con 400 (`campo: fecha`, "Las sesiones se agendan de lunes a viernes.") una fecha en sábado o domingo, y `PUT /api/sesiones/<id>` lo hace solo si la **fecha cambia**: una sesión ya guardada en fin de semana se sigue viendo y editando.
+- **45 minutos:** sin `hora_fin`, la API pone `hora_inicio + 45 min`.
+- Es política operativa y vive en `sesiones_service.py`, no en la base: la base admite cualquier día y duración (carga retroactiva, sesiones históricas).
+- Tests: `tests/nube/test_agenda_api.py`.

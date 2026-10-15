@@ -1,7 +1,14 @@
 // frontend/src/pages/Calendario.jsx
 // Semana de trabajo del terapeuta: lunes a viernes, de 8 a 19.
+//
+// ENTREGA 3 (capacidad `calendario.agenda`): el calendario es para AGENDAR y
+// planificar. Agendar abre un modal corto (sin estado ni "quién faltó"), una
+// sesión del calendario se abre en lectura y se puede reprogramar, y cargar
+// la evolución se hace desde el Panel o la ficha del paciente, no acá. Antes
+// de la entrega 3 se conserva el comportamiento anterior.
 
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Snackbar from '@mui/material/Snackbar';
@@ -10,6 +17,9 @@ import Typography from '@mui/material/Typography';
 
 import ModalCargarEvolucion from '../components/evoluciones/ModalCargarEvolucion.jsx';
 import AppLayout from '../components/layout/AppLayout.jsx';
+import ModalAgendarSesion from '../components/sesiones/ModalAgendarSesion.jsx';
+import ModalDetalleSesion from '../components/sesiones/ModalDetalleSesion.jsx';
+import ModalEditarSesion from '../components/sesiones/ModalEditarSesion.jsx';
 import ModalRegistrarSesion from '../components/sesiones/ModalRegistrarSesion.jsx';
 import { Cargando, EstadoError } from '../components/estado/index.js';
 import { usePeticion } from '../hooks/usePeticion.js';
@@ -161,7 +171,17 @@ export default function Calendario() {
   const [lunes, setLunes] = useState(() => inicioDeSemana(new Date()));
   const [modalSesion, setModalSesion] = useState(null); // null | {fecha, hora}
   const [idEvolucion, setIdEvolucion] = useState(null);
+  const [idDetalle, setIdDetalle] = useState(null);
+  const [sesionAEditar, setSesionAEditar] = useState(null);
   const [aviso, setAviso] = useState('');
+  const navigate = useNavigate();
+  const soloAgenda = hayCapacidad('calendario.agenda');
+  // Un clic en una sesión: en agenda se LEE (y se reprograma); antes de la
+  // entrega 3 se abría directo la carga de evolución.
+  const abrirSesion = (s) => (soloAgenda ? setIdDetalle(s.id) : setIdEvolucion(s.id));
+  const pacientesAsignados = (pacientes_) => (pacientes_ ?? []).filter(
+    (p) => !hayCapacidad('asignaciones.gestionar') || p.asignado_a_mi,
+  );
 
   const { desde, hasta, dias } = useMemo(() => {
     const lista = Array.from({ length: 5 }, (_, i) => {
@@ -183,9 +203,13 @@ export default function Calendario() {
     return mapa;
   }, [sesiones.datos]);
 
+  // Una sesion agendada para despues todavia no "quedo sin evolucion": en
+  // modo agenda el aviso cuenta solo las que ya pasaron o son de hoy.
   const pendientes = useMemo(
-    () => (sesiones.datos?.sesiones ?? []).filter(faltaEvolucion),
-    [sesiones.datos]
+    () => (sesiones.datos?.sesiones ?? []).filter(
+      (s) => faltaEvolucion(s) && (!soloAgenda || s.fecha <= aIso(new Date())),
+    ),
+    [sesiones.datos, soloAgenda]
   );
 
   const hoyIso = aIso(new Date());
@@ -214,7 +238,7 @@ export default function Calendario() {
       subtitulo={`${formatearFecha(desde)} al ${formatearFecha(hasta)}${sesiones.datos ? ` · ${sesiones.datos.total} sesiones` : ''}`}
       acciones={
         <Button variant="contained" onClick={() => abrirAlta()}>
-          Registrar sesión
+          {soloAgenda ? 'Agendar sesión' : 'Registrar sesión'}
         </Button>
       }
     >
@@ -347,10 +371,17 @@ export default function Calendario() {
             {pendientes.length === 1
               ? 'Una sesión de esta semana quedó sin evolución cargada.'
               : `${pendientes.length} sesiones de esta semana quedaron sin evolución cargada.`}
+            {soloAgenda && ' Se cargan desde el Panel.'}
           </Box>
-          <Button size="small" onClick={() => setIdEvolucion(pendientes[0].id)}>
-            Cargar la primera
-          </Button>
+          {soloAgenda ? (
+            <Button size="small" onClick={() => navigate('/panel')}>
+              Ir al Panel
+            </Button>
+          ) : (
+            <Button size="small" onClick={() => setIdEvolucion(pendientes[0].id)}>
+              Cargar la primera
+            </Button>
+          )}
         </Box>
       )}
 
@@ -361,8 +392,9 @@ export default function Calendario() {
         <>
           {sesiones.datos.total === 0 && (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              No hay sesiones registradas en esta semana. Podés registrar una o
-              mirar otra semana con los botones de arriba.
+              {soloAgenda
+                ? 'No hay sesiones agendadas en esta semana. Podés agendar una o mirar otra semana con los botones de arriba.'
+                : 'No hay sesiones registradas en esta semana. Podés registrar una o mirar otra semana con los botones de arriba.'}
             </Typography>
           )}
 
@@ -470,7 +502,7 @@ export default function Calendario() {
                         key={hora}
                         component="button"
                         type="button"
-                        aria-label={`Registrar sesión el ${formatearFecha(iso)} a las ${String(hora).padStart(2, '0')}:00`}
+                        aria-label={`${soloAgenda ? 'Agendar' : 'Registrar'} sesión el ${formatearFecha(iso)} a las ${String(hora).padStart(2, '0')}:00`}
                         onClick={() => abrirAlta(iso, `${String(hora).padStart(2, '0')}:00`)}
                         sx={(t) => ({
                           display: 'block',
@@ -487,7 +519,7 @@ export default function Calendario() {
                       />
                     ))}
                     {(porFecha[iso] ?? []).map((sesion) => (
-                      <BloqueSesion key={sesion.id} sesion={sesion} onAbrir={(s) => setIdEvolucion(s.id)} />
+                      <BloqueSesion key={sesion.id} sesion={sesion} onAbrir={abrirSesion} />
                     ))}
                   </Box>
                 );
@@ -526,23 +558,61 @@ export default function Calendario() {
         </>
       )}
 
-      <ModalRegistrarSesion
-        key={`${modalSesion?.fecha ?? ''}-${modalSesion?.hora ?? ''}`}
-        abierto={Boolean(modalSesion)}
-        // HDU 11: solo se registran sesiones de pacientes asignados al
-        // terapeuta; el servidor igual lo valida (regla 8). Sin la capacidad
-        // (entregas previas) el selector sigue mostrando a todos.
-        pacientes={(pacientes.datos?.pacientes ?? []).filter(
-          (p) => !hayCapacidad('asignaciones.gestionar') || p.asignado_a_mi,
-        )}
-        fechaInicial={modalSesion?.fecha ?? ''}
-        horaInicial={modalSesion?.hora ?? ''}
-        onCerrar={() => setModalSesion(null)}
-        onRegistrada={(respuesta) => {
-          recargar();
-          setAviso(respuesta?.mensaje ?? 'Sesión registrada correctamente');
-        }}
-      />
+      {soloAgenda ? (
+        <ModalAgendarSesion
+          key={`agenda-${modalSesion?.fecha ?? ''}-${modalSesion?.hora ?? ''}`}
+          abierto={Boolean(modalSesion)}
+          // HDU 11: solo se agenda a pacientes asignados al terapeuta; el
+          // servidor igual lo valida (regla 8).
+          pacientes={pacientesAsignados(pacientes.datos?.pacientes)}
+          fechaInicial={modalSesion?.fecha ?? ''}
+          horaInicial={modalSesion?.hora ?? ''}
+          onCerrar={() => setModalSesion(null)}
+          onAgendada={(respuesta) => {
+            recargar();
+            setAviso(respuesta?.mensaje ?? 'Sesión agendada correctamente');
+          }}
+        />
+      ) : (
+        <ModalRegistrarSesion
+          key={`${modalSesion?.fecha ?? ''}-${modalSesion?.hora ?? ''}`}
+          abierto={Boolean(modalSesion)}
+          pacientes={pacientesAsignados(pacientes.datos?.pacientes)}
+          fechaInicial={modalSesion?.fecha ?? ''}
+          horaInicial={modalSesion?.hora ?? ''}
+          onCerrar={() => setModalSesion(null)}
+          onRegistrada={(respuesta) => {
+            recargar();
+            setAviso(respuesta?.mensaje ?? 'Sesión registrada correctamente');
+          }}
+        />
+      )}
+
+      {soloAgenda && (
+        <>
+          <ModalDetalleSesion
+            key={`detalle-${idDetalle ?? 'sin-sesion'}`}
+            abierto={Boolean(idDetalle)}
+            idSesion={idDetalle}
+            onCerrar={() => setIdDetalle(null)}
+            onEditar={(sesion, paciente) => {
+              setIdDetalle(null);
+              setSesionAEditar({ sesion, paciente });
+            }}
+          />
+          <ModalEditarSesion
+            key={`editar-${sesionAEditar?.sesion?.id ?? 'sin-sesion'}`}
+            abierto={Boolean(sesionAEditar)}
+            sesion={sesionAEditar?.sesion}
+            paciente={sesionAEditar?.paciente}
+            onCerrar={() => setSesionAEditar(null)}
+            onGuardado={(respuesta) => {
+              recargar();
+              setAviso(respuesta?.mensaje ?? 'Sesión actualizada.');
+            }}
+          />
+        </>
+      )}
 
       <ModalCargarEvolucion
         key={idEvolucion ?? 'sin-sesion'}

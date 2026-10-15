@@ -23,6 +23,45 @@ MAXIMO_DIAS_RANGO = 366
 # hacia adelante. Es lo que necesita un calendario al abrirse.
 DIAS_POR_DEFECTO = 7
 
+# NORMA DE AGENDA (Entrega 3): sesiones de 45 minutos, de lunes a viernes.
+#
+# Son politica operativa del centro, no integridad de los datos, y por eso
+# viven aca y no en la base: la base sigue admitiendo cualquier dia y
+# cualquier duracion (hay sesiones viejas sin hora de fin que se leen como
+# una hora, y la carga retroactiva no puede volverse imposible). Lo que se
+# controla es AGENDAR: una sesion nueva, o mover una existente a otro dia.
+# Una sesion ya guardada en fin de semana se sigue viendo y editando.
+DURACION_POR_DEFECTO_MINUTOS = 45
+DIAS_HABILES = 5  # lunes (0) a viernes (4)
+
+
+def _validar_dia_habil(fecha_iso):
+    try:
+        dia = dt.date.fromisoformat(fecha_iso)
+    except (TypeError, ValueError):
+        raise ErrorAplicacion(
+            'La fecha tiene que tener el formato AAAA-MM-DD.', campo='fecha'
+        )
+    if dia.weekday() >= DIAS_HABILES:
+        raise ErrorAplicacion(
+            'Las sesiones se agendan de lunes a viernes.', campo='fecha'
+        )
+
+
+def _hora_fin_por_defecto(hora_inicio):
+    """hora_inicio + 45 minutos ('HH:MM' o 'HH:MM:SS'). None si no hay lugar en el dia."""
+    try:
+        partes = [int(x) for x in hora_inicio.split(':')]
+        inicio = dt.timedelta(hours=partes[0], minutes=partes[1],
+                              seconds=partes[2] if len(partes) > 2 else 0)
+    except (ValueError, IndexError, AttributeError):
+        raise ErrorAplicacion('La hora de inicio no es valida.', campo='hora_inicio')
+    fin = inicio + dt.timedelta(minutes=DURACION_POR_DEFECTO_MINUTOS)
+    if fin >= dt.timedelta(days=1):
+        return None  # la base asumira su default; la sesion termina pasada la medianoche
+    segundos = int(fin.total_seconds())
+    return f'{segundos // 3600:02d}:{segundos % 3600 // 60:02d}:{segundos % 60:02d}'
+
 
 def terapeuta_actual():
     """Perfil de terapeuta del usuario logueado."""
@@ -457,6 +496,9 @@ def registrar_sesion(datos):
 
     _validar_estado(estado)
     _validar_ausencia_de(estado, ausencia_de)
+    _validar_dia_habil(fecha)
+    if hora_fin is None:
+        hora_fin = _hora_fin_por_defecto(hora_inicio)
 
     db.session.execute(
         text(
@@ -540,6 +582,10 @@ def editar_sesion(id_sesion, datos):
 
     _validar_estado(estado)
     _validar_ausencia_de(estado, ausencia_de)
+    # Solo si la fecha CAMBIA: una sesion vieja de fin de semana sigue siendo
+    # editable (estado, notas, hora) sin tener que moverla.
+    if fecha != sesion.fecha.isoformat():
+        _validar_dia_habil(fecha)
 
     db.session.execute(
         text(
