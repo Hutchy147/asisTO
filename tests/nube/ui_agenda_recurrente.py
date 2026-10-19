@@ -19,6 +19,9 @@ def limpiar():
     sql("UPDATE agenda_recurrente SET activo=FALSE")
     sql("DELETE FROM sesiones WHERE hora_inicio IN ('06:00:00','06:30:00') AND estado='incompleta' AND fecha>=CURDATE()")
 
+# La prueba parte de una agenda vacia: se guardan los turnos de la demo (incluidas
+# las duplas) y se reactivan al terminar.
+TURNOS_DEMO = sql("SELECT id FROM agenda_recurrente WHERE activo").split()
 limpiar()
 with sync_playwright() as p:
     br = p.chromium.launch()
@@ -53,4 +56,6 @@ with sync_playwright() as p:
     br.close()
 
 limpiar()
+if TURNOS_DEMO:
+    sql(f"UPDATE agenda_recurrente SET activo=TRUE WHERE id IN ({','.join(TURNOS_DEMO)})")
 sys.exit(1 if fallas else 0)
