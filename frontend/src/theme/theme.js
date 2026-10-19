@@ -232,6 +232,17 @@ const theme = createTheme({
         // faltaba en seis; pegarla a mano en cada componente garantiza que el
         // próximo componente nuevo se olvide.
         '.texto-libre': { overflowWrap: 'anywhere' },
+
+        // IMPRESION DE LA HISTORIA CLINICA (Entrega 4). Al imprimir, solo se
+        // ve lo que lleva la clase `imprimible`: se ocultan el menu, la barra
+        // y el resto de la ficha. Es CSS puro, sin librería de PDF: el
+        // navegador ofrece "Guardar como PDF" desde el mismo diálogo.
+        '@media print': {
+          'body *': { visibility: 'hidden' },
+          '.imprimible, .imprimible *': { visibility: 'visible' },
+          '.imprimible': { position: 'absolute', left: 0, top: 0, width: '100%' },
+          '.no-imprimir': { display: 'none !important' },
+        },
       },
     },
     MuiChip: {

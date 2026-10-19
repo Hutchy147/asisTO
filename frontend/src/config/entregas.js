@@ -174,6 +174,14 @@ export const CAPACIDADES = {
   // necesitar su propia clave, no ésta.
   'familiar.portal': { entrega: 4, nombre: 'portal del familiar' },
   'notificaciones': { entrega: 4, nombre: 'notificaciones completas' },
+  // Flujo de ingreso del paciente nuevo: revisión de la carpeta, evaluación
+  // inicial, entrevista a la familia y PTI, hasta generar la historia clínica
+  // del centro. El mapa de seis versiones lo ubica en la V4. Cubre la pestaña
+  // "Ingreso" de la ficha y la vista imprimible de la historia clínica.
+  'ingreso.flujo': { entrega: 4, nombre: 'flujo de ingreso e historia clínica del centro' },
+  // El formulario de cada etapa es configurable (el centro todavía no definió
+  // el suyo): pantalla del administrador para ajustar los campos.
+  'ingreso.configurar': { entrega: 4, nombre: 'configuración del formulario de ingreso' },
 
   // --- Versión 5 (02/11) ---
   // LAS TRES VENÍAN EN 4. No es que se hayan movido "más adelante": la V4 del

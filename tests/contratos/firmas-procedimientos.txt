@@ -88,3 +88,8 @@ p_vincular_familiar | 4 | IN p_id_familiar, IN p_id_paciente, OUT p_ok, OUT p_me
 p_desvincular_familiar | 4 | IN p_id_familiar, IN p_id_paciente, OUT p_ok, OUT p_mensaje
 p_crear_familiar_y_vincular | 9 | IN p_nombre, IN p_apellido, IN p_email, IN p_hash, IN p_parentesco, IN p_telefono, IN p_id_paciente, OUT p_id_familiar, OUT p_mensaje
 p_notificar_paciente | 5 | IN p_id_paciente, IN p_tipo, IN p_texto, OUT p_enviadas, OUT p_mensaje
+p_iniciar_ingreso | 4 | IN p_id_paciente, IN p_id_terapeuta, OUT p_id_ingreso, OUT p_mensaje
+p_guardar_ingreso_etapa | 6 | IN p_id_ingreso, IN p_id_terapeuta, IN p_etapa, IN p_respuestas, OUT p_ok, OUT p_mensaje
+p_cerrar_ingreso_etapa | 5 | IN p_id_ingreso, IN p_id_terapeuta, IN p_etapa, OUT p_ok, OUT p_mensaje
+p_reabrir_ingreso_etapa | 5 | IN p_id_ingreso, IN p_id_terapeuta, IN p_etapa, OUT p_ok, OUT p_mensaje
+p_completar_ingreso | 4 | IN p_id_ingreso, IN p_id_terapeuta, OUT p_ok, OUT p_mensaje

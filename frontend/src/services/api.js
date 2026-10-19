@@ -113,7 +113,7 @@ export async function request(path, options = {}) {
   } catch (fallo) {
     // fetch solo rechaza por fallo de red, no por status de error
     throw new ErrorApi(
-      'No se pudo conectar con el servidor. Revisá que el backend esté levantado.',
+      'No se pudo conectar con el servidor. Verifique que el servidor esté en funcionamiento.',
       { codigo: 'sin_conexion' }
     );
   }

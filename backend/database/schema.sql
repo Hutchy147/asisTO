@@ -605,6 +605,131 @@ CREATE TABLE agenda_recurrente (
 
 
 -- =====================================================================
+-- 5 bis. FLUJO DE INGRESO (Entrega 4)
+--
+-- Paciente nuevo: revision de la carpeta -> evaluacion inicial -> entrevista
+-- a la familia -> PTI (plan terapeutico integral). Al cerrar las cuatro
+-- etapas y con los objetivos fijados (minimo 3 activos), el ingreso se
+-- COMPLETA y queda la historia clinica del centro.
+--
+-- El formulario de cada etapa es CONFIGURABLE (ingreso_campos): el centro
+-- todavia no definio su formulario estandar, asi que se parte de uno
+-- generico de terapia ocupacional que el administrador puede ajustar sin
+-- tocar codigo. Los campos no se borran, se desactivan: las respuestas ya
+-- cargadas siguen apuntando a ellos.
+--
+-- Al completar se guarda una COPIA (ingresos.historia_clinica, JSON) con las
+-- etiquetas y respuestas de ese momento: cambiar el formulario despues no
+-- reescribe historias ya hechas.
+--
+-- Lock: pacientes primero (igual que el resto), despues terapeutas,
+-- asignaciones, ingresos y sus etapas, objetivos y respuestas al final.
+-- =====================================================================
+
+CREATE TABLE ingresos (
+  id                INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  id_paciente       INT UNSIGNED NOT NULL,
+  id_terapeuta      INT UNSIGNED NOT NULL,
+  estado            ENUM('en_curso','completado') NOT NULL DEFAULT 'en_curso',
+  fecha_inicio      DATE         NOT NULL DEFAULT (CURRENT_DATE),
+  fecha_completado  DATETIME     NULL DEFAULT NULL,
+  historia_clinica  JSON         NULL DEFAULT NULL,
+
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_ingresos_paciente (id_paciente),
+  CONSTRAINT fk_ingresos_paciente
+    FOREIGN KEY (id_paciente) REFERENCES pacientes (id)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_ingresos_terapeuta
+    FOREIGN KEY (id_terapeuta) REFERENCES terapeutas (id)
+    ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+
+CREATE TABLE ingreso_campos (
+  id           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  etapa        ENUM('carpeta','evaluacion','entrevista','pti') NOT NULL,
+  clave        VARCHAR(40)  NOT NULL,
+  etiqueta     VARCHAR(150) NOT NULL,
+  ayuda        VARCHAR(300) NULL DEFAULT NULL,
+  tipo         ENUM('texto','texto_largo','fecha','opcion') NOT NULL DEFAULT 'texto_largo',
+  -- Solo para tipo 'opcion': alternativas separadas por barra vertical
+  opciones     VARCHAR(500) NULL DEFAULT NULL,
+  obligatorio  BOOLEAN      NOT NULL DEFAULT FALSE,
+  orden        SMALLINT UNSIGNED NOT NULL DEFAULT 100,
+  activo       BOOLEAN      NOT NULL DEFAULT TRUE,
+
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_ingreso_campos_clave (etapa, clave)
+) ENGINE=InnoDB;
+
+
+CREATE TABLE ingreso_etapas (
+  id_ingreso   INT UNSIGNED NOT NULL,
+  etapa        ENUM('carpeta','evaluacion','entrevista','pti') NOT NULL,
+  estado       ENUM('pendiente','en_curso','cerrada') NOT NULL DEFAULT 'pendiente',
+  fecha_cierre DATETIME     NULL DEFAULT NULL,
+
+  PRIMARY KEY (id_ingreso, etapa),
+  CONSTRAINT fk_ingreso_etapas_ingreso
+    FOREIGN KEY (id_ingreso) REFERENCES ingresos (id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+
+CREATE TABLE ingreso_respuestas (
+  id_ingreso          INT UNSIGNED NOT NULL,
+  id_campo            INT UNSIGNED NOT NULL,
+  valor               TEXT         NOT NULL,
+  fecha_modificacion  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                   ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (id_ingreso, id_campo),
+  CONSTRAINT fk_ingreso_respuestas_ingreso
+    FOREIGN KEY (id_ingreso) REFERENCES ingresos (id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_ingreso_respuestas_campo
+    FOREIGN KEY (id_campo) REFERENCES ingreso_campos (id)
+    ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+
+-- Formulario generico de terapia ocupacional (punto de partida; el centro lo
+-- ajusta desde la pantalla de administracion). Los textos con tilde van como
+-- bytes UTF-8 en hexadecimal: este archivo se carga en Windows sin depender
+-- de la codificacion de la consola.
+INSERT INTO ingreso_campos (etapa, clave, etiqueta, ayuda, tipo, opciones, obligatorio, orden) VALUES
+  ('carpeta', 'fuente', CONVERT(0x4F726967656E206465206C612063617270657461 USING utf8mb4), CONVERT(0x496E73746974756369C3B36E2C2070726F666573696F6E616C206F2066616D696C696120717565206C612061706F7274C3B32E USING utf8mb4), 'texto', NULL, 0, 10),
+  ('carpeta', 'antecedentes', CONVERT(0x416E7465636564656E7465732072656C6576616E746573 USING utf8mb4), CONVERT(0x456D626172617A6F2C20706172746F2C206465736172726F6C6C6F207920656E6665726D65646164657320707265766961732E USING utf8mb4), 'texto_largo', NULL, 1, 20),
+  ('carpeta', 'diagnosticos_previos', CONVERT(0x446961676EC3B3737469636F732079206573747564696F732070726576696F73 USING utf8mb4), CONVERT(0x446961676EC3B3737469636F732C20696E666F726D65732079206573747564696F7320717565206669677572616E20656E206C6120636172706574612E USING utf8mb4), 'texto_largo', NULL, 1, 30),
+  ('carpeta', 'tratamientos_previos', CONVERT(0x54726174616D69656E746F73207920746572617069617320616E746572696F726573 USING utf8mb4), CONVERT(0x5175C3A920746572617069617320726563696269C3B32C2064C3B36E6465207920706F72206375C3A16E746F207469656D706F2E USING utf8mb4), 'texto_largo', NULL, 0, 40),
+  ('carpeta', 'medicacion', CONVERT(0x4D65646963616369C3B36E2061637475616C USING utf8mb4), CONVERT(0x496E6469636172207369206E6F20746F6D61206D65646963616369C3B36E2E USING utf8mb4), 'texto', NULL, 0, 50),
+  ('evaluacion', 'fecha_evaluacion', CONVERT(0x4665636861206465206C61206576616C75616369C3B36E USING utf8mb4), NULL, 'fecha', NULL, 1, 10),
+  ('evaluacion', 'motivo_consulta', CONVERT(0x4D6F7469766F20646520636F6E73756C7461 USING utf8mb4), CONVERT(0x506F72207175C3A9206C6C65676120616C2063656E74726F2C20736567C3BA6E206C6F206F627365727661646F2E USING utf8mb4), 'texto_largo', NULL, 1, 20),
+  ('evaluacion', 'vida_diaria', CONVERT(0x446573656D7065C3B16F20656E206163746976696461646573206465206C61207669646120646961726961 USING utf8mb4), CONVERT(0x416C696D656E74616369C3B36E2C207665737469646F2C2068696769656E652079206A7565676F2E USING utf8mb4), 'texto_largo', NULL, 1, 30),
+  ('evaluacion', 'motricidad', CONVERT(0x4D6F74726963696461642066696E61207920677275657361 USING utf8mb4), NULL, 'texto_largo', NULL, 0, 40),
+  ('evaluacion', 'procesamiento_sensorial', CONVERT(0x50726F636573616D69656E746F2073656E736F7269616C USING utf8mb4), NULL, 'texto_largo', NULL, 0, 50),
+  ('evaluacion', 'atencion_conducta', CONVERT(0x4174656E6369C3B36E2C20636F6E6475637461207920726567756C616369C3B36E USING utf8mb4), NULL, 'texto_largo', NULL, 0, 60),
+  ('evaluacion', 'comunicacion_juego', CONVERT(0x436F6D756E6963616369C3B36E2079206A7565676F USING utf8mb4), NULL, 'texto_largo', NULL, 0, 70),
+  ('evaluacion', 'escolaridad', CONVERT(0x4573636F6C617269646164 USING utf8mb4), CONVERT(0x4E6976656C2C2061646170746163696F6E657320792072656C616369C3B36E20636F6E2070617265732E USING utf8mb4), 'texto_largo', NULL, 0, 80),
+  ('evaluacion', 'fortalezas', CONVERT(0x466F7274616C657A6173206520696E74657265736573 USING utf8mb4), NULL, 'texto_largo', NULL, 0, 90),
+  ('evaluacion', 'impresion', CONVERT(0x496D7072657369C3B36E2070726F666573696F6E616C USING utf8mb4), CONVERT(0x53C3AD6E7465736973206465206C61206576616C75616369C3B36E20696E696369616C2E USING utf8mb4), 'texto_largo', NULL, 1, 100),
+  ('entrevista', 'fecha_entrevista', CONVERT(0x4665636861206465206C6120656E7472657669737461 USING utf8mb4), NULL, 'fecha', NULL, 1, 10),
+  ('entrevista', 'asistentes', CONVERT(0x517569C3A96E657320706172746963697061726F6E USING utf8mb4), CONVERT(0x46616D696C69617265732070726573656E746573207920737520706172656E746573636F2E USING utf8mb4), 'texto', NULL, 1, 20),
+  ('entrevista', 'preocupaciones', CONVERT(0x5175C3A9207072656F637570612061206C612066616D696C6961 USING utf8mb4), CONVERT(0x436F6E207375732070616C61627261732C20656E206C6F20706F7369626C652E USING utf8mb4), 'texto_largo', NULL, 1, 30),
+  ('entrevista', 'rutina', CONVERT(0x527574696E6120646961726961 USING utf8mb4), NULL, 'texto_largo', NULL, 0, 40),
+  ('entrevista', 'desarrollo', CONVERT(0x416E7465636564656E7465732064656C206465736172726F6C6C6F20736567C3BA6E206C612066616D696C6961 USING utf8mb4), NULL, 'texto_largo', NULL, 0, 50),
+  ('entrevista', 'expectativas', CONVERT(0x457870656374617469766173206465206C612066616D696C6961 USING utf8mb4), CONVERT(0x5175C3A9206573706572616E206C6F6772617220636F6E20656C2074726174616D69656E746F2E USING utf8mb4), 'texto_largo', NULL, 1, 60),
+  ('entrevista', 'otras_observaciones', CONVERT(0x4F74726173206F62736572766163696F6E6573 USING utf8mb4), NULL, 'texto_largo', NULL, 0, 70),
+  ('pti', 'frecuencia', CONVERT(0x4672656375656E636961206465206C617320736573696F6E6573 USING utf8mb4), NULL, 'opcion', '1 vez por semana|2 veces por semana|3 veces por semana|Otra', 1, 10),
+  ('pti', 'areas', CONVERT(0xC3817265617320612074726162616A6172 USING utf8mb4), CONVERT(0x4C6F73206F626A657469766F7320636F6E637265746F732073652063617267616E20656E206C61207065737461C3B161204F626A657469766F732E USING utf8mb4), 'texto_largo', NULL, 1, 20),
+  ('pti', 'estrategias', CONVERT(0x4573747261746567696173207920656E666F717565 USING utf8mb4), NULL, 'texto_largo', NULL, 1, 30),
+  ('pti', 'coordinacion', CONVERT(0x436F6F7264696E616369C3B36E20636F6E206C612065736375656C612079206F74726F732070726F666573696F6E616C6573 USING utf8mb4), NULL, 'texto_largo', NULL, 0, 40),
+  ('pti', 'criterios_revision', CONVERT(0x437269746572696F7320646520726576697369C3B36E207920646520616C7461 USING utf8mb4), NULL, 'texto_largo', NULL, 0, 50),
+  ('pti', 'fecha_revision', CONVERT(0x4665636861206465206C61207072696D65726120726576697369C3B36E USING utf8mb4), CONVERT(0x4C6F73206F626A657469766F73207365206576616CC3BA616E20636164612073656973206D657365732E USING utf8mb4), 'fecha', NULL, 0, 60);
+
+
+-- =====================================================================
 -- 6. INFORMES, PLANTILLAS Y AUDITORIA (Entrega 4)
 -- =====================================================================
 
@@ -3643,6 +3768,607 @@ BEGIN
 
       COMMIT;
       SET p_mensaje = 'Aviso enviado';
+    END IF;
+  END IF;
+END$$
+
+
+-- ---------------------------------------------------------------------
+-- Flujo de ingreso (Entrega 4): p_iniciar_ingreso, p_guardar_ingreso_etapa,
+-- p_cerrar_ingreso_etapa, p_reabrir_ingreso_etapa y p_completar_ingreso.
+--
+-- Como en la regla 8 de HDU 11, solo el terapeuta con asignacion VIGENTE
+-- sobre el paciente escribe: el id_terapeuta viaja al procedimiento, que lo
+-- revalida por su cuenta. Un ingreso completado no se modifica mas.
+-- ---------------------------------------------------------------------
+CREATE PROCEDURE p_iniciar_ingreso (
+  IN  p_id_paciente   INT UNSIGNED,
+  IN  p_id_terapeuta  INT UNSIGNED,
+  OUT p_id_ingreso    INT UNSIGNED,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error      VARCHAR(255) DEFAULT '';
+  DECLARE v_paciente   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_activo     BOOLEAN      DEFAULT NULL;
+  DECLARE v_terapeuta  INT UNSIGNED DEFAULT NULL;
+  DECLARE v_asignado   INT          DEFAULT 0;
+  DECLARE v_existente  INT UNSIGNED DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_id_ingreso = NULL;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_id_ingreso = NULL;
+    SET p_mensaje = 'No se pudo iniciar el ingreso por un error interno';
+  END;
+
+  SET p_id_ingreso = NULL;
+
+  START TRANSACTION;
+
+  SELECT id, activo INTO v_paciente, v_activo
+    FROM pacientes
+   WHERE id = p_id_paciente
+   FOR UPDATE;
+
+  SELECT id INTO v_terapeuta
+    FROM terapeutas
+   WHERE id = p_id_terapeuta
+   FOR SHARE;
+
+  SELECT COUNT(*) INTO v_asignado
+    FROM asignaciones
+   WHERE id_paciente = p_id_paciente
+     AND id_terapeuta = p_id_terapeuta
+     AND fecha_hasta IS NULL
+     FOR SHARE;
+
+  SELECT id INTO v_existente
+    FROM ingresos
+   WHERE id_paciente = p_id_paciente
+   FOR UPDATE;
+
+  IF v_paciente IS NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El paciente indicado no existe';
+  ELSEIF v_terapeuta IS NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El terapeuta indicado no existe';
+  ELSEIF v_activo = FALSE THEN
+    ROLLBACK;
+    SET p_mensaje = 'El paciente esta dado de baja: no se le puede iniciar un ingreso';
+  ELSEIF v_asignado = 0 THEN
+    ROLLBACK;
+    SET p_mensaje = 'El terapeuta no tiene asignado a este paciente';
+  ELSEIF v_existente IS NOT NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El paciente ya tiene un ingreso registrado';
+  ELSE
+    INSERT INTO ingresos (id_paciente, id_terapeuta)
+    VALUES (p_id_paciente, p_id_terapeuta);
+
+    SET p_id_ingreso = LAST_INSERT_ID();
+
+    INSERT INTO ingreso_etapas (id_ingreso, etapa)
+    VALUES (p_id_ingreso, 'carpeta'), (p_id_ingreso, 'evaluacion'),
+           (p_id_ingreso, 'entrevista'), (p_id_ingreso, 'pti');
+
+    COMMIT;
+    SET p_mensaje = 'Ingreso iniciado correctamente';
+  END IF;
+END$$
+
+
+-- p_respuestas: arreglo JSON [{"clave": "...", "valor": "..."}]. Un valor
+-- vacio borra la respuesta. Una clave que no es de un campo ACTIVO de la etapa
+-- se rechaza (no se descarta en silencio).
+CREATE PROCEDURE p_guardar_ingreso_etapa (
+  IN  p_id_ingreso    INT UNSIGNED,
+  IN  p_id_terapeuta  INT UNSIGNED,
+  IN  p_etapa         VARCHAR(20),
+  IN  p_respuestas    JSON,
+  OUT p_ok            BOOLEAN,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error      VARCHAR(255) DEFAULT '';
+  DECLARE v_paciente   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_lock       INT UNSIGNED DEFAULT NULL;
+  DECLARE v_asignado   INT          DEFAULT 0;
+  DECLARE v_estado     VARCHAR(20)  DEFAULT NULL;
+  DECLARE v_estado_et  VARCHAR(20)  DEFAULT NULL;
+  DECLARE v_invalidas  INT          DEFAULT 0;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = 'No se pudo guardar la etapa por un error interno';
+  END;
+
+  SET p_ok = FALSE;
+
+  IF p_etapa NOT IN ('carpeta', 'evaluacion', 'entrevista', 'pti') THEN
+    SET p_mensaje = 'La etapa indicada no existe';
+  ELSEIF p_respuestas IS NULL OR JSON_TYPE(p_respuestas) <> 'ARRAY' THEN
+    SET p_mensaje = 'Las respuestas tienen que enviarse como una lista';
+  ELSE
+  SELECT id_paciente INTO v_paciente
+    FROM ingresos
+   WHERE id = p_id_ingreso;
+
+  IF v_paciente IS NULL THEN
+    SET p_mensaje = 'El ingreso indicado no existe';
+  ELSE
+    START TRANSACTION;
+
+    SELECT id INTO v_lock
+      FROM pacientes
+     WHERE id = v_paciente
+     FOR UPDATE;
+
+    SELECT COUNT(*) INTO v_asignado
+      FROM asignaciones
+     WHERE id_paciente = v_paciente
+       AND id_terapeuta = p_id_terapeuta
+       AND fecha_hasta IS NULL
+       FOR SHARE;
+
+    -- Relectura dentro del lock del paciente
+    SELECT estado INTO v_estado
+      FROM ingresos
+     WHERE id = p_id_ingreso
+     FOR UPDATE;
+
+    SELECT estado INTO v_estado_et
+      FROM ingreso_etapas
+     WHERE id_ingreso = p_id_ingreso AND etapa = p_etapa
+     FOR UPDATE;
+
+    IF v_estado IS NULL THEN
+      ROLLBACK;
+      SET p_mensaje = 'El ingreso indicado no existe';
+    ELSEIF v_asignado = 0 THEN
+      ROLLBACK;
+      SET p_mensaje = 'Solo el terapeuta asignado puede cargar el ingreso de este paciente';
+    ELSEIF v_estado = 'completado' THEN
+      ROLLBACK;
+      SET p_mensaje = 'El ingreso ya esta completado y no se puede modificar';
+    ELSEIF v_estado_et = 'cerrada' THEN
+      ROLLBACK;
+      SET p_mensaje = 'La etapa esta cerrada: reabrala para modificarla';
+    ELSE
+      SELECT COUNT(*) INTO v_invalidas
+        FROM JSON_TABLE(p_respuestas, '$[*]'
+               COLUMNS (clave VARCHAR(40) PATH '$.clave')) j
+        LEFT JOIN ingreso_campos c
+               ON c.etapa = p_etapa AND c.clave = j.clave AND c.activo = TRUE
+       WHERE c.id IS NULL;
+
+      IF v_invalidas > 0 THEN
+        ROLLBACK;
+        SET p_mensaje = 'Hay campos que no pertenecen a esta etapa';
+      ELSE
+        -- Valor vacio: se borra la respuesta
+        DELETE r
+          FROM ingreso_respuestas r
+          JOIN ingreso_campos c ON c.id = r.id_campo AND c.etapa = p_etapa
+          JOIN JSON_TABLE(p_respuestas, '$[*]'
+                 COLUMNS (clave VARCHAR(40) PATH '$.clave',
+                          valor TEXT PATH '$.valor' NULL ON EMPTY)) j
+            ON j.clave = c.clave
+         WHERE r.id_ingreso = p_id_ingreso
+           AND (j.valor IS NULL OR TRIM(j.valor) = '');
+
+        INSERT INTO ingreso_respuestas (id_ingreso, id_campo, valor)
+        SELECT p_id_ingreso, c.id, TRIM(j.valor)
+          FROM JSON_TABLE(p_respuestas, '$[*]'
+                 COLUMNS (clave VARCHAR(40) PATH '$.clave',
+                          valor TEXT PATH '$.valor' NULL ON EMPTY)) j
+          JOIN ingreso_campos c
+            ON c.etapa = p_etapa AND c.clave = j.clave AND c.activo = TRUE
+         WHERE j.valor IS NOT NULL AND TRIM(j.valor) <> ''
+        ON DUPLICATE KEY UPDATE valor = VALUES(valor);
+
+        IF v_estado_et = 'pendiente' THEN
+          UPDATE ingreso_etapas SET estado = 'en_curso'
+           WHERE id_ingreso = p_id_ingreso AND etapa = p_etapa;
+        END IF;
+
+        COMMIT;
+        SET p_ok = TRUE;
+        SET p_mensaje = 'Etapa guardada correctamente';
+      END IF;
+    END IF;
+  END IF;
+  END IF;
+END$$
+
+
+CREATE PROCEDURE p_cerrar_ingreso_etapa (
+  IN  p_id_ingreso    INT UNSIGNED,
+  IN  p_id_terapeuta  INT UNSIGNED,
+  IN  p_etapa         VARCHAR(20),
+  OUT p_ok            BOOLEAN,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error      VARCHAR(255) DEFAULT '';
+  DECLARE v_paciente   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_lock       INT UNSIGNED DEFAULT NULL;
+  DECLARE v_asignado   INT          DEFAULT 0;
+  DECLARE v_estado     VARCHAR(20)  DEFAULT NULL;
+  DECLARE v_estado_et  VARCHAR(20)  DEFAULT NULL;
+  DECLARE v_faltan     INT          DEFAULT 0;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = 'No se pudo cerrar la etapa por un error interno';
+  END;
+
+  SET p_ok = FALSE;
+
+  IF p_etapa NOT IN ('carpeta', 'evaluacion', 'entrevista', 'pti') THEN
+    SET p_mensaje = 'La etapa indicada no existe';
+  ELSE
+  SELECT id_paciente INTO v_paciente
+    FROM ingresos
+   WHERE id = p_id_ingreso;
+
+  IF v_paciente IS NULL THEN
+    SET p_mensaje = 'El ingreso indicado no existe';
+  ELSE
+    START TRANSACTION;
+
+    SELECT id INTO v_lock
+      FROM pacientes
+     WHERE id = v_paciente
+     FOR UPDATE;
+
+    SELECT COUNT(*) INTO v_asignado
+      FROM asignaciones
+     WHERE id_paciente = v_paciente
+       AND id_terapeuta = p_id_terapeuta
+       AND fecha_hasta IS NULL
+       FOR SHARE;
+
+    -- Relectura dentro del lock del paciente
+    SELECT estado INTO v_estado
+      FROM ingresos
+     WHERE id = p_id_ingreso
+     FOR UPDATE;
+
+    SELECT estado INTO v_estado_et
+      FROM ingreso_etapas
+     WHERE id_ingreso = p_id_ingreso AND etapa = p_etapa
+     FOR UPDATE;
+
+    SELECT COUNT(*) INTO v_faltan
+      FROM ingreso_campos c
+      LEFT JOIN ingreso_respuestas r
+             ON r.id_campo = c.id AND r.id_ingreso = p_id_ingreso
+     WHERE c.etapa = p_etapa AND c.activo = TRUE AND c.obligatorio = TRUE
+       AND r.id_campo IS NULL;
+
+    IF v_estado IS NULL THEN
+      ROLLBACK;
+      SET p_mensaje = 'El ingreso indicado no existe';
+    ELSEIF v_asignado = 0 THEN
+      ROLLBACK;
+      SET p_mensaje = 'Solo el terapeuta asignado puede cargar el ingreso de este paciente';
+    ELSEIF v_estado = 'completado' THEN
+      ROLLBACK;
+      SET p_mensaje = 'El ingreso ya esta completado y no se puede modificar';
+    ELSEIF v_estado_et = 'cerrada' THEN
+      ROLLBACK;
+      SET p_mensaje = 'La etapa ya estaba cerrada';
+    ELSEIF v_faltan > 0 THEN
+      ROLLBACK;
+      SET p_mensaje = CONCAT('Faltan completar ', v_faltan, ' campo(s) obligatorio(s) de esta etapa');
+    ELSE
+      UPDATE ingreso_etapas
+         SET estado = 'cerrada', fecha_cierre = CURRENT_TIMESTAMP
+       WHERE id_ingreso = p_id_ingreso AND etapa = p_etapa;
+
+      COMMIT;
+      SET p_ok = TRUE;
+      SET p_mensaje = 'Etapa cerrada correctamente';
+    END IF;
+  END IF;
+  END IF;
+END$$
+
+
+CREATE PROCEDURE p_reabrir_ingreso_etapa (
+  IN  p_id_ingreso    INT UNSIGNED,
+  IN  p_id_terapeuta  INT UNSIGNED,
+  IN  p_etapa         VARCHAR(20),
+  OUT p_ok            BOOLEAN,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error      VARCHAR(255) DEFAULT '';
+  DECLARE v_paciente   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_lock       INT UNSIGNED DEFAULT NULL;
+  DECLARE v_asignado   INT          DEFAULT 0;
+  DECLARE v_estado     VARCHAR(20)  DEFAULT NULL;
+  DECLARE v_estado_et  VARCHAR(20)  DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = 'No se pudo reabrir la etapa por un error interno';
+  END;
+
+  SET p_ok = FALSE;
+
+  IF p_etapa NOT IN ('carpeta', 'evaluacion', 'entrevista', 'pti') THEN
+    SET p_mensaje = 'La etapa indicada no existe';
+  ELSE
+  SELECT id_paciente INTO v_paciente
+    FROM ingresos
+   WHERE id = p_id_ingreso;
+
+  IF v_paciente IS NULL THEN
+    SET p_mensaje = 'El ingreso indicado no existe';
+  ELSE
+    START TRANSACTION;
+
+    SELECT id INTO v_lock
+      FROM pacientes
+     WHERE id = v_paciente
+     FOR UPDATE;
+
+    SELECT COUNT(*) INTO v_asignado
+      FROM asignaciones
+     WHERE id_paciente = v_paciente
+       AND id_terapeuta = p_id_terapeuta
+       AND fecha_hasta IS NULL
+       FOR SHARE;
+
+    -- Relectura dentro del lock del paciente
+    SELECT estado INTO v_estado
+      FROM ingresos
+     WHERE id = p_id_ingreso
+     FOR UPDATE;
+
+    SELECT estado INTO v_estado_et
+      FROM ingreso_etapas
+     WHERE id_ingreso = p_id_ingreso AND etapa = p_etapa
+     FOR UPDATE;
+
+    IF v_estado IS NULL THEN
+      ROLLBACK;
+      SET p_mensaje = 'El ingreso indicado no existe';
+    ELSEIF v_asignado = 0 THEN
+      ROLLBACK;
+      SET p_mensaje = 'Solo el terapeuta asignado puede cargar el ingreso de este paciente';
+    ELSEIF v_estado = 'completado' THEN
+      ROLLBACK;
+      SET p_mensaje = 'El ingreso ya esta completado y no se puede modificar';
+    ELSEIF v_estado_et <> 'cerrada' THEN
+      ROLLBACK;
+      SET p_mensaje = 'La etapa no esta cerrada';
+    ELSE
+      UPDATE ingreso_etapas
+         SET estado = 'en_curso', fecha_cierre = NULL
+       WHERE id_ingreso = p_id_ingreso AND etapa = p_etapa;
+
+      COMMIT;
+      SET p_ok = TRUE;
+      SET p_mensaje = 'Etapa reabierta correctamente';
+    END IF;
+  END IF;
+  END IF;
+END$$
+
+
+-- Completa el ingreso: las cuatro etapas cerradas y el paciente con sus
+-- objetivos fijados (observacion para fijar objetivos: minimo 3 activos).
+-- Guarda la copia de etiquetas y respuestas en historia_clinica.
+CREATE PROCEDURE p_completar_ingreso (
+  IN  p_id_ingreso    INT UNSIGNED,
+  IN  p_id_terapeuta  INT UNSIGNED,
+  OUT p_ok            BOOLEAN,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error       VARCHAR(255) DEFAULT '';
+  DECLARE v_paciente    INT UNSIGNED DEFAULT NULL;
+  DECLARE v_lock        INT UNSIGNED DEFAULT NULL;
+  DECLARE v_asignado    INT          DEFAULT 0;
+  DECLARE v_estado      VARCHAR(20)  DEFAULT NULL;
+  DECLARE v_abiertas    INT          DEFAULT 0;
+  DECLARE v_objetivos   INT          DEFAULT 0;
+  DECLARE v_historia    JSON         DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = 'No se pudo completar el ingreso por un error interno';
+  END;
+
+  SET p_ok = FALSE;
+
+  SELECT id_paciente INTO v_paciente
+    FROM ingresos
+   WHERE id = p_id_ingreso;
+
+  IF v_paciente IS NULL THEN
+    SET p_mensaje = 'El ingreso indicado no existe';
+  ELSE
+    START TRANSACTION;
+
+    SELECT id INTO v_lock
+      FROM pacientes
+     WHERE id = v_paciente
+     FOR UPDATE;
+
+    SELECT COUNT(*) INTO v_asignado
+      FROM asignaciones
+     WHERE id_paciente = v_paciente
+       AND id_terapeuta = p_id_terapeuta
+       AND fecha_hasta IS NULL
+       FOR SHARE;
+
+    -- Relectura dentro del lock del paciente
+    SELECT estado INTO v_estado
+      FROM ingresos
+     WHERE id = p_id_ingreso
+     FOR UPDATE;
+
+    SELECT COUNT(*) INTO v_abiertas
+      FROM ingreso_etapas
+     WHERE id_ingreso = p_id_ingreso AND estado <> 'cerrada';
+
+    SELECT COUNT(*) INTO v_objetivos
+      FROM objetivos_terapeuticos
+     WHERE id_paciente = v_paciente AND activo = TRUE
+       FOR SHARE;
+
+    IF v_estado IS NULL THEN
+      ROLLBACK;
+      SET p_mensaje = 'El ingreso indicado no existe';
+    ELSEIF v_asignado = 0 THEN
+      ROLLBACK;
+      SET p_mensaje = 'Solo el terapeuta asignado puede cargar el ingreso de este paciente';
+    ELSEIF v_estado = 'completado' THEN
+      ROLLBACK;
+      SET p_mensaje = 'El ingreso ya estaba completado';
+    ELSEIF v_abiertas > 0 THEN
+      ROLLBACK;
+      SET p_mensaje = CONCAT('Faltan cerrar ', v_abiertas, ' etapa(s) del ingreso');
+    ELSEIF v_objetivos < 3 THEN
+      ROLLBACK;
+      SET p_mensaje = 'Faltan fijar los objetivos: el paciente necesita al menos 3 objetivos activos';
+    ELSE
+      -- Copia de lo que figuraba al momento de completar. El orden lo
+      -- reconstruye la aplicacion con etapa y orden.
+      SELECT JSON_ARRAYAGG(JSON_OBJECT(
+               'etapa', x.etapa, 'orden', x.orden, 'clave', x.clave,
+               'etiqueta', x.etiqueta, 'tipo', x.tipo, 'valor', x.valor))
+        INTO v_historia
+        FROM (
+          SELECT c.etapa, c.orden, c.clave, c.etiqueta, c.tipo, r.valor
+            FROM ingreso_campos c
+            LEFT JOIN ingreso_respuestas r
+                   ON r.id_campo = c.id AND r.id_ingreso = p_id_ingreso
+           WHERE c.activo = TRUE OR r.id_campo IS NOT NULL
+        ) x;
+
+      UPDATE ingresos
+         SET estado = 'completado',
+             fecha_completado = CURRENT_TIMESTAMP,
+             historia_clinica = v_historia
+       WHERE id = p_id_ingreso;
+
+      COMMIT;
+      SET p_ok = TRUE;
+      SET p_mensaje = 'Ingreso completado: la historia clinica quedo generada';
     END IF;
   END IF;
 END$$

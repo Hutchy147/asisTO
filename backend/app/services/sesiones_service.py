@@ -70,8 +70,8 @@ def terapeuta_actual():
         # El rol es terapeuta pero no tiene fila en terapeutas: dato
         # incompleto, no un problema de permisos del usuario
         raise ErrorAplicacion(
-            'Tu usuario no tiene un perfil de terapeuta asociado. '
-            'Avisale al equipo.',
+            'Su usuario no tiene un perfil de terapeuta asociado. '
+            'Avise al equipo.',
             http_status=409,
         )
     return terapeuta

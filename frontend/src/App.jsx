@@ -11,6 +11,7 @@ import { RUTAS_PROTEGIDAS } from './config/rutas.js';
 import { RUTA_POR_ROL, useAuth } from './context/AuthContext.jsx';
 import AuditoriaAccesos from './pages/AuditoriaAccesos.jsx';
 import AdminAsignaciones from './pages/AdminAsignaciones.jsx';
+import AdminFormulariosIngreso from './pages/AdminFormulariosIngreso.jsx';
 import Calendario from './pages/Calendario.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Login from './pages/Login.jsx';
@@ -42,6 +43,7 @@ const ELEMENTO_POR_RUTA = {
   '/rrhh': <PanelRrhh />,
   '/rrhh/auditoria': <AuditoriaAccesos />,
   '/admin': <AdminAsignaciones />,
+  '/admin/formularios': <AdminFormulariosIngreso />,
   '/familiar': <PortalFamiliar />,
   '/familiar/notificaciones': <NotificacionesFamiliar />,
   '/paciente': <Dashboard rol="paciente" />,

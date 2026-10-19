@@ -182,7 +182,7 @@ def requiere_rol(*roles):
             payload, error = decodificar_token(token)
             if error == CODIGO_TOKEN_EXPIRADO:
                 return _respuesta_error(
-                    'La sesion expiro. Volve a iniciar sesion.',
+                    'La sesión expiró. Vuelva a iniciar sesión.',
                     CODIGO_TOKEN_EXPIRADO, 401,
                 )
             if error:
@@ -208,7 +208,7 @@ def requiere_rol(*roles):
                     usuario.id, usuario.rol, request.path,
                 )
                 return _respuesta_error(
-                    'No tenes permisos para acceder a este recurso.',
+                    'No tiene permisos para acceder a este recurso.',
                     CODIGO_ROL_NO_AUTORIZADO, 403,
                 )
 

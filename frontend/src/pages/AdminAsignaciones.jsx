@@ -4,7 +4,6 @@
 // No muestra datos clínicos (el endpoint tampoco los envía).
 
 import { useMemo, useState } from 'react';
-import AppBar from '@mui/material/AppBar';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -13,14 +12,13 @@ import Container from '@mui/material/Container';
 import Snackbar from '@mui/material/Snackbar';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
-import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 
+import BarraAdmin from '../components/admin/BarraAdmin.jsx';
 import ModalAsignar from '../components/asignaciones/ModalAsignar.jsx';
 import DataTable from '../components/data/DataTable.jsx';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import DialogoConfirmacion from '../components/modal/DialogoConfirmacion.jsx';
-import { useAuth } from '../context/AuthContext.jsx';
 import { usePeticion } from '../hooks/usePeticion.js';
 import {
   cerrarAsignacion, listarPacientesAdmin, listarTerapeutas,
@@ -34,7 +32,6 @@ function estadoDe(paciente) {
 }
 
 export default function AdminAsignaciones() {
-  const { usuario, logout } = useAuth();
   const pacientes = usePeticion(listarPacientesAdmin, []);
   const terapeutas = usePeticion(listarTerapeutas, []);
   const [busqueda, setBusqueda] = useState('');
@@ -124,15 +121,7 @@ export default function AdminAsignaciones() {
 
   return (
     <Box sx={{ minHeight: '100vh' }}>
-      <AppBar position="static" elevation={0} sx={(t) => ({ backgroundColor: t.palette.roles.admin.fg })}>
-        <Toolbar>
-          <Typography variant="h6" sx={{ flexGrow: 1 }}>AsisTO · Administración</Typography>
-          <Stack direction="row" spacing={2} alignItems="center">
-            <Typography variant="body2" className="texto-libre" noWrap>{usuario?.nombre_completo}</Typography>
-            <Button color="inherit" variant="outlined" onClick={logout}>Cerrar sesión</Button>
-          </Stack>
-        </Toolbar>
-      </AppBar>
+      <BarraAdmin activa="asignaciones" />
 
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Typography variant="h4">Asignación de terapeutas</Typography>

@@ -45,6 +45,7 @@ export const RUTAS_PROTEGIDAS = [
   { ruta: '/rrhh', roles: ['rrhh'], capacidad: 'rrhh.consulta' },
   { ruta: '/rrhh/auditoria', roles: ['rrhh'], capacidad: 'auditoria.accesos' },
   { ruta: '/admin', roles: ['admin'], capacidad: 'admin.asignaciones' },
+  { ruta: '/admin/formularios', roles: ['admin'], capacidad: 'ingreso.configurar' },
   { ruta: '/familiar', roles: ['familiar'], capacidad: 'familiar.portal' },
   { ruta: '/familiar/notificaciones', roles: ['familiar'], capacidad: 'notificaciones' },
   { ruta: '/paciente', roles: ['paciente'], capacidad: 'paciente.portal' },
