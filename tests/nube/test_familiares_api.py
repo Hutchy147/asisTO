@@ -50,6 +50,10 @@ class FamiliaresApi(BaseApi):
         self.assertEqual(r.status_code, 403)
         r = self.llamar('familiar', 'post', '/api/pacientes/3/familiares', json={'id_familiar': 2})
         self.assertEqual(r.status_code, 403)
+        # limpieza: las pruebas comparten base, y otros modulos cuentan con que
+        # Marta (familiar 1) solo tiene vinculado al paciente 1
+        r = self.llamar('laura', 'post', '/api/pacientes/3/familiares/1/desvinculacion')
+        self.assertEqual(r.status_code, 200)
 
     def test_crear_y_vincular_con_contrasena_temporal(self):
         datos = {'nombre': 'Rosa', 'apellido': 'Paz', 'email': 'Rosa.Paz@Asisto.local',
