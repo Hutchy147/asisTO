@@ -43,6 +43,16 @@ export function listarSesiones({ desde, hasta } = {}) {
   return get(`/sesiones${construirQuery({ desde, hasta })}`);
 }
 
+/**
+ * Sesiones ya ocurridas y registradas (Entrega 5), con filtros y paginación.
+ * Filtros: desde, hasta, id_paciente, terapeuta ('mias' | 'todas'), estado, pagina.
+ * -> { desde, hasta, terapeuta, pagina, por_pagina, total, paginas, sesiones }
+ * Sin fechas devuelve los últimos 90 días. Contrato: docs/api-consulta-sesiones.md
+ */
+export function listarSesionesRegistradas(filtros = {}) {
+  return get(`/sesiones/registradas${construirQuery(filtros)}`);
+}
+
 /** Sesiones del dia. -> { fecha, sesiones: [...], total } */
 export function listarSesionesDeHoy() {
   return get('/sesiones/hoy');

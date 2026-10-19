@@ -803,3 +803,90 @@ def agregar_a_dupla(id_sesion, id_paciente):
     logger.info('Dupla %s armada sobre la sesion %s', dupla, id_sesion)
     return {'id_dupla': int(dupla), 'id_sesion_nueva': int(nueva),
             'mensaje': acentuar(mensaje)}
+
+
+# ---------------------------------------------------------------------------
+# Sesiones registradas (Entrega 5): consulta de lo ya ocurrido
+# ---------------------------------------------------------------------------
+DIAS_REGISTRADAS_POR_DEFECTO = 90
+POR_PAGINA_DEFECTO = 20
+POR_PAGINA_MAXIMO = 50
+
+
+def _entero_positivo(valor, nombre, defecto, maximo=None):
+    if valor in (None, ''):
+        return defecto
+    try:
+        numero = int(valor)
+    except (TypeError, ValueError):
+        raise ErrorAplicacion(f'El valor de "{nombre}" no es válido.', campo=nombre)
+    if numero < 1 or (maximo is not None and numero > maximo):
+        raise ErrorAplicacion(f'El valor de "{nombre}" no es válido.', campo=nombre)
+    return numero
+
+
+def listar_registradas(filtros):
+    """
+    Sesiones YA OCURRIDAS y registradas, con filtros y paginacion.
+
+    "Registrada" = ocurrio (su hora de inicio ya paso) y se la cerro como
+    completa o ausencia, o tiene al menos una evolucion cargada. Una sesion
+    agendada hacia adelante, o que ocurrio y sigue sin registro, no entra:
+    esa es la lista de trabajo pendiente del Panel.
+
+    Lectura abierta entre terapeutas (misma politica que la ficha clinica):
+    `terapeuta=mias` (por defecto) o `terapeuta=todas`. Editar sigue siendo
+    solo de quien atendio; el detalle lo dice con `es_propia`.
+    """
+    terapeuta = terapeuta_actual()
+    hoy = dt.date.today()
+
+    if not filtros.get('desde') and not filtros.get('hasta'):
+        fecha_hasta = hoy
+        fecha_desde = hoy - dt.timedelta(days=DIAS_REGISTRADAS_POR_DEFECTO - 1)
+    else:
+        fecha_desde, fecha_hasta = resolver_rango(filtros.get('desde'), filtros.get('hasta'))
+    fecha_hasta = min(fecha_hasta, hoy)
+
+    alcance = (filtros.get('terapeuta') or 'mias').strip().lower()
+    if alcance not in ('mias', 'todas'):
+        raise ErrorAplicacion('El filtro de terapeuta no es válido. Use «mias» o «todas».', campo='terapeuta')
+    estado = (filtros.get('estado') or '').strip().lower() or None
+    if estado is not None and estado not in ESTADOS:
+        raise ErrorAplicacion('El estado indicado no es válido.', campo='estado')
+    id_paciente = _entero_positivo(filtros.get('id_paciente'), 'id_paciente', None)
+    pagina = _entero_positivo(filtros.get('pagina'), 'pagina', 1)
+    por_pagina = _entero_positivo(filtros.get('por_pagina'), 'por_pagina', POR_PAGINA_DEFECTO, POR_PAGINA_MAXIMO)
+
+    con_evolucion = db.session.query(Evolucion.id).filter(Evolucion.id_sesion == Sesion.id).exists()
+    consulta = Sesion.query.filter(
+        Sesion.fecha >= fecha_desde,
+        Sesion.fecha <= fecha_hasta,
+        db.func.timestamp(Sesion.fecha, Sesion.hora_inicio) <= dt.datetime.now(),
+        db.or_(Sesion.estado.in_(('completa', ESTADO_AUSENCIA)), con_evolucion),
+    )
+    if alcance == 'mias':
+        consulta = consulta.filter(Sesion.id_terapeuta == terapeuta.id)
+    if id_paciente:
+        consulta = consulta.filter(Sesion.id_paciente == id_paciente)
+    if estado:
+        consulta = consulta.filter(Sesion.estado == estado)
+
+    total = consulta.count()
+    sesiones = (
+        consulta.order_by(Sesion.fecha.desc(), Sesion.hora_inicio.desc(), Sesion.id.desc())
+        .offset((pagina - 1) * por_pagina).limit(por_pagina).all()
+    )
+    lista = _serializar_lista(sesiones)
+    for datos in lista:
+        datos['es_propia'] = datos['terapeuta']['id'] == terapeuta.id
+    return {
+        'desde': fecha_desde.isoformat(),
+        'hasta': fecha_hasta.isoformat(),
+        'terapeuta': alcance,
+        'pagina': pagina,
+        'por_pagina': por_pagina,
+        'total': total,
+        'paginas': max(1, -(-total // por_pagina)),
+        'sesiones': lista,
+    }

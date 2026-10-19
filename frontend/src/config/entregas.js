@@ -189,6 +189,9 @@ export const CAPACIDADES = {
   'duplas.vincular': { entrega: 5, nombre: 'vincular dupla terapéutica' },
   'objetivos.plantillas': { entrega: 5, nombre: 'plantillas de objetivos' },
   'sesiones.consultar': { entrega: 5, nombre: 'consultar sesiones registradas' },
+  // Indicadores de tendencia por objetivo y comparación con el período
+  // anterior, en la pestaña Progreso de la ficha. Todo en palabras.
+  'evoluciones.tendencias': { entrega: 5, nombre: 'tendencia y comparación de la evolución' },
 
   // --- Versión 6 (16/11) ---
   // VENÍA EN 4 Y PASA A 6, Y YA NO ES DECISIÓN MÍA. Antes decía "no figura en

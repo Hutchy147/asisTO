@@ -13,6 +13,7 @@ import AuditoriaAccesos from './pages/AuditoriaAccesos.jsx';
 import AdminAsignaciones from './pages/AdminAsignaciones.jsx';
 import AdminFormulariosIngreso from './pages/AdminFormulariosIngreso.jsx';
 import AdminPlantillasObjetivos from './pages/AdminPlantillasObjetivos.jsx';
+import SesionesRegistradas from './pages/SesionesRegistradas.jsx';
 import Calendario from './pages/Calendario.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Login from './pages/Login.jsx';
@@ -46,6 +47,7 @@ const ELEMENTO_POR_RUTA = {
   '/admin': <AdminAsignaciones />,
   '/admin/formularios': <AdminFormulariosIngreso />,
   '/admin/plantillas': <AdminPlantillasObjetivos />,
+  '/sesiones': <SesionesRegistradas />,
   '/familiar': <PortalFamiliar />,
   '/familiar/notificaciones': <NotificacionesFamiliar />,
   '/paciente': <Dashboard rol="paciente" />,

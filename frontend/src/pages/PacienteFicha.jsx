@@ -21,6 +21,7 @@ import SeccionIngreso from '../components/ingreso/SeccionIngreso.jsx';
 import DataTable from '../components/data/DataTable.jsx';
 import GoalMeter from '../components/data/GoalMeter.jsx';
 import GraficoEvolucion from '../components/data/GraficoEvolucion.jsx';
+import TendenciasObjetivos from '../components/evoluciones/TendenciasObjetivos.jsx';
 import SesionEstadoChip from '../components/data/SesionEstadoChip.jsx';
 import ModalCargarEvolucion from '../components/evoluciones/ModalCargarEvolucion.jsx';
 import AppLayout from '../components/layout/AppLayout.jsx';
@@ -474,6 +475,14 @@ export default function PacienteFicha() {
       {/* --- Pestaña Progreso --- */}
       {verProgreso && pestania === 'progreso' && (
         <>
+          {hayCapacidad('evoluciones.tendencias') && (
+            <Seccion
+              titulo="Tendencia por objetivo"
+              descripcion="Cómo viene cada objetivo en los últimos días, comparado con el período anterior."
+            >
+              <TendenciasObjetivos idPaciente={id} />
+            </Seccion>
+          )}
           {evolucion.cargando && <Cargando texto="Cargando la evolución..." />}
           {evolucion.error && (
             <EstadoError error={evolucion.error} onReintentar={evolucion.recargar} />

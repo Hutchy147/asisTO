@@ -5207,6 +5207,113 @@ END$$
 
 
 -- ---------------------------------------------------------------------
+-- p_tendencia_paciente (Entrega 5)
+-- Indicadores de tendencia por objetivo, en palabras, para el periodo
+-- [p_desde, p_hasta] y su comparacion con el periodo anterior de igual
+-- largo (los dias inmediatamente previos a p_desde).
+--
+-- Dos criterios, los dos aca y no en la interfaz:
+--   tendencia  DENTRO del periodo: con al menos 4 calificaciones, se compara
+--              el promedio de la primera mitad (en orden cronologico) con el
+--              de la segunda; la del medio, si son impares, no entra.
+--              Diferencia >= 0.5 -> 'mejora'; <= -0.5 -> 'retrocede'; si no,
+--              'se_mantiene'. Con menos de 4 -> 'sin_datos'.
+--   cambio     ENTRE periodos: con al menos 2 calificaciones en cada uno,
+--              promedio actual contra promedio previo con el mismo umbral
+--              -> 'mejoro' / 'retrocedio' / 'igual'. Si no -> 'sin_datos'.
+-- Los promedios NO salen: la escala es en palabras. Se devuelve el nivel
+-- (promedio redondeado a la palabra mas cercana) y la cantidad de
+-- calificaciones de cada periodo. Un objetivo sin calificaciones en ninguno
+-- de los dos periodos solo aparece si esta activo.
+-- Es lectura de historia clinica: incluye pacientes dados de baja.
+-- ---------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS p_tendencia_paciente$$
+CREATE PROCEDURE p_tendencia_paciente (
+  IN  p_id_paciente  INT UNSIGNED,
+  IN  p_desde        DATE,
+  IN  p_hasta        DATE,
+  OUT p_mensaje      VARCHAR(255)
+)
+BEGIN
+  DECLARE v_existe      INT UNSIGNED DEFAULT 0;
+  DECLARE v_dias        INT DEFAULT 0;
+  DECLARE v_prev_desde  DATE;
+  DECLARE v_prev_hasta  DATE;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    SET p_mensaje = 'No se pudo consultar la tendencia por un error interno';
+  END;
+
+  SET p_mensaje = NULL;
+
+  IF p_desde IS NULL OR p_hasta IS NULL OR p_desde > p_hasta THEN
+    SET p_mensaje = 'El periodo indicado no es valido';
+  ELSE
+    SELECT COUNT(*) INTO v_existe FROM pacientes WHERE id = p_id_paciente;
+    IF v_existe = 0 THEN
+      SET p_mensaje = 'El paciente indicado no existe';
+    ELSE
+      SET v_dias       = DATEDIFF(p_hasta, p_desde) + 1;
+      SET v_prev_hasta = DATE_SUB(p_desde, INTERVAL 1 DAY);
+      SET v_prev_desde = DATE_SUB(p_desde, INTERVAL v_dias DAY);
+
+      WITH cal AS (
+        SELECT e.id_objetivo, e.valor, s.fecha, s.hora_inicio, s.id AS id_sesion,
+               CASE WHEN s.fecha BETWEEN p_desde AND p_hasta THEN 'a' ELSE 'p' END AS per
+          FROM evoluciones e
+          JOIN sesiones s ON s.id = e.id_sesion
+         WHERE s.id_paciente = p_id_paciente
+           AND s.fecha BETWEEN v_prev_desde AND p_hasta
+      ),
+      ord AS (
+        SELECT cal.*,
+               ROW_NUMBER() OVER (PARTITION BY id_objetivo, per
+                                  ORDER BY fecha, hora_inicio, id_sesion) AS rn,
+               COUNT(*)     OVER (PARTITION BY id_objetivo, per)           AS n
+          FROM cal
+      ),
+      agg AS (
+        SELECT id_objetivo,
+               SUM(per = 'a')                                              AS n_actual,
+               AVG(CASE WHEN per = 'a' THEN valor END)                     AS prom_actual,
+               SUM(per = 'p')                                              AS n_previo,
+               AVG(CASE WHEN per = 'p' THEN valor END)                     AS prom_previo,
+               AVG(CASE WHEN per = 'a' AND n >= 4 AND rn <= FLOOR(n / 2) THEN valor END)     AS prom_ini,
+               AVG(CASE WHEN per = 'a' AND n >= 4 AND rn >  n - FLOOR(n / 2) THEN valor END) AS prom_fin
+          FROM ord
+         GROUP BY id_objetivo
+      )
+      SELECT o.id                          AS id_objetivo,
+             o.descripcion                 AS descripcion,
+             o.activo                      AS activo,
+             COALESCE(a.n_actual, 0)       AS n_actual,
+             ROUND(a.prom_actual)          AS nivel_actual,
+             COALESCE(a.n_previo, 0)       AS n_previo,
+             ROUND(a.prom_previo)          AS nivel_previo,
+             CASE
+               WHEN COALESCE(a.n_actual, 0) < 4          THEN 'sin_datos'
+               WHEN a.prom_fin - a.prom_ini >=  0.5      THEN 'mejora'
+               WHEN a.prom_fin - a.prom_ini <= -0.5      THEN 'retrocede'
+               ELSE 'se_mantiene'
+             END                           AS tendencia,
+             CASE
+               WHEN COALESCE(a.n_actual, 0) < 2 OR COALESCE(a.n_previo, 0) < 2 THEN 'sin_datos'
+               WHEN a.prom_actual - a.prom_previo >=  0.5 THEN 'mejoro'
+               WHEN a.prom_actual - a.prom_previo <= -0.5 THEN 'retrocedio'
+               ELSE 'igual'
+             END                           AS cambio
+        FROM objetivos_terapeuticos o
+        LEFT JOIN agg a ON a.id_objetivo = o.id
+       WHERE o.id_paciente = p_id_paciente
+         AND (o.activo = TRUE OR a.id_objetivo IS NOT NULL)
+       ORDER BY o.activo DESC, o.id;
+    END IF;
+  END IF;
+END$$
+
+
+-- ---------------------------------------------------------------------
 -- p_reporte_sesiones_periodo — modulo RRHH
 --
 -- LIMITE DURO: este procedimiento NO devuelve contenido clinico. Nada de

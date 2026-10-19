@@ -5,7 +5,7 @@ from flask import Blueprint, jsonify, request
 
 from app.services.sesiones_service import (
     editar_sesion, listar_de_hoy, listar_pendientes_de_evolucion,
-    listar_por_rango, obtener_detalle, registrar_sesion,
+    listar_por_rango, listar_registradas, obtener_detalle, registrar_sesion,
 )
 from app.utils.security import requiere_rol
 
@@ -22,6 +22,12 @@ def listar():
 
 # Antes que /sesiones/<int:id> no hace falta por el convertidor int, pero
 # se declaran las rutas literales primero para que quede explicito.
+@sesiones_bp.get('/sesiones/registradas')
+@requiere_rol('terapeuta')
+def registradas():
+    return jsonify(listar_registradas(request.args)), 200
+
+
 @sesiones_bp.get('/sesiones/hoy')
 @requiere_rol('terapeuta')
 def hoy():

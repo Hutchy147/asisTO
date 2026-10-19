@@ -8,6 +8,7 @@ from app.services.pacientes_service import (
     obtener_detalle, reactivar_paciente,
 )
 from app.services.evoluciones_service import evolucion_de_paciente
+from app.services.tendencias_service import tendencias_de_paciente
 from app.services.sesiones_service import listar_por_paciente as listar_sesiones_de_paciente
 from app.utils.security import requiere_rol
 
@@ -137,3 +138,13 @@ def sesiones_del_paciente(id_paciente):
     La logica sigue estando en sesiones_service.
     """
     return jsonify(listar_sesiones_de_paciente(id_paciente)), 200
+
+
+@pacientes_bp.get('/pacientes/<int:id_paciente>/tendencias')
+@requiere_rol('terapeuta')
+def tendencias(id_paciente):
+    """
+    Tendencia por objetivo, en palabras: los últimos `dias` (30, 60, 90 o 180)
+    contra los `dias` anteriores. Lectura abierta entre terapeutas.
+    """
+    return jsonify(tendencias_de_paciente(id_paciente, request.args.get('dias'))), 200
