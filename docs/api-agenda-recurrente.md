@@ -4,9 +4,10 @@ Los turnos fijos de la semana de una terapeuta ("los lunes a las 9 viene este pa
 
 | Método | Ruta | Qué hace |
 |---|---|---|
-| GET | `/api/agenda-recurrente` | `{plantillas: [{id, id_paciente, paciente, dia_semana, dia, hora_inicio, hora_fin}], total}` |
-| POST | `/api/agenda-recurrente` | Crea un turno `{id_paciente, dia_semana (1=lunes…5=viernes), hora_inicio, hora_fin?}`. 201 |
-| DELETE | `/api/agenda-recurrente/<id>` | Quita el turno (queda inactivo). Las sesiones ya generadas no se tocan. 403 si es de otra terapeuta, 404 si no existe |
+| GET | `/api/agenda-recurrente` | `{plantillas: [{id, id_paciente, paciente, dia_semana, dia, hora_inicio, hora_fin, id_dupla, companero}], total}`. `id_dupla` y `companero {id_turno, id_paciente, paciente}` solo vienen si la dupla está completa (dos turnos activos); si no, `null` |
+| POST | `/api/agenda-recurrente` | Crea un turno `{id_paciente, dia_semana (1=lunes…5=viernes), hora_inicio, hora_fin?, id_paciente_2?}`. Con `id_paciente_2` crea una **dupla** (dos turnos con el mismo `id_dupla`). 201 → `{turno, companero?, id_dupla?, mensaje}` |
+| POST | `/api/agenda-recurrente/<id>/companero` | `{id_paciente}`: suma un compañero a un turno individual y forma la dupla. 201 |
+| DELETE | `/api/agenda-recurrente/<id>` | Quita el turno (queda inactivo); con `?dupla=1` quita también el del compañero (sin eso, el compañero queda como turno individual). Las sesiones ya generadas no se tocan. 403 si es de otra terapeuta, 404 si no existe |
 | POST | `/api/agenda-recurrente/generar` | `{semanas?: 1..8, default 4}` → `{desde, hasta, semanas, creadas, existentes, omitidas: [{fecha, hora_inicio, paciente, motivo}]}` |
 
 ## Reglas
@@ -19,3 +20,5 @@ Los turnos fijos de la semana de una terapeuta ("los lunes a las 9 viene este pa
 ## Decisiones
 - Las reglas de la **plantilla** (día hábil, superposición entre turnos, asignación) están en el servicio y no en la base, por el mismo criterio de la norma de agenda (ver `api-sesiones-evoluciones.md`): son política de agenda, y las reglas de integridad de las sesiones generadas las aplica la base.
 - La agenda recurrente lleva historia de usuario propia (HDU nueva, borrador en la documentación del Sprint 3).
+
+Ver `api-duplas.md` para las reglas de la dupla.

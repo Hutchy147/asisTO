@@ -37,6 +37,7 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 TRUNCATE TABLE auditoria_accesos;
+TRUNCATE TABLE agenda_recurrente;
 TRUNCATE TABLE plantillas_objetivos;
 TRUNCATE TABLE informes;
 TRUNCATE TABLE sesiones_etiquetas;
@@ -461,6 +462,80 @@ DELIMITER ;
 
 CALL p_generar_demo();
 DROP PROCEDURE p_generar_demo;
+
+
+-- =====================================================================
+-- DUPLAS Y TURNOS SEMANALES DE LA TERAPEUTA 1 (Entrega 5)
+--
+-- DATOS SINTETICOS. Laura atiende en dupla a los pacientes 4 y 10 los lunes
+-- y los jueves de 15:00 a 15:45 (el generador de arriba no pasa de las 14).
+-- Las sesiones se crean con p_registrar_dupla, o sea con las mismas reglas
+-- que la aplicacion. Las pasadas quedan completas y con una evolucion cada
+-- una: el paciente 4 sube de a poco y el 10 se mantiene, para que la linea de
+-- tiempo y los indicadores de tendencia tengan algo que mostrar. La de hoy
+-- queda sin registrar, para que el panel del dia la muestre pendiente.
+--
+-- Tambien se carga la semana tipo de Laura (agenda_recurrente), con la dupla
+-- como un turno compartido.
+-- =====================================================================
+DELIMITER $$
+
+CREATE PROCEDURE p_demo_duplas()
+BEGIN
+  DECLARE v_dia   DATE;
+  DECLARE v_fin   DATE;
+  DECLARE v_dow   INT;
+  DECLARE v_n     INT DEFAULT 0;
+  DECLARE v_obj_a INT;
+  DECLARE v_obj_b INT;
+  DECLARE v_val_a INT;
+  DECLARE v_val_b INT;
+
+  SET v_fin = CURDATE();
+  SET v_dia = DATE_SUB(v_fin, INTERVAL 48 DAY);
+
+  SELECT MIN(id) INTO v_obj_a FROM objetivos_terapeuticos
+   WHERE id_paciente = 4 AND activo = TRUE;
+  SELECT MIN(id) INTO v_obj_b FROM objetivos_terapeuticos
+   WHERE id_paciente = 10 AND activo = TRUE;
+
+  WHILE v_dia <= v_fin DO
+    SET v_dow = WEEKDAY(v_dia);   -- 0 = lunes
+
+    IF v_dow IN (0, 3) OR (v_dia = v_fin AND v_dow <= 4) THEN
+      CALL p_registrar_dupla(1, 4, 10, v_dia, '15:00:00', '15:45:00',
+                             @d_dupla, @d_s1, @d_s2, @d_msg);
+
+      IF v_dia < v_fin THEN
+        UPDATE sesiones SET estado = 'completa' WHERE id IN (@d_s1, @d_s2);
+
+        SET v_val_a = LEAST(5, 1 + FLOOR(v_n / 3));
+        SET v_val_b = 3 + (v_n MOD 3 = 2);
+
+        INSERT INTO evoluciones (id_sesion, id_objetivo, valor, observaciones)
+        VALUES (@d_s1, v_obj_a, v_val_a, NULL),
+               (@d_s2, v_obj_b, v_val_b, NULL);
+        SET v_n = v_n + 1;
+      END IF;
+    END IF;
+
+    SET v_dia = DATE_ADD(v_dia, INTERVAL 1 DAY);
+  END WHILE;
+END$$
+
+DELIMITER ;
+
+CALL p_demo_duplas();
+DROP PROCEDURE p_demo_duplas;
+
+INSERT INTO agenda_recurrente (id_terapeuta, id_paciente, dia_semana, hora_inicio, hora_fin, id_dupla) VALUES
+  (1, 1, 1, '08:00:00', '08:45:00', NULL),
+  (1, 7, 3, '09:00:00', '09:45:00', NULL),
+  (1, 13, 5, '10:00:00', '10:45:00', NULL),
+  (1, 4, 1, '15:00:00', '15:45:00', 4),
+  (1, 10, 1, '15:00:00', '15:45:00', 4),
+  (1, 4, 4, '15:00:00', '15:45:00', 6),
+  (1, 10, 4, '15:00:00', '15:45:00', 6);
 
 
 -- =====================================================================

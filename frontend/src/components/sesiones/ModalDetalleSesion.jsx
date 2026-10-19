@@ -195,6 +195,11 @@ export default function ModalDetalleSesion({
                 Atendió {datos.terapeuta?.nombre_completo ?? 'un terapeuta del centro'}
                 {esPropia ? '' : ' · otro terapeuta'}
               </Typography>
+              {sesion?.companero && (
+                <Typography variant="body2" color="text.secondary" className="texto-libre">
+                  En dupla con {sesion.companero.nombre_completo}
+                </Typography>
+              )}
             </Box>
 
             {/* Solo en ausencia: es un eje distinto del estado (ver la

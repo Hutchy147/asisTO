@@ -589,9 +589,16 @@ CREATE TABLE agenda_recurrente (
   hora_fin        TIME         NOT NULL,
   activo          BOOLEAN      NOT NULL DEFAULT TRUE,
   fecha_creacion  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  -- DUPLA (Entrega 5): dos turnos activos con el mismo id_dupla son UN turno
+  -- en dupla (una terapeuta, dos ninios, mismo dia y horario). Mismo criterio
+  -- que sesiones.id_dupla: sin tabla de parejas; el valor es el id del primer
+  -- turno de la dupla. Un turno cuya hermana se quito queda con id_dupla pero
+  -- solo, y se lee como individual. Las sesiones que genera heredan la dupla.
+  id_dupla        INT UNSIGNED NULL DEFAULT NULL,
 
   PRIMARY KEY (id),
   KEY idx_agenda_rec_terapeuta (id_terapeuta, activo, dia_semana),
+  KEY idx_agenda_rec_dupla (id_dupla),
   KEY idx_agenda_rec_paciente (id_paciente),
   CONSTRAINT fk_agenda_rec_terapeuta
     FOREIGN KEY (id_terapeuta) REFERENCES terapeutas (id)
@@ -1085,6 +1092,8 @@ BEGIN
   DECLARE v_activo_pac   BOOLEAN      DEFAULT NULL;
   DECLARE v_fecha_baja   DATE         DEFAULT NULL;
   DECLARE v_asignacion   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_hermanas     INT UNSIGNED DEFAULT 0;
+  DECLARE v_coinciden    INT UNSIGNED DEFAULT 0;
 
   -- =====================================================================
   -- AUSENCIA Y QUIEN FALTO TIENEN QUE VIAJAR JUNTOS (2026-09-10)
@@ -1207,18 +1216,50 @@ BEGIN
       SET MESSAGE_TEXT = 'La hora de fin debe ser posterior a la hora de inicio';
   END IF;
 
+  -- DUPLAS (Entrega 5, 2026-10-19): las sesiones de la MISMA dupla se
+  -- superponen a proposito, asi que no cuentan como choque. Solo se exime a
+  -- quien comparte id_dupla con la fila nueva; una sesion suelta o de otra
+  -- dupla en ese horario sigue siendo un solape.
   SELECT COUNT(*) INTO v_superpuestas
     FROM sesiones
    WHERE id_terapeuta = NEW.id_terapeuta
      AND fecha = NEW.fecha
      AND NEW.hora_inicio < IFNULL(hora_fin, ADDTIME(hora_inicio, '01:00:00'))
      AND v_hora_fin > hora_inicio
+     AND (NEW.id_dupla IS NULL OR id_dupla IS NULL OR id_dupla <> NEW.id_dupla)
    FOR SHARE;
 
   IF v_superpuestas > 0 THEN
     SIGNAL SQLSTATE '45000'
       SET MESSAGE_TEXT =
         'El terapeuta ya tiene sesiones que se superponen con ese horario';
+  END IF;
+
+  -- DUPLAS: una dupla son a lo sumo DOS sesiones de la misma terapeuta, el
+  -- mismo dia y en el mismo horario exacto (el horario efectivo: sin hora de
+  -- fin se asume una hora, igual que en el resto del schema). Se valida al
+  -- ARMARLA, que es cuando ambas filas existen y se pueden comparar.
+  IF NEW.id_dupla IS NOT NULL THEN
+    SELECT COUNT(*),
+           IFNULL(SUM(id_terapeuta = NEW.id_terapeuta
+                      AND fecha = NEW.fecha
+                      AND hora_inicio = NEW.hora_inicio
+                      AND IFNULL(hora_fin, ADDTIME(hora_inicio, '01:00:00')) = v_hora_fin), 0)
+      INTO v_hermanas, v_coinciden
+      FROM sesiones
+     WHERE id_dupla = NEW.id_dupla
+     FOR SHARE;
+
+    IF v_hermanas >= 2 THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Una dupla terapeutica tiene como maximo dos sesiones';
+    END IF;
+
+    IF v_hermanas > 0 AND v_coinciden < v_hermanas THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+          'Las dos sesiones de una dupla tienen que ser de la misma terapeuta, el mismo dia y el mismo horario';
+    END IF;
   END IF;
 
   -- Regla 8, recien aca: ver el bloque de arriba, es estrictamente aditiva.
@@ -1254,6 +1295,9 @@ BEGIN
   DECLARE v_lock         INT UNSIGNED DEFAULT NULL;
   DECLARE v_activo_pac   BOOLEAN      DEFAULT NULL;
   DECLARE v_fecha_baja   DATE         DEFAULT NULL;
+  DECLARE v_hermanas     INT UNSIGNED DEFAULT 0;
+  DECLARE v_coinciden    INT UNSIGNED DEFAULT 0;
+  DECLARE v_fin_nuevo    TIME         DEFAULT NULL;
 
   -- =====================================================================
   -- SESION SOBRE UN PACIENTE DADO DE BAJA (2026-08-13)
@@ -1373,6 +1417,44 @@ BEGIN
     END IF;
   END IF;
 
+  -- DUPLAS (Entrega 5): al ARMAR una dupla (id_dupla pasa de NULL o de otro
+  -- valor a uno nuevo) la fila tiene que coincidir en terapeuta, dia y
+  -- horario exacto con su hermana, y la dupla no puede pasar de dos. Mismos
+  -- mensajes que el trigger de INSERT. Mover despues el horario de una
+  -- sesion de dupla no se valida aca contra la hermana (son dos UPDATE y la
+  -- primera fila vera a la otra todavia en el horario viejo): lo mueve
+  -- p_editar_sesion con una sola sentencia sobre las dos filas.
+  IF NEW.id_dupla IS NOT NULL AND NOT (NEW.id_dupla <=> OLD.id_dupla) THEN
+    SELECT id INTO v_lock
+      FROM terapeutas
+     WHERE id = NEW.id_terapeuta
+     FOR UPDATE;
+
+    SET v_fin_nuevo = IFNULL(NEW.hora_fin, ADDTIME(NEW.hora_inicio, '01:00:00'));
+
+    SELECT COUNT(*),
+           IFNULL(SUM(id_terapeuta = NEW.id_terapeuta
+                      AND fecha = NEW.fecha
+                      AND hora_inicio = NEW.hora_inicio
+                      AND IFNULL(hora_fin, ADDTIME(hora_inicio, '01:00:00')) = v_fin_nuevo), 0)
+      INTO v_hermanas, v_coinciden
+      FROM sesiones
+     WHERE id_dupla = NEW.id_dupla
+       AND id <> OLD.id
+     FOR SHARE;
+
+    IF v_hermanas >= 2 THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Una dupla terapeutica tiene como maximo dos sesiones';
+    END IF;
+
+    IF v_hermanas > 0 AND v_coinciden < v_hermanas THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+          'Las dos sesiones de una dupla tienen que ser de la misma terapeuta, el mismo dia y el mismo horario';
+    END IF;
+  END IF;
+
   IF NEW.id_terapeuta <> OLD.id_terapeuta
      OR NEW.fecha <> OLD.fecha
      OR NEW.hora_inicio <> OLD.hora_inicio
@@ -1404,6 +1486,8 @@ BEGIN
        AND id <> OLD.id
        AND NEW.hora_inicio < IFNULL(hora_fin, ADDTIME(hora_inicio, '01:00:00'))
        AND v_hora_fin > hora_inicio
+       -- DUPLAS (Entrega 5): la hermana de dupla no es un choque
+       AND (NEW.id_dupla IS NULL OR id_dupla IS NULL OR id_dupla <> NEW.id_dupla)
      FOR SHARE;
 
     IF v_superpuestas > 0 THEN
@@ -2810,6 +2894,11 @@ BEGIN
   DECLARE v_ter_sesion   INT UNSIGNED DEFAULT NULL;
   DECLARE v_id_paciente  INT UNSIGNED DEFAULT NULL;
   DECLARE v_lock         INT UNSIGNED DEFAULT NULL;
+  DECLARE v_dupla        INT UNSIGNED DEFAULT NULL;
+  DECLARE v_fecha_ant    DATE         DEFAULT NULL;
+  DECLARE v_inicio_ant   TIME         DEFAULT NULL;
+  DECLARE v_fin_ant      TIME         DEFAULT NULL;
+  DECLARE v_pacientes    INT UNSIGNED DEFAULT 0;
 
   -- Ver CRITERIO GENERAL DE ERRORES
   DECLARE EXIT HANDLER FOR SQLSTATE '45000'
@@ -2847,7 +2936,8 @@ BEGIN
   -- puerta de escritura los toca), asi que leerlos sin lock antes de la
   -- transaccion es seguro: no hay escritor concurrente que pueda
   -- cambiarlos entre esta lectura y el UPDATE de abajo.
-  SELECT id_terapeuta, id_paciente INTO v_ter_sesion, v_id_paciente
+  SELECT id_terapeuta, id_paciente, id_dupla, fecha, hora_inicio, hora_fin
+    INTO v_ter_sesion, v_id_paciente, v_dupla, v_fecha_ant, v_inicio_ant, v_fin_ant
     FROM sesiones
    WHERE id = p_id_sesion;
 
@@ -2863,6 +2953,29 @@ BEGIN
       FROM pacientes
      WHERE id = v_id_paciente
      FOR SHARE;
+
+    -- DUPLAS (Entrega 5): una dupla comparte dia y horario. Reprogramar una
+    -- de las dos sesiones MUEVE LAS DOS, en una sola sentencia: dos UPDATE
+    -- sueltos dejarian a la primera fila viendo a la hermana todavia en el
+    -- horario viejo. Estado, quien falto y notas siguen siendo de cada
+    -- sesion y se actualizan abajo solo en la editada. Se toma tambien el
+    -- lock de los pacientes de la dupla (en orden de id, como el resto).
+    IF v_dupla IS NOT NULL
+       AND (p_fecha <> v_fecha_ant
+            OR p_hora_inicio <> v_inicio_ant
+            OR NOT (p_hora_fin <=> v_fin_ant)) THEN
+      SELECT COUNT(*) INTO v_pacientes
+        FROM pacientes
+       WHERE id IN (SELECT id_paciente FROM sesiones WHERE id_dupla = v_dupla)
+       ORDER BY id
+       FOR SHARE;
+
+      UPDATE sesiones
+         SET fecha       = p_fecha,
+             hora_inicio = p_hora_inicio,
+             hora_fin    = p_hora_fin
+       WHERE id_dupla = v_dupla;
+    END IF;
 
     UPDATE sesiones
        SET estado      = p_estado,
@@ -4375,6 +4488,503 @@ END$$
 
 
 -- ---------------------------------------------------------------------
+-- DUPLAS TERAPEUTICAS (Entrega 5)
+--
+-- Una dupla es UNA terapeuta con DOS ninios en el mismo horario, cada uno
+-- con sus objetivos y su evolucion (ver la columna sesiones.id_dupla). No hay
+-- tabla de parejas: dos sesiones que comparten id_dupla SON la dupla, y el
+-- valor es el id de la primera sesion (unico por construccion, sin secuencia).
+--
+-- p_registrar_dupla      crea las DOS sesiones juntas, en una transaccion.
+-- p_agregar_a_dupla      suma un segundo paciente a una sesion que ya existe.
+-- p_crear_turno_dupla    crea el turno semanal en dupla (dos filas de agenda).
+-- p_sumar_companero_a_turno  convierte un turno individual en turno en dupla.
+--
+-- Las reglas de fondo siguen en los triggers de sesiones: solape (la hermana
+-- de dupla no cuenta), asignacion vigente de CADA paciente, paciente de baja,
+-- maximo de dos y mismo horario. Aca se agregan las existencias y la
+-- atomicidad, para que nunca quede una dupla a medias.
+--
+-- ORDEN DE LOCKS: pacientes (por id) -> terapeutas -> sesiones/agenda.
+-- ---------------------------------------------------------------------
+CREATE PROCEDURE p_registrar_dupla (
+  IN  p_id_terapeuta   INT UNSIGNED,
+  IN  p_id_paciente_1  INT UNSIGNED,
+  IN  p_id_paciente_2  INT UNSIGNED,
+  IN  p_fecha          DATE,
+  IN  p_hora_inicio    TIME,
+  IN  p_hora_fin       TIME,
+  OUT p_id_dupla       INT UNSIGNED,
+  OUT p_id_sesion_1    INT UNSIGNED,
+  OUT p_id_sesion_2    INT UNSIGNED,
+  OUT p_mensaje        VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error        VARCHAR(255) DEFAULT '';
+  DECLARE v_hora_fin     TIME         DEFAULT NULL;
+  DECLARE v_lock         INT UNSIGNED DEFAULT NULL;
+  DECLARE v_existentes   INT UNSIGNED DEFAULT 0;
+  DECLARE v_superpuestas INT UNSIGNED DEFAULT 0;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_id_dupla = NULL;
+    SET p_id_sesion_1 = NULL;
+    SET p_id_sesion_2 = NULL;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_id_dupla = NULL;
+    SET p_id_sesion_1 = NULL;
+    SET p_id_sesion_2 = NULL;
+    SET p_mensaje = 'No se pudo registrar la dupla por un error interno';
+  END;
+
+  SET p_id_dupla = NULL;
+  SET p_id_sesion_1 = NULL;
+  SET p_id_sesion_2 = NULL;
+  SET v_hora_fin = IFNULL(p_hora_fin, ADDTIME(p_hora_inicio, '01:00:00'));
+
+  IF p_id_paciente_1 IS NULL OR p_id_paciente_2 IS NULL
+     OR p_id_paciente_1 = p_id_paciente_2 THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Una dupla necesita dos pacientes distintos';
+  END IF;
+
+  IF v_hora_fin <= p_hora_inicio THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'La hora de fin debe ser posterior a la hora de inicio';
+  END IF;
+
+  SELECT COUNT(*) INTO v_existentes
+    FROM pacientes
+   WHERE id IN (p_id_paciente_1, p_id_paciente_2);
+
+  IF v_existentes < 2 THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Alguno de los pacientes indicados no existe';
+  END IF;
+
+  START TRANSACTION;
+
+  SELECT id INTO v_lock FROM pacientes WHERE id = LEAST(p_id_paciente_1, p_id_paciente_2) FOR SHARE;
+  SELECT id INTO v_lock FROM pacientes WHERE id = GREATEST(p_id_paciente_1, p_id_paciente_2) FOR SHARE;
+  SELECT id INTO v_lock FROM terapeutas WHERE id = p_id_terapeuta FOR UPDATE;
+
+  IF v_lock IS NULL THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'El terapeuta indicado no existe';
+  END IF;
+
+  SELECT COUNT(*) INTO v_superpuestas
+    FROM sesiones
+   WHERE id_terapeuta = p_id_terapeuta
+     AND fecha = p_fecha
+     AND p_hora_inicio < IFNULL(hora_fin, ADDTIME(hora_inicio, '01:00:00'))
+     AND v_hora_fin > hora_inicio
+   FOR SHARE;
+
+  IF v_superpuestas > 0 THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'El terapeuta ya tiene sesiones que se superponen con ese horario';
+  END IF;
+
+  INSERT INTO sesiones (id_terapeuta, id_paciente, fecha, hora_inicio, hora_fin, estado)
+  VALUES (p_id_terapeuta, p_id_paciente_1, p_fecha, p_hora_inicio, p_hora_fin, 'incompleta');
+  SET p_id_sesion_1 = LAST_INSERT_ID();
+
+  UPDATE sesiones SET id_dupla = p_id_sesion_1 WHERE id = p_id_sesion_1;
+
+  INSERT INTO sesiones (id_terapeuta, id_paciente, fecha, hora_inicio, hora_fin, estado, id_dupla)
+  VALUES (p_id_terapeuta, p_id_paciente_2, p_fecha, p_hora_inicio, p_hora_fin, 'incompleta', p_id_sesion_1);
+  SET p_id_sesion_2 = LAST_INSERT_ID();
+
+  COMMIT;
+  SET p_id_dupla = p_id_sesion_1;
+  SET p_mensaje = 'Dupla registrada correctamente';
+END$$
+
+
+CREATE PROCEDURE p_agregar_a_dupla (
+  IN  p_id_terapeuta     INT UNSIGNED,
+  IN  p_id_sesion        INT UNSIGNED,
+  IN  p_id_paciente      INT UNSIGNED,
+  OUT p_id_dupla         INT UNSIGNED,
+  OUT p_id_sesion_nueva  INT UNSIGNED,
+  OUT p_mensaje          VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error      VARCHAR(255) DEFAULT '';
+  DECLARE v_ter        INT UNSIGNED DEFAULT NULL;
+  DECLARE v_pac        INT UNSIGNED DEFAULT NULL;
+  DECLARE v_lock       INT UNSIGNED DEFAULT NULL;
+  DECLARE v_fecha      DATE         DEFAULT NULL;
+  DECLARE v_inicio     TIME         DEFAULT NULL;
+  DECLARE v_fin        TIME         DEFAULT NULL;
+  DECLARE v_dupla      INT UNSIGNED DEFAULT NULL;
+  DECLARE v_estado     VARCHAR(20)  DEFAULT NULL;
+  DECLARE v_existe     INT UNSIGNED DEFAULT 0;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_id_dupla = NULL;
+    SET p_id_sesion_nueva = NULL;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_id_dupla = NULL;
+    SET p_id_sesion_nueva = NULL;
+    SET p_mensaje = 'No se pudo armar la dupla por un error interno';
+  END;
+
+  SET p_id_dupla = NULL;
+  SET p_id_sesion_nueva = NULL;
+
+  -- terapeuta y paciente de una sesion son inmutables: se pueden leer sin lock
+  SELECT id_terapeuta, id_paciente INTO v_ter, v_pac
+    FROM sesiones WHERE id = p_id_sesion;
+
+  IF v_ter IS NULL THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'La sesion indicada no existe';
+  END IF;
+
+  IF p_id_terapeuta IS NULL OR p_id_terapeuta <> v_ter THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Solo el terapeuta que atendio la sesion puede armar la dupla';
+  END IF;
+
+  IF p_id_paciente IS NULL OR p_id_paciente = v_pac THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Una dupla necesita dos pacientes distintos';
+  END IF;
+
+  SELECT COUNT(*) INTO v_existe FROM pacientes WHERE id = p_id_paciente;
+  IF v_existe = 0 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El paciente indicado no existe';
+  END IF;
+
+  START TRANSACTION;
+
+  SELECT id INTO v_lock FROM pacientes WHERE id = LEAST(v_pac, p_id_paciente) FOR SHARE;
+  SELECT id INTO v_lock FROM pacientes WHERE id = GREATEST(v_pac, p_id_paciente) FOR SHARE;
+  SELECT id INTO v_lock FROM terapeutas WHERE id = v_ter FOR UPDATE;
+
+  -- Se vuelve a leer la sesion YA con los locks: el horario y la dupla pueden
+  -- haber cambiado entre la primera lectura y ahora.
+  SELECT fecha, hora_inicio, hora_fin, id_dupla, estado
+    INTO v_fecha, v_inicio, v_fin, v_dupla, v_estado
+    FROM sesiones WHERE id = p_id_sesion FOR UPDATE;
+
+  IF v_dupla IS NOT NULL THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'La sesion ya integra una dupla';
+  END IF;
+
+  IF v_estado = 'ausencia' THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'No se puede armar una dupla sobre una sesion marcada como ausencia';
+  END IF;
+
+  UPDATE sesiones SET id_dupla = p_id_sesion WHERE id = p_id_sesion;
+
+  INSERT INTO sesiones (id_terapeuta, id_paciente, fecha, hora_inicio, hora_fin, estado, id_dupla)
+  VALUES (v_ter, p_id_paciente, v_fecha, v_inicio, v_fin, 'incompleta', p_id_sesion);
+  SET p_id_sesion_nueva = LAST_INSERT_ID();
+
+  COMMIT;
+  SET p_id_dupla = p_id_sesion;
+  SET p_mensaje = 'Dupla armada correctamente';
+END$$
+
+
+CREATE PROCEDURE p_crear_turno_dupla (
+  IN  p_id_terapeuta   INT UNSIGNED,
+  IN  p_id_paciente_1  INT UNSIGNED,
+  IN  p_id_paciente_2  INT UNSIGNED,
+  IN  p_dia_semana     TINYINT UNSIGNED,
+  IN  p_hora_inicio    TIME,
+  IN  p_hora_fin       TIME,
+  OUT p_id_dupla       INT UNSIGNED,
+  OUT p_mensaje        VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error        VARCHAR(255) DEFAULT '';
+  DECLARE v_lock         INT UNSIGNED DEFAULT NULL;
+  DECLARE v_id_1         INT UNSIGNED DEFAULT NULL;
+  DECLARE v_pacientes    INT UNSIGNED DEFAULT 0;
+  DECLARE v_activos      INT UNSIGNED DEFAULT 0;
+  DECLARE v_asignados    INT UNSIGNED DEFAULT 0;
+  DECLARE v_superpuestos INT UNSIGNED DEFAULT 0;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_id_dupla = NULL;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_id_dupla = NULL;
+    SET p_mensaje = 'No se pudo crear el turno en dupla por un error interno';
+  END;
+
+  SET p_id_dupla = NULL;
+
+  IF p_id_paciente_1 IS NULL OR p_id_paciente_2 IS NULL
+     OR p_id_paciente_1 = p_id_paciente_2 THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Una dupla necesita dos pacientes distintos';
+  END IF;
+
+  IF p_dia_semana IS NULL OR p_dia_semana NOT BETWEEN 1 AND 5 THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'El dia tiene que ser de lunes (1) a viernes (5)';
+  END IF;
+
+  IF p_hora_inicio IS NULL OR p_hora_fin IS NULL OR p_hora_fin <= p_hora_inicio THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'La hora de fin debe ser posterior a la de inicio';
+  END IF;
+
+  START TRANSACTION;
+
+  SELECT id INTO v_lock FROM pacientes WHERE id = LEAST(p_id_paciente_1, p_id_paciente_2) FOR SHARE;
+  SELECT id INTO v_lock FROM pacientes WHERE id = GREATEST(p_id_paciente_1, p_id_paciente_2) FOR SHARE;
+  SET v_lock = NULL;
+  SELECT id INTO v_lock FROM terapeutas WHERE id = p_id_terapeuta FOR UPDATE;
+
+  IF v_lock IS NULL THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El terapeuta indicado no existe';
+  END IF;
+
+  SELECT COUNT(*), IFNULL(SUM(activo), 0) INTO v_pacientes, v_activos
+    FROM pacientes WHERE id IN (p_id_paciente_1, p_id_paciente_2);
+
+  IF v_pacientes < 2 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Alguno de los pacientes indicados no existe';
+  END IF;
+
+  IF v_activos < 2 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Alguno de los pacientes esta dado de baja';
+  END IF;
+
+  SELECT COUNT(DISTINCT id_paciente) INTO v_asignados
+    FROM asignaciones
+   WHERE id_terapeuta = p_id_terapeuta
+     AND id_paciente IN (p_id_paciente_1, p_id_paciente_2)
+     AND fecha_hasta IS NULL
+   FOR SHARE;
+
+  IF v_asignados < 2 THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Los dos pacientes tienen que estar asignados al terapeuta';
+  END IF;
+
+  SELECT COUNT(*) INTO v_superpuestos
+    FROM agenda_recurrente
+   WHERE id_terapeuta = p_id_terapeuta
+     AND activo = TRUE
+     AND dia_semana = p_dia_semana
+     AND p_hora_inicio < hora_fin
+     AND p_hora_fin > hora_inicio
+   FOR SHARE;
+
+  IF v_superpuestos > 0 THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Ese horario se superpone con otro turno de la agenda semanal';
+  END IF;
+
+  INSERT INTO agenda_recurrente (id_terapeuta, id_paciente, dia_semana, hora_inicio, hora_fin)
+  VALUES (p_id_terapeuta, p_id_paciente_1, p_dia_semana, p_hora_inicio, p_hora_fin);
+  SET v_id_1 = LAST_INSERT_ID();
+
+  UPDATE agenda_recurrente SET id_dupla = v_id_1 WHERE id = v_id_1;
+
+  INSERT INTO agenda_recurrente (id_terapeuta, id_paciente, dia_semana, hora_inicio, hora_fin, id_dupla)
+  VALUES (p_id_terapeuta, p_id_paciente_2, p_dia_semana, p_hora_inicio, p_hora_fin, v_id_1);
+
+  COMMIT;
+  SET p_id_dupla = v_id_1;
+  SET p_mensaje = 'Turno en dupla creado correctamente';
+END$$
+
+
+CREATE PROCEDURE p_sumar_companero_a_turno (
+  IN  p_id_terapeuta  INT UNSIGNED,
+  IN  p_id_turno      INT UNSIGNED,
+  IN  p_id_paciente   INT UNSIGNED,
+  OUT p_id_dupla      INT UNSIGNED,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error     VARCHAR(255) DEFAULT '';
+  DECLARE v_lock      INT UNSIGNED DEFAULT NULL;
+  DECLARE v_ter       INT UNSIGNED DEFAULT NULL;
+  DECLARE v_pac       INT UNSIGNED DEFAULT NULL;
+  DECLARE v_dia       TINYINT UNSIGNED DEFAULT NULL;
+  DECLARE v_inicio    TIME         DEFAULT NULL;
+  DECLARE v_fin       TIME         DEFAULT NULL;
+  DECLARE v_activo    BOOLEAN      DEFAULT NULL;
+  DECLARE v_dupla     INT UNSIGNED DEFAULT NULL;
+  DECLARE v_en_dupla  INT UNSIGNED DEFAULT 0;
+  DECLARE v_pac_act   BOOLEAN      DEFAULT NULL;
+  DECLARE v_existe    INT UNSIGNED DEFAULT 0;
+  DECLARE v_asignado  INT UNSIGNED DEFAULT 0;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_id_dupla = NULL;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_id_dupla = NULL;
+    SET p_mensaje = 'No se pudo armar la dupla por un error interno';
+  END;
+
+  SET p_id_dupla = NULL;
+
+  SELECT id_terapeuta, id_paciente INTO v_ter, v_pac
+    FROM agenda_recurrente WHERE id = p_id_turno;
+
+  IF v_ter IS NULL THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El turno indicado no existe';
+  END IF;
+
+  IF p_id_terapeuta IS NULL OR p_id_terapeuta <> v_ter THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Solo puede modificar su propia agenda';
+  END IF;
+
+  IF p_id_paciente IS NULL OR p_id_paciente = v_pac THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Una dupla necesita dos pacientes distintos';
+  END IF;
+
+  START TRANSACTION;
+
+  SELECT id INTO v_lock FROM pacientes WHERE id = LEAST(v_pac, p_id_paciente) FOR SHARE;
+  SELECT id INTO v_lock FROM pacientes WHERE id = GREATEST(v_pac, p_id_paciente) FOR SHARE;
+  SET v_lock = NULL;
+  SELECT id INTO v_lock FROM terapeutas WHERE id = v_ter FOR UPDATE;
+
+  SELECT dia_semana, hora_inicio, hora_fin, activo, id_dupla
+    INTO v_dia, v_inicio, v_fin, v_activo, v_dupla
+    FROM agenda_recurrente WHERE id = p_id_turno FOR UPDATE;
+
+  IF v_activo = FALSE THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El turno indicado no existe';
+  END IF;
+
+  -- Un turno que ya tiene hermana ACTIVA es una dupla completa. Si la hermana
+  -- se quito, el turno quedo solo y puede recibir otro companero.
+  IF v_dupla IS NOT NULL THEN
+    SELECT COUNT(*) INTO v_en_dupla
+      FROM agenda_recurrente
+     WHERE id_dupla = v_dupla AND activo = TRUE;
+    IF v_en_dupla >= 2 THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El turno ya integra una dupla';
+    END IF;
+  END IF;
+
+  SELECT COUNT(*), MAX(activo) INTO v_existe, v_pac_act
+    FROM pacientes WHERE id = p_id_paciente;
+
+  IF v_existe = 0 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El paciente indicado no existe';
+  END IF;
+
+  IF v_pac_act = FALSE THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El paciente esta dado de baja';
+  END IF;
+
+  SELECT COUNT(*) INTO v_asignado
+    FROM asignaciones
+   WHERE id_terapeuta = v_ter AND id_paciente = p_id_paciente AND fecha_hasta IS NULL
+   FOR SHARE;
+
+  IF v_asignado = 0 THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'El paciente no esta asignado al terapeuta';
+  END IF;
+
+  IF v_dupla IS NULL THEN
+    SET v_dupla = p_id_turno;
+    UPDATE agenda_recurrente SET id_dupla = v_dupla WHERE id = p_id_turno;
+  END IF;
+
+  INSERT INTO agenda_recurrente (id_terapeuta, id_paciente, dia_semana, hora_inicio, hora_fin, id_dupla)
+  VALUES (v_ter, p_id_paciente, v_dia, v_inicio, v_fin, v_dupla);
+
+  COMMIT;
+  SET p_id_dupla = v_dupla;
+  SET p_mensaje = 'Dupla armada correctamente';
+END$$
+
+
+-- ---------------------------------------------------------------------
 -- p_reporte_sesiones_periodo — modulo RRHH
 --
 -- LIMITE DURO: este procedimiento NO devuelve contenido clinico. Nada de
@@ -4455,6 +5065,7 @@ BEGIN
        WHERE s2.id_terapeuta = s.id_terapeuta
          AND s2.fecha = s.fecha
          AND s2.id <> s.id
+         AND (s.id_dupla IS NULL OR s2.id_dupla IS NULL OR s2.id_dupla <> s.id_dupla)
          AND s.hora_inicio < IFNULL(s2.hora_fin, ADDTIME(s2.hora_inicio, '01:00:00'))
          AND IFNULL(s.hora_fin, ADDTIME(s.hora_inicio, '01:00:00')) > s2.hora_inicio
     )                                    AS superposiciones,

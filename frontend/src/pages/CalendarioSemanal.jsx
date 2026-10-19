@@ -25,9 +25,10 @@ import AppLayout from '../components/layout/AppLayout.jsx';
 import CampoTexto from '../components/forms/CampoTexto.jsx';
 import { Cargando, EstadoError } from '../components/estado/index.js';
 import { usePeticion } from '../hooks/usePeticion.js';
+import { hayCapacidad } from '../config/entregas.js';
 import {
   crearTurno, DIAS_SEMANA, generarAgenda, listarAgendaSemanal, quitarTurno,
-  SEMANAS_POR_DEFECTO,
+  SEMANAS_POR_DEFECTO, sumarCompanero,
 } from '../services/agendaRecurrenteService.js';
 import { listarPacientes } from '../services/pacientesService.js';
 
@@ -49,12 +50,15 @@ function BloqueTurno({ turno, onAbrir, horaInicio }) {
   const fin = aDecimal(turno.hora_fin);
   // Un turno de menos de una hora ocupa poco alto: nombre y horario van en una línea.
   const compacto = fin - inicio < 1;
+  const enDupla = Boolean(turno.companero);
+  const nombres = enDupla ? `${turno.paciente} y ${turno.companero.paciente}` : turno.paciente;
   return (
     <Box
       component="button"
       type="button"
       onClick={(e) => { e.stopPropagation(); onAbrir(turno); }}
-      aria-label={`Turno del ${turno.dia} a las ${turno.hora_inicio.slice(0, 5)}: ${turno.paciente}`}
+      title={`${nombres} · ${turno.hora_inicio.slice(0, 5)} a ${turno.hora_fin.slice(0, 5)}`}
+      aria-label={`Turno del ${turno.dia} a las ${turno.hora_inicio.slice(0, 5)}: ${nombres}`}
       sx={(t) => ({
         position: 'absolute', left: 5, right: 5,
         top: (inicio - horaInicio) * ALTO_HORA + 3,
@@ -64,23 +68,30 @@ function BloqueTurno({ turno, onAbrir, horaInicio }) {
         borderLeft: `3px solid ${t.palette.sesionEstado.completa.fg}`,
         borderRadius: '6px', padding: compacto ? '0 8px' : '5px 8px', textAlign: 'left',
         cursor: 'pointer', font: 'inherit', color: t.palette.text.primary,
-        display: 'flex', flexDirection: compacto ? 'row' : 'column',
-        alignItems: compacto ? 'center' : 'stretch', gap: compacto ? '8px' : '1px', overflow: 'hidden',
+        display: 'flex', flexDirection: compacto && !enDupla ? 'row' : 'column',
+        justifyContent: 'center',
+        alignItems: compacto && !enDupla ? 'center' : 'stretch', gap: compacto ? '8px' : '1px', overflow: 'hidden',
         '&:focus-visible': { outline: 'none', boxShadow: t.foco.anillo },
       })}
     >
-      <Box component="span" sx={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-        {turno.paciente}
+      <Box component="span" sx={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0,
+        ...(enDupla
+          ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal' }
+          : { whiteSpace: 'nowrap' }) }}>
+        {nombres}
       </Box>
+      {!(enDupla && compacto) && (
       <Box component="span" className="tabular" sx={{ fontSize: 11, color: 'text.secondary', whiteSpace: 'nowrap', flex: 'none' }}>
         {turno.hora_inicio.slice(0, 5)} a {turno.hora_fin.slice(0, 5)}
       </Box>
+      )}
     </Box>
   );
 }
 
 function DialogoNuevoTurno({ base, pacientes, onCerrar, onGuardar }) {
   const [paciente, setPaciente] = useState('');
+  const [companero, setCompanero] = useState('');
   const [dia, setDia] = useState(base.dia);
   const [inicio, setInicio] = useState(base.hora);
   const [fin, setFin] = useState('');
@@ -96,7 +107,9 @@ function DialogoNuevoTurno({ base, pacientes, onCerrar, onGuardar }) {
     setError(''); setCampo(''); setOcupado(true);
     try {
       await onGuardar({
-        id_paciente: Number(paciente), dia_semana: Number(dia), hora_inicio: inicio, hora_fin: fin || null,
+        id_paciente: Number(paciente),
+        id_paciente_2: companero ? Number(companero) : null,
+        dia_semana: Number(dia), hora_inicio: inicio, hora_fin: fin || null,
       });
     } catch (fallo) {
       setError(fallo.message || 'No se pudo guardar el turno.');
@@ -124,6 +137,17 @@ function DialogoNuevoTurno({ base, pacientes, onCerrar, onGuardar }) {
               <MenuItem key={p.id} value={p.id} className="texto-libre">{p.nombre_completo} · {p.nro_historia}</MenuItem>
             ))}
           </CampoTexto>
+          {hayCapacidad('duplas.vincular') && (
+            <CampoTexto id="turno-companero" etiqueta="Compañero de dupla" select valor={companero}
+              onChange={(e) => setCompanero(e?.target?.value ?? e)} deshabilitado={ocupado}
+              ayuda="Opcional. Dos pacientes que usted atiende juntos en el mismo horario."
+              error={campo === 'id_paciente_2' ? ' ' : undefined}>
+              <MenuItem value="">Ninguno (turno individual)</MenuItem>
+              {pacientes.filter((p) => p.id !== Number(paciente)).map((p) => (
+                <MenuItem key={p.id} value={p.id} className="texto-libre">{p.nombre_completo} · {p.nro_historia}</MenuItem>
+              ))}
+            </CampoTexto>
+          )}
           <CampoTexto id="turno-dia" etiqueta="Día" select valor={dia}
             onChange={(e) => setDia(e?.target?.value ?? e)} deshabilitado={ocupado}>
             {DIAS_SEMANA.map((d) => <MenuItem key={d.valor} value={d.valor}>{d.etiqueta}</MenuItem>)}
@@ -148,14 +172,28 @@ function DialogoNuevoTurno({ base, pacientes, onCerrar, onGuardar }) {
   );
 }
 
-function DialogoTurno({ turno, onCerrar, onVerPaciente, onQuitar }) {
+function DialogoTurno({ turno, pacientes, onCerrar, onVerPaciente, onQuitar, onSumar }) {
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState('');
+  const [nuevoCompanero, setNuevoCompanero] = useState('');
+  const enDupla = Boolean(turno.companero);
+  const puedeSumar = hayCapacidad('duplas.vincular') && !enDupla;
 
-  async function quitar() {
+  async function sumar() {
+    if (!nuevoCompanero) { setError('Elija el compañero de dupla.'); return; }
     setOcupado(true); setError('');
     try {
-      await onQuitar(turno);
+      await onSumar(turno, Number(nuevoCompanero));
+    } catch (fallo) {
+      setError(fallo.message || 'No se pudo formar la dupla.');
+      setOcupado(false);
+    }
+  }
+
+  async function quitar(dupla = false) {
+    setOcupado(true); setError('');
+    try {
+      await onQuitar(turno, dupla);
     } catch (fallo) {
       setError(fallo.message || 'No se pudo quitar el turno.');
       setOcupado(false);
@@ -165,13 +203,33 @@ function DialogoTurno({ turno, onCerrar, onVerPaciente, onQuitar }) {
   return (
     <Dialog open onClose={ocupado ? undefined : onCerrar} PaperProps={{ sx: { width: 440, maxWidth: '95vw' } }}>
       <Box sx={{ px: 3, pt: 2.5 }}>
-        <Typography variant="h5" className="texto-libre">{turno.paciente}</Typography>
+        <Typography variant="h5" className="texto-libre">
+          {enDupla ? `${turno.paciente} y ${turno.companero.paciente}` : turno.paciente}
+        </Typography>
         <Typography variant="body2" color="text.secondary" className="tabular">
           Todos los {turno.dia.toLowerCase()} de {turno.hora_inicio.slice(0, 5)} a {turno.hora_fin.slice(0, 5)}
         </Typography>
       </Box>
       <DialogContent sx={{ px: 3, py: 2 }}>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        {enDupla && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Dupla terapéutica: usted atiende a los dos pacientes en este horario.
+            Cada paciente conserva su propia evolución.
+          </Alert>
+        )}
+        {puedeSumar && (
+          <Box sx={{ mb: 2, display: 'grid', gap: 1 }}>
+            <CampoTexto id="turno-sumar-companero" etiqueta="Agregar compañero de dupla" select
+              valor={nuevoCompanero} onChange={(e) => setNuevoCompanero(e?.target?.value ?? e)}
+              deshabilitado={ocupado}>
+              {pacientes.filter((p) => p.id !== turno.id_paciente).map((p) => (
+                <MenuItem key={p.id} value={p.id} className="texto-libre">{p.nombre_completo} · {p.nro_historia}</MenuItem>
+              ))}
+            </CampoTexto>
+            <Box><Button variant="outlined" onClick={sumar} disabled={ocupado}>Formar dupla</Button></Box>
+          </Box>
+        )}
         <Typography variant="body2" color="text.secondary">
           Al quitar el turno dejan de generarse sesiones nuevas. Las sesiones ya agendadas
           y los registros existentes se conservan.
@@ -182,9 +240,20 @@ function DialogoTurno({ turno, onCerrar, onVerPaciente, onQuitar }) {
         <Button variant="outlined" onClick={() => onVerPaciente(turno.id_paciente)} disabled={ocupado}>
           Ver paciente
         </Button>
-        <Button variant="contained" onClick={quitar} disabled={ocupado}>
-          {ocupado ? 'Quitando…' : 'Quitar turno'}
-        </Button>
+        {enDupla ? (
+          <>
+            <Button variant="outlined" onClick={() => quitar(false)} disabled={ocupado}>
+              {`Quitar solo a ${turno.paciente}`}
+            </Button>
+            <Button variant="contained" onClick={() => quitar(true)} disabled={ocupado}>
+              {ocupado ? 'Quitando…' : 'Quitar la dupla'}
+            </Button>
+          </>
+        ) : (
+          <Button variant="contained" onClick={() => quitar(false)} disabled={ocupado}>
+            {ocupado ? 'Quitando…' : 'Quitar turno'}
+          </Button>
+        )}
       </DialogActions>
     </Dialog>
   );
@@ -199,6 +268,8 @@ export default function CalendarioSemanal() {
   const [aviso, setAviso] = useState('');
 
   const turnos = agenda.datos?.plantillas ?? [];
+  // Una dupla se dibuja una sola vez: con el turno de menor id de la pareja.
+  const visibles = turnos.filter((t) => !t.companero || t.id < t.companero.id_turno);
   const HORA_INICIO = Math.min(HORA_INICIO_BASE, ...turnos.map((t) => Math.floor(aDecimal(t.hora_inicio))));
   const HORA_FIN = Math.max(HORA_FIN_BASE, ...turnos.map((t) => Math.ceil(aDecimal(t.hora_fin))));
   const HORAS = Array.from({ length: HORA_FIN - HORA_INICIO }, (_, i) => HORA_INICIO + i);
@@ -226,17 +297,33 @@ export default function CalendarioSemanal() {
     );
   }
 
-  async function quitar(turno) {
-    await quitarTurno(turno.id);
+  async function quitar(turno, dupla = false) {
+    await quitarTurno(turno.id, { dupla });
     setAbierto(null);
     agenda.recargar();
-    setAviso('Turno quitado. No se generarán sesiones nuevas para ese horario.');
+    setAviso(
+      turno.companero && !dupla
+        ? `Se quitó el turno de ${turno.paciente}. ${turno.companero.paciente} conserva el horario como turno individual.`
+        : 'Turno quitado. No se generarán sesiones nuevas para ese horario.',
+    );
+  }
+
+  async function sumar(turno, idPaciente) {
+    await sumarCompanero(turno.id, idPaciente);
+    const r = await generarAgenda(SEMANAS_POR_DEFECTO).catch(() => null);
+    setAbierto(null);
+    agenda.recargar();
+    setAviso(
+      r && r.omitidas?.length
+        ? `Dupla formada. ${r.omitidas.length} sesión(es) no pudieron agendarse por superposición o por el estado del paciente.`
+        : 'Dupla formada. Las sesiones de las próximas semanas quedaron agendadas.',
+    );
   }
 
   return (
     <AppLayout
       titulo="Calendario"
-      subtitulo={`Semana tipo, de lunes a viernes${agenda.datos ? ` · ${turnos.length} ${turnos.length === 1 ? 'turno' : 'turnos'}` : ''}`}
+      subtitulo={`Semana tipo, de lunes a viernes${agenda.datos ? ` · ${visibles.length} ${visibles.length === 1 ? 'turno' : 'turnos'}` : ''}`}
       acciones={<Button variant="contained" onClick={() => setNuevo({ dia: 1, hora: '' })}>Nuevo turno</Button>}
     >
       {agenda.cargando && !agenda.datos && <Cargando texto="Cargando la agenda..." />}
@@ -284,7 +371,7 @@ export default function CalendarioSemanal() {
                         })}
                       />
                     ))}
-                    {turnos.filter((t) => t.dia_semana === d.valor).map((t) => (
+                    {visibles.filter((t) => t.dia_semana === d.valor).map((t) => (
                       <BloqueTurno key={t.id} turno={t} onAbrir={setAbierto} horaInicio={HORA_INICIO} />
                     ))}
                   </Box>
@@ -299,7 +386,8 @@ export default function CalendarioSemanal() {
         <DialogoNuevoTurno base={nuevo} pacientes={asignados} onCerrar={() => setNuevo(null)} onGuardar={guardar} />
       )}
       {abierto && (
-        <DialogoTurno turno={abierto} onCerrar={() => setAbierto(null)} onQuitar={quitar}
+        <DialogoTurno turno={abierto} pacientes={asignados} onCerrar={() => setAbierto(null)}
+          onQuitar={quitar} onSumar={sumar}
           onVerPaciente={(id) => navigate(`/pacientes/${id}`)} />
       )}
       <Snackbar

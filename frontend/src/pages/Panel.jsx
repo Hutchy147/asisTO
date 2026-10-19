@@ -146,7 +146,12 @@ export default function Panel() {
     {
       clave: 'paciente',
       etiqueta: 'Paciente',
-      render: (s) => <PersonCell nombre={s.paciente.nombre_completo} meta={s.paciente.nro_historia} />,
+      render: (s) => (
+        <PersonCell
+          nombre={s.paciente.nombre_completo}
+          meta={s.companero ? `Dupla con ${s.companero.nombre_completo}` : s.paciente.nro_historia}
+        />
+      ),
     },
     ...(conRegistro
       ? [{

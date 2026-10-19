@@ -19,12 +19,24 @@ export function listarAgendaSemanal() {
   return get('/agenda-recurrente');
 }
 
-export function crearTurno({ id_paciente, dia_semana, hora_inicio, hora_fin }) {
-  return post('/agenda-recurrente', { id_paciente, dia_semana, hora_inicio, hora_fin: hora_fin || null });
+/**
+ * Crea un turno. Con id_paciente_2 crea una dupla (una terapeuta, dos
+ * pacientes en el mismo horario). -> { turno, companero?, id_dupla?, mensaje }
+ */
+export function crearTurno({ id_paciente, id_paciente_2, dia_semana, hora_inicio, hora_fin }) {
+  const cuerpo = { id_paciente, dia_semana, hora_inicio, hora_fin: hora_fin || null };
+  if (id_paciente_2) cuerpo.id_paciente_2 = id_paciente_2;
+  return post('/agenda-recurrente', cuerpo);
 }
 
-export function quitarTurno(id) {
-  return del(`/agenda-recurrente/${id}`);
+/** Suma un compañero a un turno individual, formando una dupla. */
+export function sumarCompanero(idTurno, idPaciente) {
+  return post(`/agenda-recurrente/${idTurno}/companero`, { id_paciente: idPaciente });
+}
+
+/** Con dupla = true quita los dos turnos; si no, solo el indicado. */
+export function quitarTurno(id, { dupla = false } = {}) {
+  return del(`/agenda-recurrente/${id}${dupla ? '?dupla=1' : ''}`);
 }
 
 /** -> { desde, hasta, semanas, creadas, existentes, omitidas: [{fecha, hora_inicio, paciente, motivo}] } */

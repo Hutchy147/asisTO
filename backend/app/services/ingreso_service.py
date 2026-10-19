@@ -29,6 +29,7 @@ from app.services.pacientes_service import obtener_paciente
 from app.services.sesiones_service import terapeuta_actual
 from app.utils.db import reintentar_en_deadlock
 from app.utils.errors import ErrorAplicacion
+from app.utils.textos import acentuar
 
 logger = logging.getLogger(__name__)
 
@@ -81,25 +82,9 @@ def _ingreso_obligatorio(id_paciente):
     return ingreso
 
 
-# Los mensajes de los procedimientos son ASCII (los archivos SQL no llevan
-# tildes); acá se restituyen las que corresponden antes de mostrarlos.
-_TILDES = {
-    'clinica': 'clínica', 'quedo': 'quedó', 'esta': 'está', 'reabrala': 'reábrala',
-    'interno': 'interno', 'terapeutico': 'terapéutico', 'tambien': 'también',
-    'minimo': 'mínimo', 'sesion': 'sesión', 'asignacion': 'asignación',
-}
-
-
-def _acentuar(mensaje):
-    if not mensaje:
-        return mensaje
-    def cambiar(m):
-        palabra = m.group(0)
-        nueva = _TILDES.get(palabra.lower())
-        if nueva is None:
-            return palabra
-        return nueva.capitalize() if palabra[0].isupper() else nueva
-    return re.sub(r'[A-Za-z]+', cambiar, mensaje)
+# Los mensajes de los procedimientos son ASCII: la restitucion de tildes vive
+# en utils/textos.py y la comparten todos los servicios.
+_acentuar = acentuar
 
 
 def _llamar(procedimiento, argumentos, salidas):

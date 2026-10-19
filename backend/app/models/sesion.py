@@ -69,6 +69,10 @@ class Sesion(db.Model):
     # notas es CONTENIDO CLINICO. RRHH no puede verlo: no incluirlo en
     # ninguna respuesta de ese modulo (limite duro del CLAUDE.md).
     notas = db.Column(db.Text, nullable=True)
+    # DUPLA (Entrega 5): dos sesiones con el mismo id_dupla son UNA dupla
+    # terapeutica (una terapeuta, dos ninios, mismo horario). NULL = sesion
+    # individual. Las reglas las aplican los triggers y los procedimientos.
+    id_dupla = db.Column(db.Integer, nullable=True)
     fecha_registro = db.Column(
         db.DateTime, nullable=False, server_default=db.FetchedValue()
     )
@@ -86,6 +90,7 @@ class Sesion(db.Model):
             'hora_fin': formatear_hora(self.hora_fin),
             'estado': self.estado,
             'ausencia_de': self.ausencia_de,
+            'id_dupla': self.id_dupla,
             'fecha_registro': self.fecha_registro.isoformat() if self.fecha_registro else None,
         }
         if con_notas:

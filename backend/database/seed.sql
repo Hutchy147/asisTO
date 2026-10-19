@@ -36,6 +36,7 @@
 -- veces que haga falta sin recrear el schema entero.
 SET FOREIGN_KEY_CHECKS = 0;
 TRUNCATE TABLE auditoria_accesos;
+TRUNCATE TABLE agenda_recurrente;
 TRUNCATE TABLE plantillas_objetivos;
 TRUNCATE TABLE informes;
 TRUNCATE TABLE sesiones_etiquetas;

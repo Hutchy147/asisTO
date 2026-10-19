@@ -20,6 +20,8 @@ class AgendaRecurrente(db.Model):
     hora_fin = db.Column(db.Time, nullable=False)
     activo = db.Column(db.Boolean, nullable=False, default=True)
     fecha_creacion = db.Column(db.DateTime, server_default=db.FetchedValue())
+    # Dos turnos activos con el mismo id_dupla son UN turno en dupla.
+    id_dupla = db.Column(db.Integer, nullable=True)
 
     paciente = db.relationship('Paciente')
 
@@ -35,4 +37,5 @@ class AgendaRecurrente(db.Model):
             'dia': NOMBRES_DIA.get(self.dia_semana),
             'hora_inicio': formatear_hora(self.hora_inicio),
             'hora_fin': formatear_hora(self.hora_fin),
+            'id_dupla': self.id_dupla,
         }

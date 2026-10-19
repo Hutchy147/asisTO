@@ -16,6 +16,7 @@
 // formulario arranca con datos reales desde el primer render, no con un
 // valor que se completa después de un segundo pedido asíncrono.
 
+import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Radio from '@mui/material/Radio';
@@ -120,6 +121,12 @@ export default function ModalEditarSesion({ abierto, sesion, paciente, onCerrar,
       etiquetaEnviar="Guardar cambios"
       etiquetaGuardando="Guardando…"
     >
+      {sesion?.companero && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Esta sesión integra una dupla con {sesion.companero.nombre_completo}. Si cambia la fecha
+          o el horario, también se reprograma la de su compañero.
+        </Alert>
+      )}
       <Box sx={{ display: 'flex', gap: 2 }}>
         <CampoTexto
           id="editar-sesion-fecha"

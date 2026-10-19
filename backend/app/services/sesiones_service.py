@@ -12,6 +12,7 @@ from app.models import Evolucion, ObjetivoTerapeutico, Paciente, Sesion, Terapeu
 from app.models.sesion import ESTADO_AUSENCIA, ESTADOS, ESTADOS_CON_EVOLUCION, ORIGENES_AUSENCIA
 from app.utils.db import reintentar_en_deadlock
 from app.utils.errors import ErrorAplicacion
+from app.utils.textos import acentuar
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +118,7 @@ def resolver_rango(desde, hasta):
     if dias > MAXIMO_DIAS_RANGO:
         raise ErrorAplicacion(
             f'El rango pedido es de {dias} dias y el maximo es '
-            f'{MAXIMO_DIAS_RANGO}. Acotá las fechas.'
+            f'{MAXIMO_DIAS_RANGO}. Acote las fechas.'
         )
 
     return fecha_desde, fecha_hasta
@@ -178,15 +179,47 @@ def _nombres_de_terapeutas(ids_terapeuta):
     return {fila[0]: f'{fila[1]} {fila[2]}' for fila in filas}
 
 
+def _companeros_de_dupla(sesiones):
+    """
+    {id_sesion: datos del otro paciente de la dupla} para las sesiones que
+    integran una. Una consulta para todas.
+
+    Es el unico dato de la otra sesion que se expone en la lista: quien es
+    el companero y cual es su sesion, para poder mostrarlo y abrirlo. Nada
+    clinico del companero viaja aca.
+    """
+    ids_dupla = {s.id_dupla for s in sesiones if s.id_dupla}
+    if not ids_dupla:
+        return {}
+    hermanas = Sesion.query.filter(Sesion.id_dupla.in_(list(ids_dupla))).all()
+    por_dupla = {}
+    for h in hermanas:
+        por_dupla.setdefault(h.id_dupla, []).append(h)
+    resultado = {}
+    for sesion in sesiones:
+        if not sesion.id_dupla:
+            continue
+        for otra in por_dupla.get(sesion.id_dupla, []):
+            if otra.id != sesion.id:
+                resultado[sesion.id] = {
+                    'id_sesion': otra.id,
+                    'id_paciente': otra.id_paciente,
+                    'nombre_completo': otra.paciente.nombre_completo,
+                }
+                break
+    return resultado
+
+
 def _serializar_lista(sesiones):
     """Sesiones + paciente + terapeuta + avance de calificacion.
 
-    Todo lo agregado se resuelve con tres consultas fijas, no con una por
+    Todo lo agregado se resuelve con cuatro consultas fijas, no con una por
     sesion.
     """
     ids = [s.id for s in sesiones]
     conteos = _conteo_de_objetivos(ids)
     nombres = _nombres_de_terapeutas({s.id_terapeuta for s in sesiones})
+    companeros = _companeros_de_dupla(sesiones)
 
     resultado = []
     for sesion in sesiones:
@@ -209,6 +242,8 @@ def _serializar_lista(sesiones):
             'id': sesion.id_terapeuta,
             'nombre_completo': nombres.get(sesion.id_terapeuta),
         }
+        # Dupla: None si la sesion es individual (o si la hermana no existe)
+        datos['companero'] = companeros.get(sesion.id)
         resultado.append(datos)
     return resultado
 
@@ -448,6 +483,7 @@ def obtener_detalle(id_sesion):
     datos['admite_evolucion'] = sesion.estado in ESTADOS_CON_EVOLUCION
     datos['es_propia'] = sesion.id_terapeuta == terapeuta_actual().id
     datos['objetivos'] = conteo
+    datos['companero'] = _companeros_de_dupla([sesion]).get(sesion.id)
 
     # La descripcion del objetivo viaja PEGADA a cada evolucion, y no se
     # deduce cruzando contra `objetivos_activos`. El motivo es que ese cruce
@@ -610,6 +646,11 @@ def editar_sesion(id_sesion, datos):
             http_status=403,
         )
 
+    # Horario de partida, para avisar si la reprogramacion arrastra a la
+    # hermana de dupla (la base mueve las dos juntas).
+    horario_antes = (sesion.fecha, sesion.hora_inicio, sesion.hora_fin)
+    id_dupla = sesion.id_dupla
+
     fecha = (datos.get('fecha') or '').strip()
     hora_inicio = (datos.get('hora_inicio') or '').strip()
     hora_fin = (datos.get('hora_fin') or '').strip() or None
@@ -664,7 +705,101 @@ def editar_sesion(id_sesion, datos):
         # inexistente. Se propaga tal cual.
         raise ErrorAplicacion(mensaje or 'No se pudo editar la sesion.')
 
+    db.session.expire_all()
     sesion = Sesion.query.get(sesion.id)
     logger.info('Sesion %s editada por terapeuta %s', sesion.id, terapeuta.id)
 
+    mensaje = acentuar(mensaje)
+    if id_dupla and horario_antes != (sesion.fecha, sesion.hora_inicio, sesion.hora_fin):
+        companero = _companeros_de_dupla([sesion]).get(sesion.id)
+        if companero:
+            mensaje += (
+                f' También se reprogramó la sesión de {companero["nombre_completo"]}, '
+                'porque integran una dupla.'
+            )
+
     return sesion, mensaje
+
+
+# ---------------------------------------------------------------------------
+# DUPLAS (Entrega 5)
+#
+# Una dupla es una terapeuta con dos pacientes en el mismo horario. Las
+# reglas viven en la base (p_registrar_dupla, p_agregar_a_dupla y los
+# triggers de solape de sesiones); aca se traduce el resultado. No hay ruta
+# propia: la dupla se agenda desde el turno semanal en dupla
+# (agenda_recurrente_service) y la lectura sale en el detalle de cada sesion.
+# ---------------------------------------------------------------------------
+def _estado_http_dupla(mensaje):
+    texto = (mensaje or '').lower()
+    if 'no existe' in texto:
+        return 404
+    if 'solo el terapeuta' in texto:
+        return 403
+    if 'ya integra' in texto or 'superponen' in texto:
+        return 409
+    return 400
+
+
+@reintentar_en_deadlock()
+def registrar_dupla(id_paciente_1, id_paciente_2, fecha, hora_inicio, hora_fin=None):
+    """
+    Agenda las dos sesiones de una dupla (p_registrar_dupla), a nombre de la
+    terapeuta logueada y con estado 'incompleta' (agendadas, sin registro).
+    Devuelve {id_dupla, id_sesion_1, id_sesion_2, mensaje}. Sin commit
+    previo: la unidad es la dupla entera o nada.
+    """
+    terapeuta = terapeuta_actual()
+    _validar_dia_habil(fecha)
+    if hora_fin is None:
+        hora_fin = _hora_fin_por_defecto(hora_inicio)
+
+    db.session.execute(
+        text(
+            'CALL p_registrar_dupla(:t, :p1, :p2, :fecha, :inicio, :fin, '
+            '@p_dupla, @p_s1, @p_s2, @p_mensaje)'
+        ),
+        {'t': terapeuta.id, 'p1': id_paciente_1, 'p2': id_paciente_2,
+         'fecha': fecha, 'inicio': hora_inicio, 'fin': hora_fin},
+    )
+    dupla, s1, s2, mensaje = db.session.execute(
+        text('SELECT @p_dupla, @p_s1, @p_s2, @p_mensaje')
+    ).first()
+    db.session.commit()
+
+    if dupla is None:
+        mensaje = acentuar(mensaje) or 'No se pudo registrar la dupla.'
+        raise ErrorAplicacion(mensaje, http_status=_estado_http_dupla(mensaje))
+
+    logger.info('Dupla %s registrada por terapeuta %s', dupla, terapeuta.id)
+    return {'id_dupla': int(dupla), 'id_sesion_1': int(s1),
+            'id_sesion_2': int(s2), 'mensaje': acentuar(mensaje)}
+
+
+@reintentar_en_deadlock()
+def agregar_a_dupla(id_sesion, id_paciente):
+    """
+    Suma un segundo paciente a una sesion individual ya agendada
+    (p_agregar_a_dupla): crea la sesion del companero en el mismo horario y
+    arma la dupla. Solo la terapeuta que atendio la sesion.
+    """
+    terapeuta = terapeuta_actual()
+    db.session.execute(
+        text(
+            'CALL p_agregar_a_dupla(:t, :sesion, :paciente, '
+            '@p_dupla, @p_nueva, @p_mensaje)'
+        ),
+        {'t': terapeuta.id, 'sesion': id_sesion, 'paciente': id_paciente},
+    )
+    dupla, nueva, mensaje = db.session.execute(
+        text('SELECT @p_dupla, @p_nueva, @p_mensaje')
+    ).first()
+    db.session.commit()
+
+    if dupla is None:
+        mensaje = acentuar(mensaje) or 'No se pudo armar la dupla.'
+        raise ErrorAplicacion(mensaje, http_status=_estado_http_dupla(mensaje))
+
+    logger.info('Dupla %s armada sobre la sesion %s', dupla, id_sesion)
+    return {'id_dupla': int(dupla), 'id_sesion_nueva': int(nueva),
+            'mensaje': acentuar(mensaje)}
