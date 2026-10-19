@@ -201,7 +201,7 @@ function DialogoTurno({ turno, pacientes, onCerrar, onVerPaciente, onQuitar, onS
   }
 
   return (
-    <Dialog open onClose={ocupado ? undefined : onCerrar} PaperProps={{ sx: { width: 440, maxWidth: '95vw' } }}>
+    <Dialog open onClose={ocupado ? undefined : onCerrar} PaperProps={{ sx: { width: enDupla ? 660 : 440, maxWidth: '95vw' } }}>
       <Box sx={{ px: 3, pt: 2.5 }}>
         <Typography variant="h5" className="texto-libre">
           {enDupla ? `${turno.paciente} y ${turno.companero.paciente}` : turno.paciente}

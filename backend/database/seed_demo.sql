@@ -529,9 +529,9 @@ CALL p_demo_duplas();
 DROP PROCEDURE p_demo_duplas;
 
 INSERT INTO agenda_recurrente (id_terapeuta, id_paciente, dia_semana, hora_inicio, hora_fin, id_dupla) VALUES
-  (1, 1, 1, '08:00:00', '08:45:00', NULL),
-  (1, 7, 3, '09:00:00', '09:45:00', NULL),
-  (1, 13, 5, '10:00:00', '10:45:00', NULL),
+  (1, 1, 1, '16:00:00', '16:45:00', NULL),
+  (1, 7, 3, '16:00:00', '16:45:00', NULL),
+  (1, 13, 5, '16:00:00', '16:45:00', NULL),
   (1, 4, 1, '15:00:00', '15:45:00', 4),
   (1, 10, 1, '15:00:00', '15:45:00', 4),
   (1, 4, 4, '15:00:00', '15:45:00', 6),
