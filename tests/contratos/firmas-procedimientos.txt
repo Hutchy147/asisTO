@@ -84,3 +84,6 @@ p_registrar_sesion | 10 | IN p_id_terapeuta, IN p_id_paciente, IN p_fecha, IN p_
 p_reporte_sesiones_periodo | 4 | IN p_fecha_desde, IN p_fecha_hasta, IN p_id_terapeuta, OUT p_mensaje
 p_restablecer_contrasena | 4 | IN p_token_hash, IN p_hash_nuevo, OUT p_restablecida, OUT p_mensaje
 p_solicitar_recuperacion | 4 | IN p_email, IN p_token_hash, IN p_minutos, OUT p_id_usuario
+p_vincular_familiar | 4 | IN p_id_familiar, IN p_id_paciente, OUT p_ok, OUT p_mensaje
+p_desvincular_familiar | 4 | IN p_id_familiar, IN p_id_paciente, OUT p_ok, OUT p_mensaje
+p_crear_familiar_y_vincular | 9 | IN p_nombre, IN p_apellido, IN p_email, IN p_hash, IN p_parentesco, IN p_telefono, IN p_id_paciente, OUT p_id_familiar, OUT p_mensaje

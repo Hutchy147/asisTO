@@ -22,10 +22,11 @@ from app.models.auditoria_acceso import AuditoriaAcceso
 from app.models.sesion_renglon import SesionRenglon
 from app.models.agenda_recurrente import AgendaRecurrente
 from app.models.sesion_objetivo import SesionObjetivo
+from app.models.familiar_paciente import FamiliarPaciente
 
 __all__ = [
     'Usuario', 'Terapeuta', 'Rrhh', 'Familiar', 'Paciente',
     'ObjetivoTerapeutico', 'Sesion', 'Evolucion', 'ObservacionRrhh', 'Asignacion',
     'AuditoriaAcceso', 'SesionRenglon', 'AgendaRecurrente',
-    'SesionObjetivo',
+    'SesionObjetivo', 'FamiliarPaciente',
 ]

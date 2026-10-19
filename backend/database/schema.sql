@@ -3288,6 +3288,276 @@ END$$
 
 
 -- ---------------------------------------------------------------------
+-- Vinculo familiar-paciente (Entrega 4)
+--
+-- p_vincular_familiar / p_desvincular_familiar / p_crear_familiar_y_vincular.
+-- El vinculo es lo que le da al familiar acceso a la evolucion del paciente
+-- y a sus avisos: sin fila en familiares_pacientes no ve nada.
+--
+-- Orden de locks: pacientes primero, despues familiares / usuarios, despues
+-- familiares_pacientes (mismo criterio que el resto: pacientes siempre abre).
+-- Un paciente de baja no admite vinculos nuevos; desvincular si se permite
+-- siempre, para poder limpiar el acceso.
+-- ---------------------------------------------------------------------
+CREATE PROCEDURE p_vincular_familiar (
+  IN  p_id_familiar  INT UNSIGNED,
+  IN  p_id_paciente  INT UNSIGNED,
+  OUT p_ok           BOOLEAN,
+  OUT p_mensaje      VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error     VARCHAR(255) DEFAULT '';
+  DECLARE v_paciente  INT UNSIGNED DEFAULT NULL;
+  DECLARE v_activo    BOOLEAN      DEFAULT NULL;
+  DECLARE v_familiar  INT UNSIGNED DEFAULT NULL;
+  DECLARE v_usuario   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_habilitado BOOLEAN     DEFAULT NULL;
+  DECLARE v_existente INT UNSIGNED DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = 'No se pudo vincular al familiar por un error interno';
+  END;
+
+  SET p_ok = FALSE;
+
+  START TRANSACTION;
+
+  SELECT id, activo INTO v_paciente, v_activo
+    FROM pacientes
+   WHERE id = p_id_paciente
+   FOR UPDATE;
+
+  SELECT f.id, f.id_usuario INTO v_familiar, v_usuario
+    FROM familiares f
+   WHERE f.id = p_id_familiar
+   FOR SHARE;
+
+  IF v_usuario IS NOT NULL THEN
+    SELECT activo INTO v_habilitado FROM usuarios WHERE id = v_usuario;
+  END IF;
+
+  SELECT id_familiar INTO v_existente
+    FROM familiares_pacientes
+   WHERE id_familiar = p_id_familiar AND id_paciente = p_id_paciente
+   FOR UPDATE;
+
+  IF v_paciente IS NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El paciente indicado no existe';
+  ELSEIF v_familiar IS NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El familiar indicado no existe';
+  ELSEIF v_activo = FALSE THEN
+    ROLLBACK;
+    SET p_mensaje = 'El paciente esta dado de baja: no se le pueden vincular familiares';
+  ELSEIF v_habilitado = FALSE THEN
+    ROLLBACK;
+    SET p_mensaje = 'La cuenta del familiar esta deshabilitada';
+  ELSEIF v_existente IS NOT NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El familiar ya esta vinculado a este paciente';
+  ELSE
+    INSERT INTO familiares_pacientes (id_familiar, id_paciente)
+    VALUES (p_id_familiar, p_id_paciente);
+
+    COMMIT;
+    SET p_ok = TRUE;
+    SET p_mensaje = 'Familiar vinculado correctamente';
+  END IF;
+END$$
+
+
+CREATE PROCEDURE p_desvincular_familiar (
+  IN  p_id_familiar  INT UNSIGNED,
+  IN  p_id_paciente  INT UNSIGNED,
+  OUT p_ok           BOOLEAN,
+  OUT p_mensaje      VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error     VARCHAR(255) DEFAULT '';
+  DECLARE v_paciente  INT UNSIGNED DEFAULT NULL;
+  DECLARE v_existente INT UNSIGNED DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = 'No se pudo desvincular al familiar por un error interno';
+  END;
+
+  SET p_ok = FALSE;
+
+  START TRANSACTION;
+
+  SELECT id INTO v_paciente
+    FROM pacientes
+   WHERE id = p_id_paciente
+   FOR UPDATE;
+
+  SELECT id_familiar INTO v_existente
+    FROM familiares_pacientes
+   WHERE id_familiar = p_id_familiar AND id_paciente = p_id_paciente
+   FOR UPDATE;
+
+  IF v_paciente IS NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El paciente indicado no existe';
+  ELSEIF v_existente IS NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El familiar no esta vinculado a este paciente';
+  ELSE
+    DELETE FROM familiares_pacientes
+     WHERE id_familiar = p_id_familiar AND id_paciente = p_id_paciente;
+
+    COMMIT;
+    SET p_ok = TRUE;
+    SET p_mensaje = 'Vinculo eliminado correctamente';
+  END IF;
+END$$
+
+
+-- Crea la cuenta del familiar (usuario con rol familiar + perfil) y lo
+-- vincula en la misma transaccion: o queda todo, o no queda nada. El hash
+-- de la contrasena lo calcula la aplicacion (bcrypt); aca solo se guarda.
+CREATE PROCEDURE p_crear_familiar_y_vincular (
+  IN  p_nombre       VARCHAR(100),
+  IN  p_apellido     VARCHAR(100),
+  IN  p_email        VARCHAR(180),
+  IN  p_hash         VARCHAR(255),
+  IN  p_parentesco   VARCHAR(60),
+  IN  p_telefono     VARCHAR(40),
+  IN  p_id_paciente  INT UNSIGNED,
+  OUT p_id_familiar  INT UNSIGNED,
+  OUT p_mensaje      VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error     VARCHAR(255) DEFAULT '';
+  DECLARE v_paciente  INT UNSIGNED DEFAULT NULL;
+  DECLARE v_activo    BOOLEAN      DEFAULT NULL;
+  DECLARE v_usuario   INT UNSIGNED DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_id_familiar = NULL;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  -- 1062: dos altas simultaneas con el mismo correo; gana una sola
+  DECLARE EXIT HANDLER FOR 1062
+  BEGIN
+    ROLLBACK;
+    SET p_id_familiar = NULL;
+    SET p_mensaje = 'Ya existe una cuenta con ese correo electronico';
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_id_familiar = NULL;
+    SET p_mensaje = 'No se pudo crear al familiar por un error interno';
+  END;
+
+  SET p_id_familiar = NULL;
+
+  START TRANSACTION;
+
+  SELECT id, activo INTO v_paciente, v_activo
+    FROM pacientes
+   WHERE id = p_id_paciente
+   FOR UPDATE;
+
+  SELECT id INTO v_usuario
+    FROM usuarios
+   WHERE email = p_email
+   FOR UPDATE;
+
+  IF v_paciente IS NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El paciente indicado no existe';
+  ELSEIF v_activo = FALSE THEN
+    ROLLBACK;
+    SET p_mensaje = 'El paciente esta dado de baja: no se le pueden vincular familiares';
+  ELSEIF v_usuario IS NOT NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'Ya existe una cuenta con ese correo electronico';
+  ELSE
+    INSERT INTO usuarios (nombre, apellido, email, contrasena_hash, rol)
+    VALUES (p_nombre, p_apellido, p_email, p_hash, 'familiar');
+
+    SET v_usuario = LAST_INSERT_ID();
+
+    INSERT INTO familiares (id_usuario, parentesco, telefono)
+    VALUES (v_usuario, p_parentesco, p_telefono);
+
+    SET p_id_familiar = LAST_INSERT_ID();
+
+    INSERT INTO familiares_pacientes (id_familiar, id_paciente)
+    VALUES (p_id_familiar, p_id_paciente);
+
+    COMMIT;
+    SET p_mensaje = 'Familiar creado y vinculado correctamente';
+  END IF;
+END$$
+
+
+-- ---------------------------------------------------------------------
 -- p_reporte_sesiones_periodo — modulo RRHH
 --
 -- LIMITE DURO: este procedimiento NO devuelve contenido clinico. Nada de

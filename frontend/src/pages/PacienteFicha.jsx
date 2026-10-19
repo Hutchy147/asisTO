@@ -16,6 +16,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import AccountFlag from '../components/data/AccountFlag.jsx';
 import SeccionAsignaciones from '../components/asignaciones/SeccionAsignaciones.jsx';
+import SeccionFamiliares from '../components/familiares/SeccionFamiliares.jsx';
 import DataTable from '../components/data/DataTable.jsx';
 import GoalMeter from '../components/data/GoalMeter.jsx';
 import GraficoEvolucion from '../components/data/GraficoEvolucion.jsx';
@@ -137,6 +138,9 @@ export default function PacienteFicha() {
   const conPausa = hayCapacidad('pacientes.pausa');
   const verMinimo = hayCapacidad('objetivos.minimo');
   const verAsignaciones = hayCapacidad('asignaciones.gestionar');
+  // Familia (Entrega 4): la API solo atiende al terapeuta asignado y al
+  // administrador, así que la pestaña se ofrece cuando el paciente es suyo.
+  const verFamilia = hayCapacidad('familiar.vincular');
 
   if (objetivos.cargando) {
     return (
@@ -428,7 +432,13 @@ export default function PacienteFicha() {
         )}
         {verProgreso && <Tab value="progreso" label="Progreso" />}
         {verAsignaciones && <Tab value="asignacion" label="Asignación" />}
+        {verFamilia && esMio && <Tab value="familia" label="Familia" />}
       </Tabs>
+
+      {/* --- Pestaña Familia (Entrega 4) --- */}
+      {verFamilia && esMio && pestania === 'familia' && (
+        <SeccionFamiliares paciente={paciente} onAviso={setAviso} />
+      )}
 
       {/* --- Pestaña Asignación (HDU 11) --- */}
       {verAsignaciones && pestania === 'asignacion' && (
