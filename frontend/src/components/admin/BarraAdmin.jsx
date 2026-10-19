@@ -37,6 +37,7 @@ export default function BarraAdmin({ activa }) {
         <Stack direction="row" spacing={1} sx={{ flexGrow: 1 }}>
           {enlace('asignaciones', 'Asignaciones', '/admin')}
           {hayCapacidad('ingreso.configurar') && enlace('formularios', 'Formulario de ingreso', '/admin/formularios')}
+          {hayCapacidad('objetivos.plantillas') && enlace('plantillas', 'Plantillas de objetivos', '/admin/plantillas')}
         </Stack>
         <Stack direction="row" spacing={2} alignItems="center">
           <Typography variant="body2" className="texto-libre" noWrap>{usuario?.nombre_completo}</Typography>

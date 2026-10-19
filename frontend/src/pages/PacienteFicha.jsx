@@ -606,7 +606,7 @@ export default function PacienteFicha() {
               <EstadoVacio
                 plano
                 titulo="Ningún objetivo archivado"
-                descripcion="Cuando archives un objetivo va a quedar acá, con todas sus calificaciones. Archivar no borra nada."
+                descripcion="Un objetivo archivado queda aquí, con todas sus calificaciones. Archivar no borra nada."
               />
             ) : (
               archivados.map((objetivo) => (

@@ -797,17 +797,20 @@ INSERT INTO informes
    'borrador', '2026-07-02 10:15:00', NULL);
 
 INSERT INTO plantillas_objetivos (area, descripcion) VALUES
-  ('Motricidad fina',       'Mejorar la pinza fina para la escritura'),
-  ('Motricidad fina',       'Realizar encastres de piezas pequenas sin ayuda'),
-  ('Motricidad gruesa',     'Mantener el equilibrio en una pierna por 10 segundos'),
-  ('Motricidad gruesa',     'Subir y bajar escaleras alternando los pies'),
-  ('Integracion sensorial', 'Tolerar texturas nuevas en la alimentacion'),
-  ('Integracion sensorial', 'Regular la respuesta a estimulos auditivos'),
-  ('Vida diaria',           'Vestirse de forma autonoma'),
-  ('Vida diaria',           'Utilizar cubiertos de manera independiente'),
-  ('Atencion',              'Sostener la atencion en tareas de 10 minutos'),
-  ('Rehabilitacion',        'Recuperar rango de movimiento en muneca derecha'),
-  ('Rehabilitacion',        'Reintegrarse a la actividad laboral habitual');
+  ('Motricidad fina', CONVERT(0x4d656a6f726172206c612070696e7a612066696e612070617261206c61206573637269747572612c20736f7374656e69656e646f20656c206cc3a170697a20636f6e20616761727265207472c3ad706f646520647572616e7465203130206d696e75746f732c20636f6e2061797564612076657262616c206dc3ad6e696d61 USING utf8mb4)),
+  ('Motricidad fina', CONVERT(0x5265616c697a617220656e63617374726573206465207069657a6173207065717565c3b161732073696e206179756461 USING utf8mb4)),
+  ('Motricidad gruesa', 'Mantener el equilibrio en una pierna durante 10 segundos'),
+  ('Motricidad gruesa', 'Subir y bajar escaleras alternando los pies'),
+  (CONVERT(0x496e74656772616369c3b36e2073656e736f7269616c USING utf8mb4), CONVERT(0x546f6c65726172207465787475726173206e756576617320656e206c6120616c696d656e74616369c3b36e USING utf8mb4)),
+  (CONVERT(0x496e74656772616369c3b36e2073656e736f7269616c USING utf8mb4), CONVERT(0x526567756c6172206c6120726573707565737461206120657374c3ad6d756c6f7320617564697469766f73 USING utf8mb4)),
+  ('Vida diaria', CONVERT(0x566573746972736520646520666f726d6120617574c3b36e6f6d61 USING utf8mb4)),
+  ('Vida diaria', 'Utilizar cubiertos de manera independiente'),
+  (CONVERT(0x4174656e6369c3b36e USING utf8mb4), CONVERT(0x536f7374656e6572206c61206174656e6369c3b36e20656e20746172656173206465203130206d696e75746f73 USING utf8mb4)),
+  (CONVERT(0x5265686162696c6974616369c3b36e USING utf8mb4), CONVERT(0x52656375706572617220656c2072616e676f206465206d6f76696d69656e746f206465206c61206d75c3b16563612064657265636861 USING utf8mb4)),
+  (CONVERT(0x5265686162696c6974616369c3b36e USING utf8mb4), 'Reintegrarse a la actividad laboral habitual'),
+  (CONVERT(0x436f6d756e6963616369c3b36e USING utf8mb4), 'Pedir lo que necesita mediante palabras o pictogramas'),
+  (CONVERT(0x4a7565676f207920736f6369616c697a616369c3b36e USING utf8mb4), CONVERT(0x436f6d70617274697220756e206a7565676f20636f6e206f74726f206e69c3b16f20647572616e74652035206d696e75746f732c20726573706574616e646f207475726e6f73 USING utf8mb4)),
+  (CONVERT(0x4175746f6e6f6dc3ad6120656e206c612065736375656c61 USING utf8mb4), CONVERT(0x4f7267616e697a61722073757320c3ba74696c6573206573636f6c617265732073696e20617975646120616e74657320646520636f6d656e7a6172206c6120636c617365 USING utf8mb4));
 
 INSERT INTO auditoria_accesos (id_usuario, email, resultado, ip, fecha) VALUES
   (1,    'laura.fernandez@asisto.local', 'exitoso',   '192.168.1.24',  '2026-06-01 08:45:00'),

@@ -4985,6 +4985,228 @@ END$$
 
 
 -- ---------------------------------------------------------------------
+-- Plantillas de objetivos por area (Entrega 5). Catalogo que cura el
+-- administrador y que el terapeuta usa al crear un objetivo: el texto se
+-- COPIA al objetivo, que despues se edita libremente. Un objetivo no
+-- guarda referencia a la plantilla, asi que editar o borrar una plantilla
+-- no toca objetivos ya creados.
+-- Reglas: area obligatoria (hasta 120), descripcion obligatoria (hasta
+-- 700, el mismo tope que un objetivo) y sin duplicados dentro de un area.
+-- ---------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS p_crear_plantilla_objetivo$$
+CREATE PROCEDURE p_crear_plantilla_objetivo (
+  IN  p_area          VARCHAR(2000),
+  IN  p_descripcion   VARCHAR(2000),
+  OUT p_id_plantilla  INT UNSIGNED,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error   VARCHAR(255) DEFAULT '';
+  DECLARE v_area    VARCHAR(2000);
+  DECLARE v_desc    VARCHAR(2000);
+  DECLARE v_igual   INT UNSIGNED DEFAULT 0;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_id_plantilla = NULL;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_id_plantilla = NULL;
+    SET p_mensaje = 'No se pudo crear la plantilla por un error interno';
+  END;
+
+  SET p_id_plantilla = NULL;
+  SET v_area = TRIM(COALESCE(p_area, ''));
+  SET v_desc = TRIM(COALESCE(p_descripcion, ''));
+
+  IF v_area = '' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El area es obligatoria';
+  END IF;
+  IF CHAR_LENGTH(v_area) > 120 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El area no puede superar 120 caracteres';
+  END IF;
+  IF v_desc = '' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'La descripcion es obligatoria';
+  END IF;
+  IF CHAR_LENGTH(v_desc) > 700 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'La descripcion no puede superar 700 caracteres';
+  END IF;
+
+  START TRANSACTION;
+
+  SELECT COUNT(*) INTO v_igual FROM (
+    SELECT id FROM plantillas_objetivos
+     WHERE area = v_area AND descripcion = v_desc
+       FOR UPDATE
+  ) AS t;
+  IF v_igual > 0 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Ya existe una plantilla igual en esa area';
+  END IF;
+
+  INSERT INTO plantillas_objetivos (area, descripcion) VALUES (v_area, v_desc);
+  SET p_id_plantilla = LAST_INSERT_ID();
+
+  COMMIT;
+  SET p_mensaje = 'Plantilla creada correctamente';
+END$$
+
+
+DROP PROCEDURE IF EXISTS p_editar_plantilla_objetivo$$
+CREATE PROCEDURE p_editar_plantilla_objetivo (
+  IN  p_id_plantilla  INT UNSIGNED,
+  IN  p_area          VARCHAR(2000),
+  IN  p_descripcion   VARCHAR(2000),
+  OUT p_ok            BOOLEAN,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error   VARCHAR(255) DEFAULT '';
+  DECLARE v_area    VARCHAR(2000);
+  DECLARE v_desc    VARCHAR(2000);
+  DECLARE v_id      INT UNSIGNED DEFAULT NULL;
+  DECLARE v_igual   INT UNSIGNED DEFAULT 0;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = 'No se pudo guardar la plantilla por un error interno';
+  END;
+
+  SET p_ok = FALSE;
+  SET v_area = TRIM(COALESCE(p_area, ''));
+  SET v_desc = TRIM(COALESCE(p_descripcion, ''));
+
+  IF v_area = '' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El area es obligatoria';
+  END IF;
+  IF CHAR_LENGTH(v_area) > 120 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El area no puede superar 120 caracteres';
+  END IF;
+  IF v_desc = '' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'La descripcion es obligatoria';
+  END IF;
+  IF CHAR_LENGTH(v_desc) > 700 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'La descripcion no puede superar 700 caracteres';
+  END IF;
+
+  START TRANSACTION;
+
+  SELECT id INTO v_id FROM plantillas_objetivos WHERE id = p_id_plantilla FOR UPDATE;
+  IF v_id IS NULL THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'La plantilla indicada no existe';
+  END IF;
+
+  SELECT COUNT(*) INTO v_igual FROM (
+    SELECT id FROM plantillas_objetivos
+     WHERE area = v_area AND descripcion = v_desc AND id <> p_id_plantilla
+       FOR UPDATE
+  ) AS t;
+  IF v_igual > 0 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Ya existe una plantilla igual en esa area';
+  END IF;
+
+  UPDATE plantillas_objetivos SET area = v_area, descripcion = v_desc WHERE id = p_id_plantilla;
+
+  COMMIT;
+  SET p_ok = TRUE;
+  SET p_mensaje = 'Plantilla actualizada correctamente';
+END$$
+
+
+DROP PROCEDURE IF EXISTS p_eliminar_plantilla_objetivo$$
+CREATE PROCEDURE p_eliminar_plantilla_objetivo (
+  IN  p_id_plantilla  INT UNSIGNED,
+  OUT p_ok            BOOLEAN,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error  VARCHAR(255) DEFAULT '';
+  DECLARE v_id     INT UNSIGNED DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = 'No se pudo quitar la plantilla por un error interno';
+  END;
+
+  SET p_ok = FALSE;
+
+  START TRANSACTION;
+
+  SELECT id INTO v_id FROM plantillas_objetivos WHERE id = p_id_plantilla FOR UPDATE;
+  IF v_id IS NULL THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'La plantilla indicada no existe';
+  END IF;
+
+  DELETE FROM plantillas_objetivos WHERE id = p_id_plantilla;
+
+  COMMIT;
+  SET p_ok = TRUE;
+  SET p_mensaje = 'Plantilla quitada correctamente';
+END$$
+
+
+-- ---------------------------------------------------------------------
 -- p_reporte_sesiones_periodo — modulo RRHH
 --
 -- LIMITE DURO: este procedimiento NO devuelve contenido clinico. Nada de

@@ -3,13 +3,18 @@
 // título, el verbo y poco más. Todo el comportamiento viene del patrón
 // (useFormularioModal + ModalFormulario).
 
+import { useState } from 'react';
 import Box from '@mui/material/Box';
+import MenuItem from '@mui/material/MenuItem';
 
 import GoalMeter from '../data/GoalMeter.jsx';
 import CampoTexto from '../forms/CampoTexto.jsx';
 import ModalFormulario from '../modal/ModalFormulario.jsx';
 import Aviso from '../estado/Aviso.jsx';
+import { hayCapacidad } from '../../config/entregas.js';
 import { useFormularioModal } from '../../hooks/useFormularioModal.js';
+import { usePeticion } from '../../hooks/usePeticion.js';
+import { listarPlantillas } from '../../services/plantillasObjetivosService.js';
 import {
   MAXIMO_CARACTERES_DESCRIPCION, crearObjetivo, editarObjetivo,
 } from '../../services/objetivosService.js';
@@ -26,6 +31,15 @@ export default function ModalObjetivo({
   // El tope solo bloquea el ALTA. Editar uno que ya existe no consume cupo.
   const enTope = !esEdicion && cupo?.disponibles <= 0;
 
+  // Plantillas por área (Entrega 5): solo en el alta. El texto elegido se
+  // COPIA al campo y queda editable; el objetivo no guarda la plantilla.
+  const conPlantillas = hayCapacidad('objetivos.plantillas') && !esEdicion;
+  const plantillas = usePeticion(() => (conPlantillas ? listarPlantillas() : Promise.resolve(null)), [conPlantillas]);
+  const [area, setArea] = useState('');
+  const [plantilla, setPlantilla] = useState('');
+  const areas = plantillas.datos?.areas ?? [];
+  const deLaArea = areas.find((a) => a.area === area)?.plantillas ?? [];
+
   const formulario = useFormularioModal({
     inicial: { descripcion: objetivo?.descripcion ?? '' },
     obligatorios: ['descripcion'],
@@ -41,6 +55,12 @@ export default function ModalObjetivo({
   });
 
   const { valores, setCampo, errorDe, guardando } = formulario;
+
+  function elegirPlantilla(id) {
+    setPlantilla(id);
+    const elegida = deLaArea.find((p) => p.id === id);
+    if (elegida) setCampo('descripcion')(elegida.descripcion);
+  }
 
   return (
     <ModalFormulario
@@ -72,10 +92,35 @@ export default function ModalObjetivo({
 
       {enTope && (
         <Aviso severidad="warning" titulo="Hay 4 objetivos activos">
-          El tope del sistema son 4 por paciente. Archivá uno desde la ficha
+          El tope del sistema son 4 por paciente. Archive uno desde la ficha
           para poder crear este. Archivar no borra su historial de
           calificaciones.
         </Aviso>
+      )}
+
+      {conPlantillas && areas.length > 0 && (
+        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+          <CampoTexto
+            id="objetivo-area" etiqueta="Área (opcional)" select valor={area}
+            ayuda="Parta de un texto sugerido y ajústelo."
+            onChange={(e) => { setArea(e?.target?.value ?? e); setPlantilla(''); }}
+            deshabilitado={guardando || enTope}
+          >
+            <MenuItem value="">Ninguna</MenuItem>
+            {areas.map((a) => <MenuItem key={a.area} value={a.area} className="texto-libre">{a.area}</MenuItem>)}
+          </CampoTexto>
+          <CampoTexto
+            id="objetivo-plantilla" etiqueta="Texto sugerido" select valor={plantilla}
+            onChange={(e) => elegirPlantilla(e?.target?.value ?? e)}
+            deshabilitado={guardando || enTope || !area}
+          >
+            {deLaArea.map((p) => (
+              <MenuItem key={p.id} value={p.id} className="texto-libre" sx={{ whiteSpace: 'normal', maxWidth: 420 }}>
+                {p.descripcion}
+              </MenuItem>
+            ))}
+          </CampoTexto>
+        </Box>
       )}
 
       <CampoTexto

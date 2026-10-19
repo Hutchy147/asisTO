@@ -14,7 +14,7 @@ _TILDES = {
     'sesion': 'sesión', 'asignacion': 'asignación', 'dia': 'día',
     'atendio': 'atendió', 'falto': 'faltó', 'quien': 'quién',
     'evolucion': 'evolución', 'descripcion': 'descripción',
-    'ninios': 'niños', 'unica': 'única',
+    'ninios': 'niños', 'unica': 'única', 'area': 'área',
 }
 
 

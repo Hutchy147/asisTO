@@ -97,3 +97,6 @@ p_registrar_dupla | 10 | IN p_id_terapeuta, IN p_id_paciente_1, IN p_id_paciente
 p_agregar_a_dupla | 6 | IN p_id_terapeuta, IN p_id_sesion, IN p_id_paciente, OUT p_id_dupla, OUT p_id_sesion_nueva, OUT p_mensaje
 p_crear_turno_dupla | 8 | IN p_id_terapeuta, IN p_id_paciente_1, IN p_id_paciente_2, IN p_dia_semana, IN p_hora_inicio, IN p_hora_fin, OUT p_id_dupla, OUT p_mensaje
 p_sumar_companero_a_turno | 5 | IN p_id_terapeuta, IN p_id_turno, IN p_id_paciente, OUT p_id_dupla, OUT p_mensaje
+p_crear_plantilla_objetivo | 4 | IN p_area, IN p_descripcion, OUT p_id_plantilla, OUT p_mensaje
+p_editar_plantilla_objetivo | 5 | IN p_id_plantilla, IN p_area, IN p_descripcion, OUT p_ok, OUT p_mensaje
+p_eliminar_plantilla_objetivo | 3 | IN p_id_plantilla, OUT p_ok, OUT p_mensaje

@@ -24,6 +24,7 @@ from app.models.agenda_recurrente import AgendaRecurrente
 from app.models.sesion_objetivo import SesionObjetivo
 from app.models.familiar_paciente import FamiliarPaciente
 from app.models.notificacion import Notificacion, PreferenciaNotificacion
+from app.models.plantilla_objetivo import PlantillaObjetivo
 from app.models.ingreso import Ingreso, IngresoCampo, IngresoEtapa, IngresoRespuesta
 
 __all__ = [
@@ -31,5 +32,5 @@ __all__ = [
     'ObjetivoTerapeutico', 'Sesion', 'Evolucion', 'ObservacionRrhh', 'Asignacion',
     'AuditoriaAcceso', 'SesionRenglon', 'AgendaRecurrente',
     'SesionObjetivo', 'FamiliarPaciente', 'Notificacion', 'PreferenciaNotificacion',
-    'Ingreso', 'IngresoCampo', 'IngresoEtapa', 'IngresoRespuesta',
+    'PlantillaObjetivo', 'Ingreso', 'IngresoCampo', 'IngresoEtapa', 'IngresoRespuesta',
 ]
