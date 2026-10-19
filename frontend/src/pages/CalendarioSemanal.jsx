@@ -47,6 +47,8 @@ const hh = (n) => `${String(n).padStart(2, '0')}:00`;
 function BloqueTurno({ turno, onAbrir, horaInicio }) {
   const inicio = aDecimal(turno.hora_inicio);
   const fin = aDecimal(turno.hora_fin);
+  // Un turno de menos de una hora ocupa poco alto: nombre y horario van en una línea.
+  const compacto = fin - inicio < 1;
   return (
     <Box
       component="button"
@@ -60,16 +62,17 @@ function BloqueTurno({ turno, onAbrir, horaInicio }) {
         backgroundColor: t.palette.sesionEstado.completa.bg,
         border: '1px solid transparent',
         borderLeft: `3px solid ${t.palette.sesionEstado.completa.fg}`,
-        borderRadius: '6px', padding: '5px 8px', textAlign: 'left',
+        borderRadius: '6px', padding: compacto ? '0 8px' : '5px 8px', textAlign: 'left',
         cursor: 'pointer', font: 'inherit', color: t.palette.text.primary,
-        display: 'flex', flexDirection: 'column', gap: '1px', overflow: 'hidden',
+        display: 'flex', flexDirection: compacto ? 'row' : 'column',
+        alignItems: compacto ? 'center' : 'stretch', gap: compacto ? '8px' : '1px', overflow: 'hidden',
         '&:focus-visible': { outline: 'none', boxShadow: t.foco.anillo },
       })}
     >
-      <Box component="span" sx={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <Box component="span" sx={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
         {turno.paciente}
       </Box>
-      <Box component="span" className="tabular" sx={{ fontSize: 11, color: 'text.secondary' }}>
+      <Box component="span" className="tabular" sx={{ fontSize: 11, color: 'text.secondary', whiteSpace: 'nowrap', flex: 'none' }}>
         {turno.hora_inicio.slice(0, 5)} a {turno.hora_fin.slice(0, 5)}
       </Box>
     </Box>

@@ -52,7 +52,7 @@ export default function ModalAgendaSemanal({ abierto, pacientes = [], onCerrar, 
 
   async function agregar() {
     if (!turno.id_paciente || !turno.hora_inicio) {
-      setError('Elegí el paciente y la hora de inicio.');
+      setError('Elija el paciente y la hora de inicio.');
       return;
     }
     const ok = await ejecutar(() => crearTurno({
@@ -97,7 +97,7 @@ export default function ModalAgendaSemanal({ abierto, pacientes = [], onCerrar, 
           <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>Tus turnos</Typography>
           {turnos.length === 0 ? (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Todavía no cargaste turnos. Agregá el primero acá abajo.
+              Todavía no cargó turnos. Agregue el primero a continuación.
             </Typography>
           ) : (
             <Box component="ul" sx={{ listStyle: 'none', p: 0, m: 0, mb: 2 }}>

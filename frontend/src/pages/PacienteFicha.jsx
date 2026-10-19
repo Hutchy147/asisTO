@@ -527,7 +527,7 @@ export default function PacienteFicha() {
                       color="text.secondary"
                       sx={{ maxWidth: 260, textAlign: 'right' }}
                     >
-                      Llegaste al tope de 4. Archivá uno para crear otro.
+                      Se alcanzó el tope de 4 objetivos activos. Archive uno para crear otro.
                     </Typography>
                   )}
                   <Button variant="contained" disabled={enTope} onClick={() => setModalObjetivo({})}>

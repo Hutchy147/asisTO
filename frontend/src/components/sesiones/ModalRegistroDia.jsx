@@ -247,7 +247,7 @@ export default function ModalRegistroDia({
             <Bloque
               titulo="Pendiente de antes"
               contador={lista.arrastre.length}
-              nota="Quedó sin cerrar en sesiones anteriores. Se sigue arrastrando hasta que lo marques como hecho o lo descartes."
+              nota="Quedó sin cerrar en sesiones anteriores. Se sigue arrastrando hasta que se lo marque como hecho o se lo descarte."
             >
               <ListaRenglones
                 renglones={lista.arrastre}
@@ -263,7 +263,7 @@ export default function ModalRegistroDia({
           <Bloque
             titulo="Objetivos a trabajar"
             contador={`${lista.objetivos_plan.length} de ${datos.objetivos_activos.length}`}
-            nota={puedeEscribir ? 'Los objetivos activos del paciente. Marcá el o los que vas a trabajar en esta sesión.' : undefined}
+            nota={puedeEscribir ? 'Los objetivos activos del paciente. Marque los que se trabajarán en esta sesión.' : undefined}
           >
             {datos.objetivos_activos.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', py: 0.5 }}>
@@ -325,7 +325,7 @@ export default function ModalRegistroDia({
               renglones={lista.registro}
               editable={puedeRegistrar}
               ocupado={ocupado}
-              etiquetaVacio={esAusencia ? 'Sesión cerrada por ausencia: no hay registro.' : 'Todavía no anotaste qué pasó.'}
+              etiquetaVacio={esAusencia ? 'Sesión cerrada por ausencia: no hay registro.' : 'Todavía no se registró lo ocurrido en la sesión.'}
               onDestacar={destacar}
               onBorrar={borrar}
               alPie={puedeRegistrar && (

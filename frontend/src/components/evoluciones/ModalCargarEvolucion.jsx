@@ -109,7 +109,7 @@ export default function ModalCargarEvolucion({ abierto, idSesion, onCerrar, onCa
         valor={valores.valor}
         onChange={(valor) => setValor('valor', valor)}
         deshabilitado={guardando}
-        error={validado && !valores.valor ? 'Elegí cómo evolucionó el objetivo.' : undefined}
+        error={validado && !valores.valor ? 'Elija cómo evolucionó el objetivo.' : undefined}
       />
 
       <CampoTexto
@@ -252,7 +252,7 @@ export default function ModalCargarEvolucion({ abierto, idSesion, onCerrar, onCa
                 </RadioGroup>
                 {validado && !valores.id_objetivo && (
                   <Typography variant="caption" color="error">
-                    Elegí el objetivo que se trabajó en esta sesión.
+                    Elija el objetivo que se trabajó en esta sesión.
                   </Typography>
                 )}
               </Box>

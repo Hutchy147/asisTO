@@ -51,7 +51,7 @@ export default function ModalEditarSesion({ abierto, sesion, paciente, onCerrar,
     onEnviar: (valores) => {
       const esAusencia = valores.estado === ESTADO_AUSENCIA;
       if (esAusencia && !valores.ausencia_de) {
-        throw new ErrorApi('Elegí quién faltó a la sesión.', { campo: 'ausencia_de' });
+        throw new ErrorApi('Elija quién faltó a la sesión.', { campo: 'ausencia_de' });
       }
       return editarSesion(sesion.id, {
         estado: valores.estado,
@@ -193,7 +193,7 @@ export default function ModalEditarSesion({ abierto, sesion, paciente, onCerrar,
         </RadioGroup>
         {validado && !valores.estado && (
           <Typography variant="caption" color="error">
-            Elegí cómo transcurrió la sesión.
+            Elija cómo transcurrió la sesión.
           </Typography>
         )}
       </Box>
@@ -220,7 +220,7 @@ export default function ModalEditarSesion({ abierto, sesion, paciente, onCerrar,
           </RadioGroup>
           {validado && !valores.ausencia_de && (
             <Typography variant="caption" color="error">
-              Elegí quién faltó a la sesión.
+              Elija quién faltó a la sesión.
             </Typography>
           )}
         </Box>

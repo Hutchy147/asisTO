@@ -457,7 +457,7 @@ export default function PanelRrhh() {
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                     Se muestran las primeras {MAXIMO_FILAS_VISIBLES} de {sesiones.length} sesiones
                     del período. Los recuentos de arriba son sobre las {sesiones.length}, no sobre
-                    las que se ven. Acotá el período o filtrá por terapeuta para recorrerlas todas.
+                    las que se ven. Acote el período o filtre por terapeuta para recorrerlas todas.
                   </Typography>
                 )}
               </>

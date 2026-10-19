@@ -138,7 +138,7 @@ export default function AuditoriaAccesos() {
                 {datos.resumen.total > datos.accesos.length && (
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                     Se muestran los {datos.accesos.length} más recientes de {datos.resumen.total}. Los
-                    recuentos de arriba son sobre todos. Acotá el período o filtrá para ver el resto.
+                    recuentos de arriba son sobre todos. Acote el período o aplique un filtro para ver el resto.
                   </Typography>
                 )}
               </>
