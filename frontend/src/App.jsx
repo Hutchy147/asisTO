@@ -19,6 +19,7 @@ import PacienteFicha from './pages/PacienteFicha.jsx';
 import Pacientes from './pages/Pacientes.jsx';
 import Panel from './pages/Panel.jsx';
 import PanelRrhh from './pages/PanelRrhh.jsx';
+import PortalFamiliar from './pages/PortalFamiliar.jsx';
 import RecuperarContrasena from './pages/RecuperarContrasena.jsx';
 import RestablecerContrasena from './pages/RestablecerContrasena.jsx';
 
@@ -29,7 +30,7 @@ import RestablecerContrasena from './pages/RestablecerContrasena.jsx';
 // tambien consulta `Login` para decidir si un destino guardado sirve para el
 // rol que entra. Aca solo se le cuelga el componente a cada ruta.
 //
-// Los tres roles cuyo modulo todavia no existe caen en `Dashboard`, que dice
+// Los roles cuyo modulo todavia no existe (paciente) caen en `Dashboard`, que dice
 // explicitamente que falta la pantalla y no el acceso. RRHH salio de ese
 // grupo el 2026-09-13, cuando se construyo su panel.
 const ELEMENTO_POR_RUTA = {
@@ -40,7 +41,7 @@ const ELEMENTO_POR_RUTA = {
   '/rrhh': <PanelRrhh />,
   '/rrhh/auditoria': <AuditoriaAccesos />,
   '/admin': <AdminAsignaciones />,
-  '/familiar': <Dashboard rol="familiar" />,
+  '/familiar': <PortalFamiliar />,
   '/paciente': <Dashboard rol="paciente" />,
 };
 

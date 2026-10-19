@@ -118,6 +118,7 @@ def register_blueprints(app):
     from app.routes.health import health_bp
     from app.routes.objetivos import objetivos_bp
     from app.routes.pacientes import pacientes_bp
+    from app.routes.portal_familiar import portal_familiar_bp
     from app.routes.rrhh import rrhh_bp
     from app.routes.sesiones import sesiones_bp
 
@@ -131,6 +132,7 @@ def register_blueprints(app):
     app.register_blueprint(sesiones_bp, url_prefix='/api')
     app.register_blueprint(evoluciones_bp, url_prefix='/api')
     app.register_blueprint(familiares_bp, url_prefix='/api')
+    app.register_blueprint(portal_familiar_bp, url_prefix='/api')
     #
     # El modulo de RRHH va en su PROPIO blueprint aislado, que solo puede
     # llamar a p_reporte_sesiones_periodo y v_resumen_sesiones. Es la

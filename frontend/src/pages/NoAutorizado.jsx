@@ -31,11 +31,11 @@ export default function NoAutorizado() {
           403
         </Typography>
         <Typography variant="h6" gutterBottom>
-          No tenes acceso a esta seccion
+          No tiene acceso a esta sección
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
           Su sesión es válida, pero el rol <strong>{rol}</strong> no puede ver esta
-          pantalla. Si creias que si, avisale al equipo.
+          pantalla. Si considera que debería tenerlo, avise al equipo.
         </Typography>
 
         <Stack direction="row" spacing={2} justifyContent="center">
