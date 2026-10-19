@@ -43,6 +43,7 @@ export const RUTAS_PROTEGIDAS = [
   { ruta: '/pacientes/:id', roles: ['terapeuta'], capacidad: 'pacientes.listado' },
   { ruta: '/calendario', roles: ['terapeuta'], capacidad: 'calendario' },
   { ruta: '/sesiones', roles: ['terapeuta'], capacidad: 'sesiones.consultar' },
+  { ruta: '/informes', roles: ['terapeuta'], capacidad: 'informes.control' },
   { ruta: '/rrhh', roles: ['rrhh'], capacidad: 'rrhh.consulta' },
   { ruta: '/rrhh/auditoria', roles: ['rrhh'], capacidad: 'auditoria.accesos' },
   { ruta: '/admin', roles: ['admin'], capacidad: 'admin.asignaciones' },
@@ -50,6 +51,7 @@ export const RUTAS_PROTEGIDAS = [
   { ruta: '/admin/plantillas', roles: ['admin'], capacidad: 'objetivos.plantillas' },
   { ruta: '/familiar', roles: ['familiar'], capacidad: 'familiar.portal' },
   { ruta: '/familiar/notificaciones', roles: ['familiar'], capacidad: 'notificaciones' },
+  { ruta: '/familiar/informes', roles: ['familiar'], capacidad: 'familiar.informes' },
   { ruta: '/paciente', roles: ['paciente'], capacidad: 'paciente.portal' },
 ];
 

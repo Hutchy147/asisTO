@@ -365,20 +365,31 @@ INSERT INTO preferencias_notificacion (id_familiar, tipo, habilitada) VALUES
 
 -- =====================================================================
 -- INFORMES
--- contenido_original = salida cruda de la IA.
--- contenido          = version revisada por el terapeuta.
+-- contenido_original = salida cruda del generador (plantilla o IA).
+-- contenido          = version revisada por el terapeuta (NULL = sin editar).
 -- =====================================================================
 INSERT INTO informes
-  (id, id_paciente, id_terapeuta, periodo, contenido, contenido_original, estado, fecha_generacion, fecha_publicacion) VALUES
-  (1, 1, 1, '2026-T2',
-   'Durante el segundo trimestre Tomas mostro avances sostenidos en motricidad fina, pasando de requerir apoyo verbal constante a sostener la escritura por periodos de 8 minutos. Se archivo el objetivo de vestido autonomo por cumplimiento.',
-   'El paciente presento mejoras en el trimestre. Se observa progreso en motricidad fina y atencion.',
-   'final', '2026-07-01 08:30:00', '2026-07-01 09:00:00'),
+  (id, id_paciente, id_terapeuta, tipo, periodo, fecha_desde, fecha_hasta, version, contenido, contenido_original, generado_con, estado, fecha_generacion, fecha_publicacion) VALUES
+  (1, 1, 1, 'mensual', '2026-06', '2026-06-01', '2026-06-30', 1, '## Datos del paciente
+Tomas Aguirre.
 
-  (2, 2, 2, '2026-T2',
-   NULL,
-   'Valentina registra dos sesiones completas y una ausencia en el periodo. Se observa mejor tolerancia a estimulos auditivos.',
-   'borrador', '2026-07-01 08:45:00', NULL);
+## Periodo
+Junio de 2026.
+
+## Objetivos trabajados
+- Avances sostenidos en motricidad fina: sostiene la escritura por periodos de 8 minutos.
+
+## Cierre
+Se continua con el plan vigente.', 'Junio de 2026. Avances en motricidad fina.
+
+[COMPLETAR: cierre]', 'plantilla', 'final', '2026-07-01 08:30:00', '2026-07-01 09:00:00'),
+
+  (2, 2, 2, 'mensual', '2026-06', '2026-06-01', '2026-06-30', 1, NULL, 'Junio de 2026. Dos sesiones completas y una ausencia. Mejor tolerancia a estimulos auditivos.
+
+[COMPLETAR: cierre]', 'plantilla', 'borrador', '2026-07-01 08:45:00', NULL);
+
+-- Un borrador recien generado todavia no fue editado: su contenido es el original.
+UPDATE informes SET contenido = contenido_original WHERE contenido IS NULL;
 
 
 -- =====================================================================

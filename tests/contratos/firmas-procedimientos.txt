@@ -101,3 +101,8 @@ p_crear_plantilla_objetivo | 4 | IN p_area, IN p_descripcion, OUT p_id_plantilla
 p_editar_plantilla_objetivo | 5 | IN p_id_plantilla, IN p_area, IN p_descripcion, OUT p_ok, OUT p_mensaje
 p_eliminar_plantilla_objetivo | 3 | IN p_id_plantilla, OUT p_ok, OUT p_mensaje
 p_tendencia_paciente | 4 | IN p_id_paciente, IN p_desde, IN p_hasta, OUT p_mensaje
+p_crear_informe | 11 | IN p_id_paciente, IN p_id_terapeuta, IN p_tipo, IN p_periodo, IN p_fecha_desde, IN p_fecha_hasta, IN p_contenido, IN p_generado_con, IN p_proveedor, OUT p_id_informe, OUT p_mensaje
+p_editar_informe | 5 | IN p_id_informe, IN p_id_terapeuta, IN p_contenido, OUT p_ok, OUT p_mensaje
+p_publicar_informe | 5 | IN p_id_informe, IN p_id_terapeuta, OUT p_ok, OUT p_id_paciente, OUT p_mensaje
+p_corregir_informe | 4 | IN p_id_informe, IN p_id_terapeuta, OUT p_id_nuevo, OUT p_mensaje
+p_descartar_informe | 4 | IN p_id_informe, IN p_id_terapeuta, OUT p_ok, OUT p_mensaje

@@ -740,29 +740,53 @@ INSERT INTO ingreso_campos (etapa, clave, etiqueta, ayuda, tipo, opciones, oblig
 -- 6. INFORMES, PLANTILLAS Y AUDITORIA (Entrega 4)
 -- =====================================================================
 
--- contenido_original guarda el texto tal como lo genero la IA;
--- contenido guarda la version editada por el terapeuta. Se conservan los
--- dos para poder auditar que cambio una persona sobre la salida del
--- modelo. Ningun informe se publica sin revision humana.
+-- Informes (Entrega 6, HDU 5 y 8). Tres tipos, los del rubro: mensual,
+-- semestral y PTI (plan terapeutico integral de ingreso). NO existe el
+-- trimestral: fue un error de escritura del documento.
+--
+-- contenido_original guarda el texto tal como lo genero el generador (plantilla
+-- con los datos del periodo, o IA si el centro la configuro); contenido guarda
+-- la version editada por la terapeuta. Se conservan los dos para poder auditar
+-- que cambio una persona sobre la salida del generador. Ningun informe se
+-- publica sin revision humana.
+--
+-- periodo es la clave legible del informe: 'AAAA-MM' (mensual), 'AAAA-S1' o
+-- 'AAAA-S2' (semestral) y 'pti'. Un periodo puede tener varias VERSIONES: un
+-- informe publicado no se edita, se corrige armando una version nueva; al
+-- publicarla la anterior pasa a 'reemplazado'. Solo los 'final' los ve el
+-- familiar. Los valores por defecto de las columnas nuevas existen para que
+-- una escritura minima (id_paciente, id_terapeuta, periodo) siga llegando a
+-- la comprobacion de la FK, como la usa tests/db.
 CREATE TABLE informes (
   id                  INT UNSIGNED NOT NULL AUTO_INCREMENT,
   id_paciente         INT UNSIGNED NOT NULL,
   id_terapeuta        INT UNSIGNED NOT NULL,
+  tipo                ENUM('mensual','semestral','pti') NOT NULL DEFAULT 'mensual',
   periodo             VARCHAR(20)  NOT NULL,
+  fecha_desde         DATE         NOT NULL DEFAULT (CURRENT_DATE),
+  fecha_hasta         DATE         NOT NULL DEFAULT (CURRENT_DATE),
+  version             SMALLINT UNSIGNED NOT NULL DEFAULT 1,
   contenido           LONGTEXT     NULL DEFAULT NULL,
   contenido_original  LONGTEXT     NULL DEFAULT NULL,
-  estado              ENUM('borrador','final') NOT NULL DEFAULT 'borrador',
+  generado_con        ENUM('plantilla','ia') NOT NULL DEFAULT 'plantilla',
+  proveedor           VARCHAR(60)  NULL DEFAULT NULL,
+  estado              ENUM('borrador','final','reemplazado') NOT NULL DEFAULT 'borrador',
   fecha_generacion    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  fecha_edicion       DATETIME     NULL DEFAULT NULL,
   fecha_publicacion   DATETIME     NULL DEFAULT NULL,
 
   PRIMARY KEY (id),
+  UNIQUE KEY uq_informes_version (id_paciente, tipo, periodo, version),
   KEY idx_informes_paciente_periodo (id_paciente, periodo),
+  KEY idx_informes_estado (id_paciente, estado),
   CONSTRAINT fk_informes_paciente
     FOREIGN KEY (id_paciente) REFERENCES pacientes (id)
     ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT fk_informes_terapeuta
     FOREIGN KEY (id_terapeuta) REFERENCES terapeutas (id)
-    ON DELETE RESTRICT ON UPDATE CASCADE
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT chk_informes_periodo CHECK (fecha_desde <= fecha_hasta),
+  CONSTRAINT chk_informes_publicado CHECK (estado = 'borrador' OR fecha_publicacion IS NOT NULL)
 ) ENGINE=InnoDB;
 
 
@@ -5309,6 +5333,585 @@ BEGIN
          AND (o.activo = TRUE OR a.id_objetivo IS NOT NULL)
        ORDER BY o.activo DESC, o.id;
     END IF;
+  END IF;
+END$$
+
+
+-- ---------------------------------------------------------------------
+-- Informes (Entrega 6, HDU 5 y 8): p_crear_informe, p_editar_informe,
+-- p_publicar_informe, p_corregir_informe y p_descartar_informe.
+--
+-- Las reglas viven aca y no en el servicio:
+--   * Solo escribe un terapeuta ASIGNADO al paciente durante el periodo del
+--     informe (misma idea que la regla 8: se evalua contra el periodo, no
+--     contra hoy, asi un informe de un mes anterior sigue siendo posible).
+--   * Un informe PUBLICADO (estado final) no se edita nunca. Para corregirlo
+--     se arma una version nueva (p_corregir_informe); al publicarla, la
+--     anterior pasa a 'reemplazado'. El familiar ve solo los 'final'.
+--   * No se publica con marcas [COMPLETAR ...] sin resolver: son los huecos
+--     que deja la plantilla para que la terapeuta los escriba.
+--   * El periodo no puede ser futuro.
+--
+-- Orden de locks: pacientes -> terapeutas -> asignaciones -> informes. La
+-- tabla informes referencia a pacientes y terapeutas y nadie la referencia,
+-- asi que va al final del orden global.
+-- ---------------------------------------------------------------------
+CREATE PROCEDURE p_crear_informe (
+  IN  p_id_paciente   INT UNSIGNED,
+  IN  p_id_terapeuta  INT UNSIGNED,
+  IN  p_tipo          VARCHAR(10),
+  IN  p_periodo       VARCHAR(20),
+  IN  p_fecha_desde   DATE,
+  IN  p_fecha_hasta   DATE,
+  IN  p_contenido     LONGTEXT,
+  IN  p_generado_con  VARCHAR(10),
+  IN  p_proveedor     VARCHAR(60),
+  OUT p_id_informe    INT UNSIGNED,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error      VARCHAR(255) DEFAULT '';
+  DECLARE v_paciente   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_terapeuta  INT UNSIGNED DEFAULT NULL;
+  DECLARE v_asignado   INT          DEFAULT 0;
+  DECLARE v_borrador   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_final      INT UNSIGNED DEFAULT NULL;
+  DECLARE v_version    INT          DEFAULT 0;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_id_informe = NULL;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_id_informe = NULL;
+    SET p_mensaje = 'No se pudo guardar el informe por un error interno';
+  END;
+
+  SET p_id_informe = NULL;
+
+  START TRANSACTION;
+
+  SELECT id INTO v_paciente
+    FROM pacientes
+   WHERE id = p_id_paciente
+   FOR UPDATE;
+
+  SELECT id INTO v_terapeuta
+    FROM terapeutas
+   WHERE id = p_id_terapeuta
+   FOR SHARE;
+
+  SELECT COUNT(*) INTO v_asignado
+    FROM asignaciones
+   WHERE id_paciente = p_id_paciente
+     AND id_terapeuta = p_id_terapeuta
+     AND fecha_desde <= p_fecha_hasta
+     AND (fecha_hasta IS NULL OR fecha_hasta >= p_fecha_desde)
+     FOR SHARE;
+
+  SELECT id INTO v_borrador
+    FROM informes
+   WHERE id_paciente = p_id_paciente AND tipo = p_tipo AND periodo = p_periodo
+     AND estado = 'borrador'
+   FOR UPDATE;
+
+  SELECT id INTO v_final
+    FROM informes
+   WHERE id_paciente = p_id_paciente AND tipo = p_tipo AND periodo = p_periodo
+     AND estado = 'final'
+   FOR UPDATE;
+
+  SELECT COALESCE(MAX(version), 0) INTO v_version
+    FROM informes
+   WHERE id_paciente = p_id_paciente AND tipo = p_tipo AND periodo = p_periodo;
+
+  IF v_paciente IS NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El paciente indicado no existe';
+  ELSEIF v_terapeuta IS NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El terapeuta indicado no existe';
+  ELSEIF p_tipo NOT IN ('mensual', 'semestral', 'pti') THEN
+    ROLLBACK;
+    SET p_mensaje = 'El tipo de informe no es valido';
+  ELSEIF p_generado_con NOT IN ('plantilla', 'ia') THEN
+    ROLLBACK;
+    SET p_mensaje = 'El origen del informe no es valido';
+  ELSEIF p_fecha_desde IS NULL OR p_fecha_hasta IS NULL OR p_fecha_desde > p_fecha_hasta THEN
+    ROLLBACK;
+    SET p_mensaje = 'El periodo del informe no es valido';
+  ELSEIF p_fecha_hasta > CURDATE() THEN
+    ROLLBACK;
+    SET p_mensaje = 'El periodo del informe no puede ser futuro';
+  ELSEIF p_contenido IS NULL OR CHAR_LENGTH(TRIM(p_contenido)) = 0 THEN
+    ROLLBACK;
+    SET p_mensaje = 'El informe no puede estar vacio';
+  ELSEIF CHAR_LENGTH(p_contenido) > 60000 THEN
+    ROLLBACK;
+    SET p_mensaje = 'El informe supera el largo maximo permitido';
+  ELSEIF v_asignado = 0 THEN
+    ROLLBACK;
+    SET p_mensaje = 'El terapeuta no tiene asignado a este paciente en el periodo del informe';
+  ELSEIF v_final IS NOT NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'Ya existe un informe publicado de este periodo: use corregir para armar una version nueva';
+  ELSEIF v_borrador IS NOT NULL THEN
+    UPDATE informes
+       SET id_terapeuta = p_id_terapeuta,
+           fecha_desde = p_fecha_desde,
+           fecha_hasta = p_fecha_hasta,
+           contenido = p_contenido,
+           contenido_original = p_contenido,
+           generado_con = p_generado_con,
+           proveedor = p_proveedor,
+           fecha_generacion = NOW(),
+           fecha_edicion = NULL
+     WHERE id = v_borrador;
+    COMMIT;
+    SET p_id_informe = v_borrador;
+    SET p_mensaje = 'Informe regenerado correctamente';
+  ELSE
+    INSERT INTO informes
+      (id_paciente, id_terapeuta, tipo, periodo, fecha_desde, fecha_hasta,
+       version, contenido, contenido_original, generado_con, proveedor, estado)
+    VALUES
+      (p_id_paciente, p_id_terapeuta, p_tipo, p_periodo, p_fecha_desde, p_fecha_hasta,
+       v_version + 1, p_contenido, p_contenido, p_generado_con, p_proveedor, 'borrador');
+    SET p_id_informe = LAST_INSERT_ID();
+    COMMIT;
+    SET p_mensaje = 'Informe generado correctamente';
+  END IF;
+END$$
+
+
+CREATE PROCEDURE p_editar_informe (
+  IN  p_id_informe    INT UNSIGNED,
+  IN  p_id_terapeuta  INT UNSIGNED,
+  IN  p_contenido     LONGTEXT,
+  OUT p_ok            BOOLEAN,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error      VARCHAR(255) DEFAULT '';
+  DECLARE v_paciente   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_terapeuta  INT UNSIGNED DEFAULT NULL;
+  DECLARE v_asignado   INT          DEFAULT 0;
+  DECLARE v_informe    INT UNSIGNED DEFAULT NULL;
+  DECLARE v_estado     VARCHAR(12)  DEFAULT NULL;
+  DECLARE v_desde      DATE         DEFAULT NULL;
+  DECLARE v_hasta      DATE         DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = 'No se pudo guardar el informe por un error interno';
+  END;
+
+  SET p_ok = FALSE;
+
+  START TRANSACTION;
+
+  -- Lectura sin lock solo para ubicar al paciente padre y tomar los locks en
+  -- orden; el estado se vuelve a leer bajo lock mas abajo.
+  SELECT id_paciente INTO v_paciente FROM informes WHERE id = p_id_informe;
+
+  SELECT id INTO v_paciente FROM pacientes WHERE id = v_paciente FOR UPDATE;
+
+  SELECT id INTO v_terapeuta FROM terapeutas WHERE id = p_id_terapeuta FOR SHARE;
+
+  SELECT id, estado, fecha_desde, fecha_hasta
+    INTO v_informe, v_estado, v_desde, v_hasta
+    FROM informes
+   WHERE id = p_id_informe
+   FOR UPDATE;
+
+  SELECT COUNT(*) INTO v_asignado
+    FROM asignaciones
+   WHERE id_paciente = v_paciente
+     AND id_terapeuta = p_id_terapeuta
+     AND fecha_desde <= v_hasta
+     AND (fecha_hasta IS NULL OR fecha_hasta >= v_desde)
+     FOR SHARE;
+
+  IF v_informe IS NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El informe indicado no existe';
+  ELSEIF v_terapeuta IS NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El terapeuta indicado no existe';
+  ELSEIF v_estado <> 'borrador' THEN
+    ROLLBACK;
+    SET p_mensaje = 'Solo se puede editar un borrador: un informe publicado no se modifica';
+  ELSEIF v_asignado = 0 THEN
+    ROLLBACK;
+    SET p_mensaje = 'El terapeuta no tiene asignado a este paciente en el periodo del informe';
+  ELSEIF p_contenido IS NULL OR CHAR_LENGTH(TRIM(p_contenido)) = 0 THEN
+    ROLLBACK;
+    SET p_mensaje = 'El informe no puede estar vacio';
+  ELSEIF CHAR_LENGTH(p_contenido) > 60000 THEN
+    ROLLBACK;
+    SET p_mensaje = 'El informe supera el largo maximo permitido';
+  ELSE
+    UPDATE informes
+       SET contenido = p_contenido,
+           id_terapeuta = p_id_terapeuta,
+           fecha_edicion = NOW()
+     WHERE id = p_id_informe;
+    COMMIT;
+    SET p_ok = TRUE;
+    SET p_mensaje = 'Informe guardado correctamente';
+  END IF;
+END$$
+
+
+CREATE PROCEDURE p_publicar_informe (
+  IN  p_id_informe    INT UNSIGNED,
+  IN  p_id_terapeuta  INT UNSIGNED,
+  OUT p_ok            BOOLEAN,
+  OUT p_id_paciente   INT UNSIGNED,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error      VARCHAR(255) DEFAULT '';
+  DECLARE v_paciente   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_terapeuta  INT UNSIGNED DEFAULT NULL;
+  DECLARE v_asignado   INT          DEFAULT 0;
+  DECLARE v_informe    INT UNSIGNED DEFAULT NULL;
+  DECLARE v_estado     VARCHAR(12)  DEFAULT NULL;
+  DECLARE v_tipo       VARCHAR(10)  DEFAULT NULL;
+  DECLARE v_periodo    VARCHAR(20)  DEFAULT NULL;
+  DECLARE v_desde      DATE         DEFAULT NULL;
+  DECLARE v_hasta      DATE         DEFAULT NULL;
+  DECLARE v_contenido  LONGTEXT     DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_id_paciente = NULL;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_id_paciente = NULL;
+    SET p_mensaje = 'No se pudo publicar el informe por un error interno';
+  END;
+
+  SET p_ok = FALSE;
+  SET p_id_paciente = NULL;
+
+  START TRANSACTION;
+
+  SELECT id_paciente INTO v_paciente FROM informes WHERE id = p_id_informe;
+
+  SELECT id INTO v_paciente FROM pacientes WHERE id = v_paciente FOR UPDATE;
+
+  SELECT id INTO v_terapeuta FROM terapeutas WHERE id = p_id_terapeuta FOR SHARE;
+
+  SELECT id, estado, tipo, periodo, fecha_desde, fecha_hasta, contenido
+    INTO v_informe, v_estado, v_tipo, v_periodo, v_desde, v_hasta, v_contenido
+    FROM informes
+   WHERE id = p_id_informe
+   FOR UPDATE;
+
+  SELECT COUNT(*) INTO v_asignado
+    FROM asignaciones
+   WHERE id_paciente = v_paciente
+     AND id_terapeuta = p_id_terapeuta
+     AND fecha_desde <= v_hasta
+     AND (fecha_hasta IS NULL OR fecha_hasta >= v_desde)
+     FOR SHARE;
+
+  IF v_informe IS NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El informe indicado no existe';
+  ELSEIF v_terapeuta IS NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El terapeuta indicado no existe';
+  ELSEIF v_estado <> 'borrador' THEN
+    ROLLBACK;
+    SET p_mensaje = 'El informe ya esta publicado o fue reemplazado';
+  ELSEIF v_asignado = 0 THEN
+    ROLLBACK;
+    SET p_mensaje = 'El terapeuta no tiene asignado a este paciente en el periodo del informe';
+  ELSEIF v_contenido IS NULL OR CHAR_LENGTH(TRIM(v_contenido)) = 0 THEN
+    ROLLBACK;
+    SET p_mensaje = 'El informe no puede estar vacio';
+  ELSEIF LOCATE('[COMPLETAR', UPPER(v_contenido)) > 0 THEN
+    ROLLBACK;
+    SET p_mensaje = 'El informe tiene partes marcadas como COMPLETAR sin resolver: escribalas o quite la marca antes de publicar';
+  ELSE
+    UPDATE informes
+       SET estado = 'reemplazado'
+     WHERE id_paciente = v_paciente AND tipo = v_tipo AND periodo = v_periodo
+       AND estado = 'final' AND id <> p_id_informe;
+    UPDATE informes
+       SET estado = 'final',
+           fecha_publicacion = NOW(),
+           id_terapeuta = p_id_terapeuta
+     WHERE id = p_id_informe;
+    COMMIT;
+    SET p_ok = TRUE;
+    SET p_id_paciente = v_paciente;
+    SET p_mensaje = 'Informe publicado correctamente';
+  END IF;
+END$$
+
+
+CREATE PROCEDURE p_corregir_informe (
+  IN  p_id_informe    INT UNSIGNED,
+  IN  p_id_terapeuta  INT UNSIGNED,
+  OUT p_id_nuevo      INT UNSIGNED,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error      VARCHAR(255) DEFAULT '';
+  DECLARE v_paciente   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_terapeuta  INT UNSIGNED DEFAULT NULL;
+  DECLARE v_asignado   INT          DEFAULT 0;
+  DECLARE v_informe    INT UNSIGNED DEFAULT NULL;
+  DECLARE v_estado     VARCHAR(12)  DEFAULT NULL;
+  DECLARE v_tipo       VARCHAR(10)  DEFAULT NULL;
+  DECLARE v_periodo    VARCHAR(20)  DEFAULT NULL;
+  DECLARE v_desde      DATE         DEFAULT NULL;
+  DECLARE v_hasta      DATE         DEFAULT NULL;
+  DECLARE v_contenido  LONGTEXT     DEFAULT NULL;
+  DECLARE v_generado   VARCHAR(10)  DEFAULT NULL;
+  DECLARE v_proveedor  VARCHAR(60)  DEFAULT NULL;
+  DECLARE v_borrador   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_version    INT          DEFAULT 0;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_id_nuevo = NULL;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_id_nuevo = NULL;
+    SET p_mensaje = 'No se pudo preparar la correccion por un error interno';
+  END;
+
+  SET p_id_nuevo = NULL;
+
+  START TRANSACTION;
+
+  SELECT id_paciente INTO v_paciente FROM informes WHERE id = p_id_informe;
+
+  SELECT id INTO v_paciente FROM pacientes WHERE id = v_paciente FOR UPDATE;
+
+  SELECT id INTO v_terapeuta FROM terapeutas WHERE id = p_id_terapeuta FOR SHARE;
+
+  SELECT id, estado, tipo, periodo, fecha_desde, fecha_hasta, contenido,
+         generado_con, proveedor
+    INTO v_informe, v_estado, v_tipo, v_periodo, v_desde, v_hasta, v_contenido,
+         v_generado, v_proveedor
+    FROM informes
+   WHERE id = p_id_informe
+   FOR UPDATE;
+
+  SELECT COUNT(*) INTO v_asignado
+    FROM asignaciones
+   WHERE id_paciente = v_paciente
+     AND id_terapeuta = p_id_terapeuta
+     AND fecha_desde <= v_hasta
+     AND (fecha_hasta IS NULL OR fecha_hasta >= v_desde)
+     FOR SHARE;
+
+  SELECT id INTO v_borrador
+    FROM informes
+   WHERE id_paciente = v_paciente AND tipo = v_tipo AND periodo = v_periodo
+     AND estado = 'borrador'
+   FOR UPDATE;
+
+  SELECT COALESCE(MAX(version), 0) INTO v_version
+    FROM informes
+   WHERE id_paciente = v_paciente AND tipo = v_tipo AND periodo = v_periodo;
+
+  IF v_informe IS NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El informe indicado no existe';
+  ELSEIF v_terapeuta IS NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El terapeuta indicado no existe';
+  ELSEIF v_estado <> 'final' THEN
+    ROLLBACK;
+    SET p_mensaje = 'Solo se puede corregir un informe publicado y vigente';
+  ELSEIF v_asignado = 0 THEN
+    ROLLBACK;
+    SET p_mensaje = 'El terapeuta no tiene asignado a este paciente en el periodo del informe';
+  ELSEIF v_borrador IS NOT NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'Ya hay un borrador de este periodo: termine o descarte ese borrador antes de corregir';
+  ELSE
+    INSERT INTO informes
+      (id_paciente, id_terapeuta, tipo, periodo, fecha_desde, fecha_hasta,
+       version, contenido, contenido_original, generado_con, proveedor, estado)
+    VALUES
+      (v_paciente, p_id_terapeuta, v_tipo, v_periodo, v_desde, v_hasta,
+       v_version + 1, v_contenido, v_contenido, v_generado, v_proveedor, 'borrador');
+    SET p_id_nuevo = LAST_INSERT_ID();
+    COMMIT;
+    SET p_mensaje = 'Version de correccion creada como borrador';
+  END IF;
+END$$
+
+
+CREATE PROCEDURE p_descartar_informe (
+  IN  p_id_informe    INT UNSIGNED,
+  IN  p_id_terapeuta  INT UNSIGNED,
+  OUT p_ok            BOOLEAN,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error      VARCHAR(255) DEFAULT '';
+  DECLARE v_paciente   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_terapeuta  INT UNSIGNED DEFAULT NULL;
+  DECLARE v_asignado   INT          DEFAULT 0;
+  DECLARE v_informe    INT UNSIGNED DEFAULT NULL;
+  DECLARE v_estado     VARCHAR(12)  DEFAULT NULL;
+  DECLARE v_desde      DATE         DEFAULT NULL;
+  DECLARE v_hasta      DATE         DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = 'No se pudo descartar el borrador por un error interno';
+  END;
+
+  SET p_ok = FALSE;
+
+  START TRANSACTION;
+
+  SELECT id_paciente INTO v_paciente FROM informes WHERE id = p_id_informe;
+
+  SELECT id INTO v_paciente FROM pacientes WHERE id = v_paciente FOR UPDATE;
+
+  SELECT id INTO v_terapeuta FROM terapeutas WHERE id = p_id_terapeuta FOR SHARE;
+
+  SELECT id, estado, fecha_desde, fecha_hasta
+    INTO v_informe, v_estado, v_desde, v_hasta
+    FROM informes
+   WHERE id = p_id_informe
+   FOR UPDATE;
+
+  SELECT COUNT(*) INTO v_asignado
+    FROM asignaciones
+   WHERE id_paciente = v_paciente
+     AND id_terapeuta = p_id_terapeuta
+     AND fecha_desde <= v_hasta
+     AND (fecha_hasta IS NULL OR fecha_hasta >= v_desde)
+     FOR SHARE;
+
+  IF v_informe IS NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El informe indicado no existe';
+  ELSEIF v_terapeuta IS NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'El terapeuta indicado no existe';
+  ELSEIF v_estado <> 'borrador' THEN
+    ROLLBACK;
+    SET p_mensaje = 'Solo se puede descartar un borrador: un informe publicado queda en el historial';
+  ELSEIF v_asignado = 0 THEN
+    ROLLBACK;
+    SET p_mensaje = 'El terapeuta no tiene asignado a este paciente en el periodo del informe';
+  ELSE
+    DELETE FROM informes WHERE id = p_id_informe;
+    COMMIT;
+    SET p_ok = TRUE;
+    SET p_mensaje = 'Borrador descartado';
   END IF;
 END$$
 

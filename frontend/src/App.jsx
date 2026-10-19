@@ -14,6 +14,7 @@ import AdminAsignaciones from './pages/AdminAsignaciones.jsx';
 import AdminFormulariosIngreso from './pages/AdminFormulariosIngreso.jsx';
 import AdminPlantillasObjetivos from './pages/AdminPlantillasObjetivos.jsx';
 import SesionesRegistradas from './pages/SesionesRegistradas.jsx';
+import ControlInformes from './pages/ControlInformes.jsx';
 import Calendario from './pages/Calendario.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Login from './pages/Login.jsx';
@@ -23,7 +24,9 @@ import Pacientes from './pages/Pacientes.jsx';
 import Panel from './pages/Panel.jsx';
 import PanelRrhh from './pages/PanelRrhh.jsx';
 import NotificacionesFamiliar from './pages/NotificacionesFamiliar.jsx';
+import InformesFamiliar from './pages/InformesFamiliar.jsx';
 import PortalFamiliar from './pages/PortalFamiliar.jsx';
+import PortalPaciente from './pages/PortalPaciente.jsx';
 import RecuperarContrasena from './pages/RecuperarContrasena.jsx';
 import RestablecerContrasena from './pages/RestablecerContrasena.jsx';
 
@@ -34,9 +37,7 @@ import RestablecerContrasena from './pages/RestablecerContrasena.jsx';
 // tambien consulta `Login` para decidir si un destino guardado sirve para el
 // rol que entra. Aca solo se le cuelga el componente a cada ruta.
 //
-// Los roles cuyo modulo todavia no existe (paciente) caen en `Dashboard`, que dice
-// explicitamente que falta la pantalla y no el acceso. RRHH salio de ese
-// grupo el 2026-09-13, cuando se construyo su panel.
+// Todos los roles tienen ya su pantalla (el portal del paciente llego en la V6).
 const ELEMENTO_POR_RUTA = {
   '/panel': <Panel />,
   '/pacientes': <Pacientes />,
@@ -48,9 +49,11 @@ const ELEMENTO_POR_RUTA = {
   '/admin/formularios': <AdminFormulariosIngreso />,
   '/admin/plantillas': <AdminPlantillasObjetivos />,
   '/sesiones': <SesionesRegistradas />,
+  '/informes': <ControlInformes />,
   '/familiar': <PortalFamiliar />,
   '/familiar/notificaciones': <NotificacionesFamiliar />,
-  '/paciente': <Dashboard rol="paciente" />,
+  '/familiar/informes': <InformesFamiliar />,
+  '/paciente': <PortalPaciente />,
 };
 
 // Corre una vez al importar el modulo. Si alguien agrega una pantalla sin

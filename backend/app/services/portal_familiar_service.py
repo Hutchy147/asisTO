@@ -18,8 +18,10 @@ import datetime as dt
 from flask import g
 
 from app import db
-from app.models import Familiar, FamiliarPaciente, Paciente
+from app.models import Familiar, FamiliarPaciente, Informe, Paciente
+from app.services import informes_pdf
 from app.services.evoluciones_service import evolucion_de_paciente
+from app.services.informes_generador import ETIQUETA_TIPO, etiqueta_periodo
 from app.utils.errors import ErrorAplicacion
 
 
@@ -83,11 +85,20 @@ def _verificar_vinculo(id_paciente):
 
 
 def evolucion_vinculada(id_paciente, desde=None, hasta=None):
+    """Evolucion reducida de un paciente vinculado a la cuenta."""
+    _verificar_vinculo(id_paciente)
+    return evolucion_reducida(id_paciente, desde, hasta)
+
+
+def evolucion_reducida(id_paciente, desde=None, hasta=None):
     """
     Evolucion reducida: objetivos con el valor de cada sesion ocurrida, mas
     un resumen por objetivo y el detalle por sesion.
+
+    NO verifica quien pregunta: la usan el portal del familiar (que valida el
+    vinculo antes) y el portal del paciente (que valida que sea SU ficha).
+    Una sola version de la regla de que se recorta.
     """
-    _verificar_vinculo(id_paciente)
     hoy = dt.date.today()
     completa = evolucion_de_paciente(id_paciente, desde, hasta)
     paciente = Paciente.query.get(id_paciente)
@@ -146,3 +157,67 @@ def evolucion_vinculada(id_paciente, desde=None, hasta=None):
         'total_sesiones': len(ordenadas),
         'total_calificados': calificados,
     }
+
+
+# ---------------------------------------------------------------------------
+# Informes publicados (Entrega 6, HDU 8)
+# ---------------------------------------------------------------------------
+# El familiar ve SOLO los informes en estado final (publicados) de sus
+# pacientes vinculados. Nunca borradores ni versiones reemplazadas. Igual que
+# en el resto del portal, no se le muestran nombres de terapeutas.
+def _resumen_informe(informe):
+    return {
+        'id': informe.id,
+        'id_paciente': informe.id_paciente,
+        'tipo': informe.tipo,
+        'tipo_etiqueta': ETIQUETA_TIPO.get(informe.tipo, informe.tipo),
+        'periodo': informe.periodo,
+        'periodo_etiqueta': etiqueta_periodo(informe.tipo, informe.periodo),
+        'fecha_desde': informe.fecha_desde.isoformat(),
+        'fecha_hasta': informe.fecha_hasta.isoformat(),
+        'version': informe.version,
+        'estado': informe.estado,
+        'fecha_publicacion': informe.fecha_publicacion.isoformat() if informe.fecha_publicacion else None,
+    }
+
+
+def listar_informes_vinculados(id_paciente):
+    _verificar_vinculo(id_paciente)
+    paciente = Paciente.query.get(id_paciente)
+    informes = (
+        Informe.query.filter_by(id_paciente=id_paciente, estado='final')
+        .order_by(Informe.fecha_publicacion.desc(), Informe.id.desc()).all()
+    )
+    return {
+        'paciente': _resumen_paciente(paciente),
+        'informes': [_resumen_informe(i) for i in informes],
+        'total': len(informes),
+    }
+
+
+def _informe_publicado(id_paciente, id_informe):
+    _verificar_vinculo(id_paciente)
+    informe = Informe.query.get(id_informe)
+    # Inexistente, de otro paciente, borrador o reemplazado: todo es "no existe".
+    if informe is None or informe.id_paciente != id_paciente or informe.estado != 'final':
+        raise ErrorAplicacion('El informe indicado no existe.', http_status=404)
+    return informe
+
+
+def obtener_informe_vinculado(id_paciente, id_informe):
+    informe = _informe_publicado(id_paciente, id_informe)
+    datos = _resumen_informe(informe)
+    datos['contenido'] = informe.contenido if informe.contenido is not None else informe.contenido_original
+    datos['paciente'] = _resumen_paciente(Paciente.query.get(id_paciente))
+    return datos
+
+
+def pdf_informe_vinculado(id_paciente, id_informe):
+    """(bytes, nombre_de_archivo) del PDF de un informe publicado."""
+    datos = obtener_informe_vinculado(id_paciente, id_informe)
+    nombre = datos['paciente']['nombre_completo']
+    datos['periodo_etiqueta'] = datos['periodo_etiqueta']
+    return (
+        informes_pdf.generar_pdf(datos, nombre, 'Equipo terapéutico del centro'),
+        informes_pdf.nombre_de_archivo(datos, nombre),
+    )

@@ -21,6 +21,7 @@ export default function AppLayout({ titulo, subtitulo, acciones, contadores = {}
     { id: 'pacientes', etiqueta: 'Pacientes', ruta: '/pacientes', capacidad: 'pacientes.listado', contador: contadores.pacientes },
     { id: 'calendario', etiqueta: 'Calendario', ruta: '/calendario', capacidad: 'calendario' },
     { id: 'sesiones', etiqueta: 'Sesiones', ruta: '/sesiones', capacidad: 'sesiones.consultar' },
+    { id: 'informes', etiqueta: 'Informes', ruta: '/informes', capacidad: 'informes.control' },
   ];
 
   const grupos = [

@@ -1,7 +1,7 @@
 // frontend/src/services/portalFamiliarService.js
 // Portal del familiar (Entrega 4). Contrato: docs/api-portal-familiar.md
 
-import { get } from './api.js';
+import { descargarArchivo, get } from './api.js';
 
 /** Pacientes vinculados a la cuenta. -> { pacientes, total } */
 export function listarPacientesVinculados() {
@@ -18,4 +18,20 @@ export function obtenerEvolucionVinculada(idPaciente, { desde = '', hasta = '' }
   if (hasta) parametros.set('hasta', hasta);
   const consulta = parametros.toString();
   return get(`/familiar/pacientes/${idPaciente}/evolucion${consulta ? `?${consulta}` : ''}`);
+}
+
+// --- Informes publicados (Entrega 6) ---------------------------------------
+
+/** Informes publicados de un paciente vinculado. -> { paciente, informes, total } */
+export function listarInformesVinculados(idPaciente) {
+  return get(`/familiar/pacientes/${idPaciente}/informes`);
+}
+
+/** Un informe publicado, con su contenido. */
+export function obtenerInformeVinculado(idPaciente, idInforme) {
+  return get(`/familiar/pacientes/${idPaciente}/informes/${idInforme}`);
+}
+
+export function descargarPdfInformeVinculado(idPaciente, idInforme) {
+  return descargarArchivo(`/familiar/pacientes/${idPaciente}/informes/${idInforme}/pdf`);
 }

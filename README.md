@@ -7,10 +7,10 @@ ocupacional. Práctica Profesionalizante III — IES 9-023, Mendoza.
 - **Backend:** Python + Flask + SQLAlchemy
 - **Base de datos:** MySQL 8.0+ (una instancia local por integrante)
 
-**Estado: `entrega-3` (seguridad y corrección del flujo).** El módulo clínico
-funciona de punta a punta, con asignaciones, recuperación de contraseña,
-bloqueo por intentos, auditoría de accesos, agenda semanal recurrente,
-registro del día y pausa/alta de tratamiento. Ver [Qué funciona hoy](#qué-funciona-hoy) antes de tocar nada.
+**Estado: Entrega 6 (informes con IA y portal del paciente).** El sistema está
+completo en sus seis versiones: módulo clínico, gestión y RRHH, seguridad y
+agenda, portal familiar e ingreso, duplas y plantillas, e informes con IA con
+el portal del paciente. Ver [Qué funciona hoy](#qué-funciona-hoy) antes de tocar nada.
 
 ---
 
@@ -35,16 +35,18 @@ real, no está mockeado.
 | Recuperación de contraseña, bloqueo por intentos, auditoría de accesos | ✅ (Entrega 3) |
 | Registro del día con notas en renglones; agenda semanal recurrente | ✅ (Entrega 3) |
 | Mínimo de 3 y máximo de 4 objetivos activos por paciente | ✅ (Entrega 3) |
+| Informes mensual, semestral y PTI: generar (con o sin IA), revisar, publicar, corregir, historial y PDF | ✅ (Entrega 6) |
+| Control mensual de informes hechos y pendientes (`/informes`) | ✅ (Entrega 6) |
+| El familiar lee y descarga los informes publicados de su paciente | ✅ (Entrega 6) |
+| Portal del paciente: sus objetivos y su progreso, solo lectura | ✅ (Entrega 6) |
 
-**Lo que todavía no está, y es esperado:**
-
-- **RRHH, familiar y paciente** entran y ven una pantalla que dice
-  explícitamente que su módulo llega en una entrega posterior. No es una
-  pantalla rota: el rol y el control de acceso ya funcionan, falta el
-  contenido.
-- **Portal familiar y notificaciones** — Entrega 4.
-- **Duplas, plantillas de objetivos y tendencias** — Entrega 5.
-- **Informes (mensual, semestral, PTI), IA y export PDF** — Entrega 6.
+**Informes con IA — cómo se configura.** Sin configuración, los informes se
+arman con la plantilla del centro y todo funciona. Para redactarlos con IA se
+agregan al `.env` `INFORMES_IA_PROVEEDOR=anthropic` e `INFORMES_IA_API_KEY`
+(ver `backend/.env.example`). A la IA nunca se le envía el nombre del paciente,
+y el resultado siempre queda como borrador para que la terapeuta lo revise.
+Antes de activarla en el centro, conviene que la coordinación confirme que
+los datos del período pueden enviarse a un proveedor externo.
 
 ---
 
@@ -461,14 +463,16 @@ obligatorio. Puntos que conviene tener presentes desde el día uno:
 ## Entregas
 
 Una sola rama de desarrollo continuo. En cada fecha se corta un tag
-(`entrega-1` a `entrega-4`) y las correcciones se aplican hacia adelante.
+(`entrega-1` a `entrega-6`) y las correcciones se aplican hacia adelante.
 
-| Tag | Módulo | Alcance | Estado |
-|---|---|---|---|
-| `entrega-1` | Clínico | Auth + roles, pacientes, objetivos, calendario, evolución básica | ✅ **cortada** |
-| `entrega-2` | Gestión | Edición y baja de pacientes, historial, gráficos, RRHH con export | pendiente |
-| `entrega-3` | Portal Familiar | Recuperación de contraseña, vínculo familiar, notas de campo, notificaciones | pendiente |
-| `entrega-4` | IA y PDF | Informes trimestrales con IA, export PDF, auditoría, duplas, plantillas | pendiente |
+| Tag | Fecha | Alcance |
+|---|---|---|
+| `entrega-1` | 07/09 | Módulo clínico: login con roles, pacientes, objetivos, calendario, evolución |
+| `entrega-2` | 21/09 | Gestión y RRHH: edición y baja, historial, gráficos, panel de RRHH con export |
+| `entrega-3` | 05/10 | Seguridad, notas y agenda: recuperación de contraseña, bloqueo, auditoría, agenda recurrente |
+| `entrega-4` | 19/10 | Portal familiar: vínculo, evolución, notificaciones, ingreso |
+| `entrega-5` | 02/11 | Duplas, plantillas de objetivos y consulta de sesiones |
+| `entrega-6` | 16/11 | Informes con IA (mensual, semestral, PTI), PDF, acceso del familiar y portal del paciente |
 
 Para ver el código tal como se entregó:
 

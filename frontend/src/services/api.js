@@ -159,6 +159,48 @@ export const put = (path, cuerpo) =>
   request(path, { method: 'PUT', body: JSON.stringify(cuerpo ?? {}) });
 export const del = (path) => request(path, { method: 'DELETE' });
 
+/**
+ * Descarga un archivo (PDF) que la API sirve con autenticacion. Un <a href>
+ * no puede llevar el token, asi que se pide con fetch, se arma un Blob y se
+ * dispara la descarga. El nombre sale de Content-Disposition.
+ */
+export async function descargarArchivo(path, nombrePorOmision = 'informe.pdf') {
+  const token = getToken();
+  let response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+  } catch {
+    throw new ErrorApi(
+      'No se pudo conectar con el servidor. Verifique que el servidor esté en funcionamiento.',
+      { codigo: 'sin_conexion' }
+    );
+  }
+  if (!response.ok) {
+    let payload = null;
+    try { payload = JSON.parse(await response.text()); } catch { /* sin cuerpo JSON */ }
+    if (response.status === 401 && CODIGOS_SESION_INVALIDA.includes(payload?.codigo)) {
+      setToken(null);
+      if (alPerderSesion) alPerderSesion(payload.codigo);
+    }
+    throw new ErrorApi(payload?.mensaje ?? `Error ${response.status}`, {
+      codigo: payload?.codigo, campo: payload?.campo, status: response.status, datos: payload,
+    });
+  }
+  const coincidencia = /filename="?([^";]+)"?/i.exec(response.headers.get('Content-Disposition') ?? '');
+  const nombre = coincidencia ? coincidencia[1] : nombrePorOmision;
+  const url = URL.createObjectURL(await response.blob());
+  const enlace = document.createElement('a');
+  enlace.href = url;
+  enlace.download = nombre;
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  URL.revokeObjectURL(url);
+  return nombre;
+}
+
 // Ping de vida del backend. Sirve para validar que el proxy esta OK.
 export function getHealth() {
   return request('/health');

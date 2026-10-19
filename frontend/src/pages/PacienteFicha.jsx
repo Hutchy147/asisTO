@@ -17,6 +17,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import AccountFlag from '../components/data/AccountFlag.jsx';
 import SeccionAsignaciones from '../components/asignaciones/SeccionAsignaciones.jsx';
 import SeccionFamiliares from '../components/familiares/SeccionFamiliares.jsx';
+import SeccionInformes from '../components/informes/SeccionInformes.jsx';
 import SeccionIngreso from '../components/ingreso/SeccionIngreso.jsx';
 import DataTable from '../components/data/DataTable.jsx';
 import GoalMeter from '../components/data/GoalMeter.jsx';
@@ -146,6 +147,9 @@ export default function PacienteFicha() {
   // Ingreso (Entrega 4): la lectura es abierta entre terapeutas; escribir lo
   // limita la base a quien tiene la asignación vigente.
   const verIngreso = hayCapacidad('ingreso.flujo');
+  // Informes (Entrega 6): lectura abierta entre terapeutas; generar y publicar
+  // lo limita la base al terapeuta asignado.
+  const verInformes = hayCapacidad('informes.generar');
 
   if (objetivos.cargando) {
     return (
@@ -438,6 +442,7 @@ export default function PacienteFicha() {
         {verProgreso && <Tab value="progreso" label="Progreso" />}
         {verAsignaciones && <Tab value="asignacion" label="Asignación" />}
         {verIngreso && <Tab value="ingreso" label="Ingreso" />}
+        {verInformes && <Tab value="informes" label="Informes" />}
         {verFamilia && esMio && <Tab value="familia" label="Familia" />}
       </Tabs>
 
@@ -449,6 +454,11 @@ export default function PacienteFicha() {
           onAviso={setAviso}
           onIrAObjetivos={() => setPestania('objetivos')}
         />
+      )}
+
+      {/* --- Pestaña Informes (Entrega 6) --- */}
+      {verInformes && pestania === 'informes' && (
+        <SeccionInformes paciente={paciente} puedeEscribir={esMio} onAviso={setAviso} />
       )}
 
       {/* --- Pestaña Familia (Entrega 4) --- */}

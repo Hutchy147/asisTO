@@ -784,17 +784,71 @@ SELECT id, 1, 'Ausencia registrada. Se notifico a coordinacion.'
   FROM sesiones WHERE estado = 'ausencia' ORDER BY id LIMIT 12;
 
 INSERT INTO informes
-  (id_paciente, id_terapeuta, periodo, contenido, contenido_original, estado, fecha_generacion, fecha_publicacion) VALUES
-  (1, 1, '2026-T2',
-   'Durante el segundo trimestre se observaron avances sostenidos en motricidad fina y en tolerancia a estimulos nuevos.',
-   'El paciente mostro mejoras en el trimestre.',
-   'final', '2026-07-01 08:30:00', '2026-07-01 09:00:00'),
-  (5, 1, '2026-T2', NULL,
-   'Registro de asistencia regular con avances parciales en autonomia.',
-   'borrador', '2026-07-01 08:45:00', NULL),
-  (7, 2, '2026-T2', NULL,
-   'Progreso en lenguaje y coordinacion durante el periodo.',
-   'borrador', '2026-07-02 10:15:00', NULL);
+  (id_paciente, id_terapeuta, tipo, periodo, fecha_desde, fecha_hasta, version, contenido, contenido_original, generado_con, estado, fecha_generacion, fecha_publicacion) VALUES
+  (1, 1, 'mensual', '2026-09', '2026-09-01', '2026-09-30', 1, '## Datos del paciente
+Tomas Aguirre.
+
+## Periodo
+Septiembre de 2026.
+
+## Asistencia
+Se realizaron 17 sesiones en el mes, sin ausencias.
+
+## Objetivos trabajados
+- Sostener la escritura con agarre tripode: Avanzado. Se mantiene en un nivel alto durante todo el mes.
+- Tolerar texturas nuevas en la alimentacion: En proceso. Mejora respecto del mes anterior.
+
+## Observaciones de las sesiones
+Se observa mejor tolerancia a estimulos nuevos y mayor persistencia en la tarea.
+
+## Cierre
+Se continua con el plan vigente.', 'Septiembre de 2026. Se realizaron 17 sesiones. Objetivos: escritura con agarre tripode (Avanzado) y texturas nuevas (En proceso).
+
+[COMPLETAR: observaciones y cierre]', 'plantilla', 'final', '2026-10-01 08:30:00', '2026-10-01 09:00:00'),
+  (1, 1, 'semestral', '2026-S1', '2026-01-01', '2026-06-30', 1, '## Datos del paciente
+Tomas Aguirre.
+
+## Periodo
+Primer semestre de 2026 (de enero a junio).
+
+## Evolucion general
+Durante el semestre se observaron avances sostenidos en motricidad fina y en tolerancia a estimulos nuevos. Se archivo el objetivo de vestido autonomo por cumplimiento.
+
+## Proximos pasos
+Se sostiene la frecuencia semanal y se revisan los objetivos al inicio del segundo semestre.', 'Durante el semestre hubo avances en motricidad fina.
+
+[COMPLETAR: proximos pasos]', 'plantilla', 'final', '2026-07-01 08:30:00', '2026-07-01 09:00:00'),
+  (5, 2, 'mensual', '2026-09', '2026-09-01', '2026-09-30', 1, NULL, '## Datos del paciente
+Mia Cardozo.
+
+## Periodo
+Septiembre de 2026.
+
+## Asistencia
+Registro de asistencia regular.
+
+## Objetivos trabajados
+- Avances parciales en autonomia.
+
+## Cierre
+[COMPLETAR: cierre y recomendaciones]', 'plantilla', 'borrador', '2026-10-01 08:45:00', NULL),
+  (7, 1, 'mensual', '2026-09', '2026-09-01', '2026-09-30', 1, NULL, '## Datos del paciente
+Lucia Molina.
+
+## Periodo
+Septiembre de 2026.
+
+## Asistencia
+Registro de asistencia regular.
+
+## Objetivos trabajados
+- Avances parciales en autonomia.
+
+## Cierre
+[COMPLETAR: cierre y recomendaciones]', 'plantilla', 'borrador', '2026-10-02 10:15:00', NULL);
+
+-- Un borrador recien generado todavia no fue editado: su contenido es el original.
+UPDATE informes SET contenido = contenido_original WHERE contenido IS NULL;
 
 INSERT INTO plantillas_objetivos (area, descripcion) VALUES
   ('Motricidad fina', CONVERT(0x4d656a6f726172206c612070696e7a612066696e612070617261206c61206573637269747572612c20736f7374656e69656e646f20656c206cc3a170697a20636f6e20616761727265207472c3ad706f646520647572616e7465203130206d696e75746f732c20636f6e2061797564612076657262616c206dc3ad6e696d61 USING utf8mb4)),

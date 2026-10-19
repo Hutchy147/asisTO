@@ -199,6 +199,14 @@ export const CAPACIDADES = {
   // el portal del paciente explícitamente en el Sprint 6. Se saca la marca de
   // decisión propia porque ahora hay documento que lo respalda.
   'paciente.portal': { entrega: 6, nombre: 'portal del paciente' },
+  // Informes mensual / semestral / PTI: generar (con o sin IA), revisar,
+  // publicar, corregir, historial y exportar a PDF (HDU 5 y 8). Cubre la
+  // pestaña "Informes" de la ficha.
+  'informes.generar': { entrega: 6, nombre: 'generación de informes con IA, historial y PDF' },
+  // Control mensual de informes hechos y pendientes, pantalla /informes.
+  'informes.control': { entrega: 6, nombre: 'control mensual de informes' },
+  // El familiar lee y descarga los informes PUBLICADOS de su paciente.
+  'familiar.informes': { entrega: 6, nombre: 'acceso del familiar a los informes' },
 };
 
 /**

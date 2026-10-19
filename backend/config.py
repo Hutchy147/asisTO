@@ -53,6 +53,16 @@ class Config:
         'RECUPERACION_MOSTRAR_TOKEN', os.getenv('FLASK_DEBUG', '1')
     ) == '1'
 
+    # --- Informes con IA (Entrega 6) ---
+    # Sin proveedor configurado el generador arma el informe con una plantilla
+    # que vuelca los datos del periodo: funciona igual y no envia nada afuera.
+    # Con proveedor y clave redacta con IA (los datos salen SIN el nombre del
+    # paciente). Siempre queda como borrador y lo revisa una persona.
+    INFORMES_IA_PROVEEDOR = os.getenv('INFORMES_IA_PROVEEDOR', '').strip().lower()
+    INFORMES_IA_API_KEY = os.getenv('INFORMES_IA_API_KEY', '').strip()
+    INFORMES_IA_MODELO = os.getenv('INFORMES_IA_MODELO', 'claude-sonnet-5-5').strip()
+    INFORMES_IA_TIMEOUT = _env_int('INFORMES_IA_TIMEOUT', 60)
+
     # --- Base de datos ---
     DB_HOST = os.getenv('DB_HOST', 'localhost')
     DB_PORT = _env_int('DB_PORT', 3306)

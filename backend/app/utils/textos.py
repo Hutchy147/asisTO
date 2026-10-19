@@ -15,6 +15,9 @@ _TILDES = {
     'atendio': 'atendió', 'falto': 'faltó', 'quien': 'quién',
     'evolucion': 'evolución', 'descripcion': 'descripción',
     'ninios': 'niños', 'unica': 'única', 'area': 'área',
+    # Informes (Entrega 6)
+    'periodo': 'período', 'version': 'versión', 'correccion': 'corrección',
+    'valido': 'válido', 'vacio': 'vacío', 'escribalas': 'escríbalas',
 }
 
 

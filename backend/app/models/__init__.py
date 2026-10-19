@@ -26,6 +26,7 @@ from app.models.familiar_paciente import FamiliarPaciente
 from app.models.notificacion import Notificacion, PreferenciaNotificacion
 from app.models.plantilla_objetivo import PlantillaObjetivo
 from app.models.ingreso import Ingreso, IngresoCampo, IngresoEtapa, IngresoRespuesta
+from app.models.informe import Informe
 
 __all__ = [
     'Usuario', 'Terapeuta', 'Rrhh', 'Familiar', 'Paciente',
@@ -33,4 +34,5 @@ __all__ = [
     'AuditoriaAcceso', 'SesionRenglon', 'AgendaRecurrente',
     'SesionObjetivo', 'FamiliarPaciente', 'Notificacion', 'PreferenciaNotificacion',
     'PlantillaObjetivo', 'Ingreso', 'IngresoCampo', 'IngresoEtapa', 'IngresoRespuesta',
+    'Informe',
 ]
