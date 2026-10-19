@@ -2,6 +2,7 @@
 // Contrato: docs/api-sesiones-evoluciones.md
 
 import { construirQuery, get, post, put } from './api.js';
+import { hayCapacidad } from '../config/entregas.js';
 
 // No exportadas: desde que ModalRegistrarSesion y ModalEditarSesion pasaron
 // a iterar OPCIONES_ESTADO_SESION en vez de armar su propio array, ningun
@@ -156,6 +157,47 @@ export function obtenerSesion(idSesion) {
  */
 export function faltaEvolucion(sesion) {
   return Boolean(sesion?.admite_evolucion) && !sesion?.tiene_evolucion;
+}
+
+/**
+ * Estado que se MUESTRA de una sesión: su etapa en el ciclo de trabajo.
+ *
+ * El estado de la base (completa / incompleta / ausencia) describe cómo
+ * terminó la sesión, pero una sesión agendada se guarda como «incompleta»
+ * hasta que se registra, y por eso la pantalla mostraba «Incompleta» solo
+ * porque todavía no había llegado la hora. El ciclo visible es:
+ *
+ *   Agendada      -> aún no comenzó (fecha futura, u hoy con hora posterior)
+ *   Por registrar -> ya comenzó y falta cargar la evolución
+ *   En registro   -> hay evolución cargada pero la sesión aún no se marcó como realizada
+ *   Realizada     -> el terapeuta la cerró como completa
+ *   Ausente       -> el paciente no asistió
+ *
+ * La base no cambia: esto solo traduce. `estado` elige el color del chip.
+ * Si la sesión no trae los datos de evolución (listado de RRHH), se muestra
+ * el estado declarado sin interpretarlo.
+ */
+export function estadoVisible(sesion, ahora = new Date()) {
+  // Antes de la V3 (sin registro de sesión) rige el vocabulario original.
+  if (!hayCapacidad('notas.campo')) {
+    return { estado: sesion.estado, etiqueta: ETIQUETA_ESTADO[sesion.estado] ?? sesion.estado };
+  }
+  const pad = (n) => String(n).padStart(2, '0');
+  const hoy = `${ahora.getFullYear()}-${pad(ahora.getMonth() + 1)}-${pad(ahora.getDate())}`;
+  const hora = `${pad(ahora.getHours())}:${pad(ahora.getMinutes())}`;
+
+  if (sesion.estado === ESTADO_AUSENCIA) return { estado: ESTADO_AUSENCIA, etiqueta: 'Ausente' };
+
+  const inicio = (sesion.hora_inicio ?? '00:00').slice(0, 5);
+  const noComenzo = sesion.fecha > hoy || (sesion.fecha === hoy && inicio > hora);
+  if (noComenzo) return { estado: 'agendada', etiqueta: 'Agendada' };
+
+  if (sesion.tiene_evolucion === undefined) {
+    return { estado: sesion.estado, etiqueta: ETIQUETA_ESTADO[sesion.estado] ?? sesion.estado };
+  }
+  if (faltaEvolucion(sesion)) return { estado: ESTADO_INCOMPLETA, etiqueta: 'Por registrar' };
+  if (sesion.estado === ESTADO_COMPLETA) return { estado: ESTADO_COMPLETA, etiqueta: 'Realizada' };
+  return { estado: ESTADO_INCOMPLETA, etiqueta: 'En registro' };
 }
 
 /** Etiqueta de un estado de sesion. */

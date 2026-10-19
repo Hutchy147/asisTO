@@ -5,7 +5,8 @@
 //
 //   Pendiente de antes  lo que quedó sin cerrar en sesiones anteriores del
 //                       mismo paciente (se arrastra hasta cerrarlo).
-//   Plan                lo que se piensa hacer; se puede escribir antes y después.
+//   Objetivos           los del paciente; se marca cuál(es) se va a trabajar.
+//   Plan                otras notas de lo que se piensa hacer.
 //   Registro            lo que pasó; solo si la sesión ya ocurrió y no fue ausencia.
 //
 // "Ausente" CIERRA la sesión: no se carga registro ni evolución. El plan
@@ -15,22 +16,27 @@ import { useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import Checkbox from '@mui/material/Checkbox';
+import TextField from '@mui/material/TextField';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Radio from '@mui/material/Radio';
 import RadioGroup from '@mui/material/RadioGroup';
 import Typography from '@mui/material/Typography';
 
 import SesionEstadoChip from '../data/SesionEstadoChip.jsx';
+import EscalaLogro from '../evoluciones/EscalaLogro.jsx';
 import { Cargando, EstadoError } from '../estado/index.js';
 import ModalFormulario from '../modal/ModalFormulario.jsx';
 import ListaRenglones, { CampoRenglon } from '../renglones/ListaRenglones.jsx';
 import { usePeticion } from '../../hooks/usePeticion.js';
 import {
   agregarRenglon, borrarRenglon, cerrarRenglon, editarRenglon, listarRenglones,
+  marcarObjetivoDelPlan,
   MOMENTO_PLAN, MOMENTO_REGISTRO,
 } from '../../services/renglonesService.js';
+import { etiquetaDeValor, registrarEvolucion } from '../../services/evolucionesService.js';
 import {
-  editarSesion, ESTADO_AUSENCIA, ETIQUETA_AUSENCIA_DE,
+  editarSesion, estadoVisible, ESTADO_AUSENCIA, ETIQUETA_AUSENCIA_DE,
   OPCIONES_AUSENCIA_DE, obtenerSesion,
 } from '../../services/sesionesService.js';
 import { formatearFecha } from '../../utils/fechas.js';
@@ -61,8 +67,76 @@ function Bloque({ titulo, nota, contador, children }) {
   );
 }
 
+// Una fila por objetivo: si ya tiene evolución se lee; si no, se despliega la
+// escala de cinco palabras con observaciones opcionales y se guarda ahí mismo.
+function FilaEvolucion({ objetivo, evolucion, planeado = false, habilitada, ocupado, onGuardar }) {
+  const [abierta, setAbierta] = useState(false);
+  const [valor, setValor] = useState('');
+  const [observaciones, setObservaciones] = useState('');
+  const [error, setError] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  async function guardar() {
+    if (!valor) { setError('Elija cómo evolucionó el objetivo.'); return; }
+    setError('');
+    setGuardando(true);
+    try {
+      await onGuardar(Number(valor), observaciones.trim() || null);
+      setAbierta(false);
+    } catch (fallo) {
+      setError(fallo.message || 'No se pudo guardar la evolución.');
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Box component="li" sx={(t) => ({ py: 0.75, borderBottom: `1px solid ${t.palette.superficie.hundida}` })}>
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+        <Box className="texto-libre" sx={{ flex: 1, minWidth: 0, fontSize: 14, lineHeight: 1.4, fontWeight: planeado ? 600 : 400 }}>
+          {objetivo.descripcion}
+          {planeado && !evolucion && (
+            <Box component="span" sx={{ ml: 1, fontSize: 11, fontWeight: 400, color: 'text.secondary' }}>planeado para hoy</Box>
+          )}
+        </Box>
+        {evolucion ? (
+          <Box sx={{ flex: 'none', fontSize: 13, fontWeight: 600 }}>{etiquetaDeValor(evolucion.valor)}</Box>
+        ) : (
+          habilitada && !abierta && (
+            <Button size="small" variant="outlined" disabled={ocupado} onClick={() => setAbierta(true)}
+              aria-label={`Calificar el objetivo: ${objetivo.descripcion}`}>
+              Calificar
+            </Button>
+          )
+        )}
+      </Box>
+      {evolucion?.observaciones && (
+        <Typography variant="caption" color="text.secondary" className="texto-libre" sx={{ display: 'block', mt: 0.25 }}>
+          {evolucion.observaciones}
+        </Typography>
+      )}
+      {abierta && (
+        <Box sx={{ mt: 1 }}>
+          <EscalaLogro valor={valor} onChange={setValor} deshabilitado={guardando} error={error && !valor ? error : undefined} />
+          <TextField
+            size="small" fullWidth multiline minRows={2} sx={{ mt: 1 }} label="Observaciones (opcional)"
+            value={observaciones} onChange={(e) => setObservaciones(e.target.value)} disabled={guardando}
+          />
+          {error && valor && <Typography variant="caption" color="error">{error}</Typography>}
+          <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+            <Button size="small" variant="contained" onClick={guardar} disabled={guardando}>
+              {guardando ? 'Guardando…' : 'Guardar evolución'}
+            </Button>
+            <Button size="small" onClick={() => { setAbierta(false); setError(''); }} disabled={guardando}>Cancelar</Button>
+          </Box>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
 export default function ModalRegistroDia({
-  abierto, idSesion, onCerrar, onCambio, onCargarEvolucion,
+  abierto, idSesion, onCerrar, onCambio,
 }) {
   const detalle = usePeticion(() => obtenerSesion(idSesion), [idSesion], { inmediata: Boolean(idSesion) });
   const renglones = usePeticion(() => listarRenglones(idSesion), [idSesion], { inmediata: Boolean(idSesion) });
@@ -82,8 +156,9 @@ export default function ModalRegistroDia({
   const puedeEscribir = Boolean(sesion && esPropia);
   const puedeRegistrar = puedeEscribir && !esAusencia && !futura;
   const puedeCargarEvolucion = Boolean(
-    onCargarEvolucion && puedeEscribir && sesion?.admite_evolucion && (datos?.objetivos_activos?.length ?? 0) > 0,
+    puedeEscribir && !futura && sesion?.admite_evolucion && (datos?.objetivos_activos?.length ?? 0) > 0,
   );
+  const evolucionPorObjetivo = new Map((datos?.evoluciones ?? []).map((e) => [e.id_objetivo, e]));
 
   // Una acción sobre renglones o sesión: se ocupa la pantalla mientras corre,
   // se recarga lo que cambió y se avisa al panel. El error se dice acá.
@@ -106,6 +181,8 @@ export default function ModalRegistroDia({
   const agregar = (momento) => (texto, destacado) =>
     ejecutar(() => agregarRenglon(idSesion, { momento, texto, destacado }));
   const destacar = (r) => ejecutar(() => editarRenglon(r.id, { texto: r.texto, destacado: !r.destacado })).catch(() => {});
+  const marcarObjetivo = (o, marcado) =>
+    ejecutar(() => marcarObjetivoDelPlan(idSesion, o.id, marcado)).catch(() => {});
   const borrar = (r) => ejecutar(() => borrarRenglon(r.id)).catch(() => {});
   const cerrar = (r, cierre) => ejecutar(() => cerrarRenglon(r.id, cierre)).catch(() => {});
 
@@ -145,7 +222,7 @@ export default function ModalRegistroDia({
       {datos && lista && (
         <>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
-            <SesionEstadoChip estado={sesion.estado} />
+            <SesionEstadoChip {...estadoVisible(sesion)} />
             <Typography variant="body2" color="text.secondary">
               Atendió {datos.terapeuta?.nombre_completo ?? 'un terapeuta del centro'}
               {esPropia ? '' : ' · otro terapeuta'}
@@ -154,7 +231,7 @@ export default function ModalRegistroDia({
 
           {!esPropia && (
             <Alert severity="info" sx={{ mb: 2 }}>
-              Es una sesión de otro terapeuta: la podés leer, pero solo quien la atendió escribe en ella.
+              Es una sesión de otro terapeuta: puede consultarla, pero solo quien la atendió puede modificarla.
             </Alert>
           )}
           {esAusencia && (
@@ -183,18 +260,58 @@ export default function ModalRegistroDia({
             </Bloque>
           )}
 
-          <Bloque titulo="Plan" contador={lista.plan.length}>
+          <Bloque
+            titulo="Objetivos a trabajar"
+            contador={`${lista.objetivos_plan.length} de ${datos.objetivos_activos.length}`}
+            nota={puedeEscribir ? 'Los objetivos activos del paciente. Marcá el o los que vas a trabajar en esta sesión.' : undefined}
+          >
+            {datos.objetivos_activos.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', py: 0.5 }}>
+                El paciente aún no tiene objetivos activos. Se cargan desde su ficha.
+              </Typography>
+            ) : (
+              <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }}>
+                {datos.objetivos_activos.map((o) => {
+                  const marcado = lista.objetivos_plan.includes(o.id);
+                  return (
+                    <Box
+                      component="li"
+                      key={o.id}
+                      sx={(t) => ({
+                        display: 'flex', alignItems: 'flex-start', gap: 0.5, py: 0.25,
+                        borderBottom: `1px solid ${t.palette.superficie.hundida}`,
+                      })}
+                    >
+                      <Checkbox
+                        size="small"
+                        checked={marcado}
+                        disabled={!puedeEscribir || ocupado}
+                        onChange={(e) => marcarObjetivo(o, e.target.checked)}
+                        inputProps={{ 'aria-label': `Trabajar hoy: ${o.descripcion}` }}
+                        sx={{ p: 0.5, mt: 0.25 }}
+                      />
+                      <Box className="texto-libre" sx={{ flex: 1, minWidth: 0, fontSize: 14, lineHeight: 1.4, py: 0.5, fontWeight: marcado ? 600 : 400 }}>
+                        {o.descripcion}
+                      </Box>
+                    </Box>
+                  );
+                })}
+              </Box>
+            )}
+          </Bloque>
+
+          <Bloque titulo="Otras notas del plan" contador={lista.plan.length}>
             <ListaRenglones
               renglones={lista.plan}
               editable={puedeEscribir}
               conCierre
               ocupado={ocupado}
-              etiquetaVacio="Todavía no escribiste qué pensás trabajar."
+              etiquetaVacio="Sin otras notas."
               onDestacar={destacar}
               onBorrar={borrar}
               onCerrar={cerrar}
               alPie={puedeEscribir && (
-                <CampoRenglon placeholder="Qué pensás trabajar" onAgregar={agregar(MOMENTO_PLAN)} deshabilitado={ocupado} />
+                <CampoRenglon placeholder="Otra actividad prevista" onAgregar={agregar(MOMENTO_PLAN)} deshabilitado={ocupado} />
               )}
             />
           </Bloque>
@@ -215,6 +332,69 @@ export default function ModalRegistroDia({
                 <CampoRenglon placeholder="Qué pasó en la sesión" onAgregar={agregar(MOMENTO_REGISTRO)} deshabilitado={ocupado} />
               )}
             />
+          </Bloque>
+
+          <Bloque
+            titulo="Evolución por objetivo"
+            contador={`${evolucionPorObjetivo.size} de ${datos.objetivos_activos.length + [...evolucionPorObjetivo.keys()].filter((id) => !datos.objetivos_activos.some((o) => o.id === id)).length}`}
+            nota={puedeCargarEvolucion ? 'Califique cómo evolucionó cada objetivo trabajado. Los que no se trabajaron pueden quedar sin calificar.' : undefined}
+          >
+            {esAusencia ? (
+              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                Sesión cerrada por ausencia: no lleva evolución.
+              </Typography>
+            ) : futura ? (
+              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                La sesión todavía no ocurrió: la evolución se carga cuando termine.
+              </Typography>
+            ) : datos.objetivos_activos.length === 0 && evolucionPorObjetivo.size === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                El paciente no tiene objetivos activos.
+              </Typography>
+            ) : (
+              <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }}>
+                {datos.evoluciones
+                  .filter((e) => !datos.objetivos_activos.some((o) => o.id === e.id_objetivo))
+                  .map((e) => (
+                    <FilaEvolucion key={`ev-${e.id}`} objetivo={e.objetivo ?? { id: e.id_objetivo, descripcion: 'Objetivo archivado' }}
+                      evolucion={e} habilitada={false} ocupado={ocupado} onGuardar={() => {}} />
+                  ))}
+                {datos.objetivos_activos.map((o) => (
+                  <FilaEvolucion
+                    key={o.id}
+                    objetivo={o}
+                    evolucion={evolucionPorObjetivo.get(o.id)}
+                    planeado={lista.objetivos_plan.includes(o.id)}
+                    habilitada={puedeCargarEvolucion}
+                    ocupado={ocupado}
+                    onGuardar={(valor, observaciones) => ejecutar(
+                      () => registrarEvolucion({ id_sesion: sesion.id, id_objetivo: o.id, valor, observaciones }),
+                      { recargarSesion: true },
+                    )}
+                  />
+                ))}
+              </Box>
+            )}
+            {puedeRegistrar && evolucionPorObjetivo.size > 0 && (
+              <Box sx={{ pt: 1.25, display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                {sesion.estado === ESTADO_SIN_CERRAR ? (
+                  <>
+                    <Button size="small" variant="contained" disabled={ocupado}
+                      onClick={() => cambiarAsistencia('completa', null).catch(() => {})}>
+                      Marcar la sesión como realizada
+                    </Button>
+                    <Typography variant="caption" color="text.secondary">
+                      Mientras no se marque, la sesión figura «En registro».
+                    </Typography>
+                  </>
+                ) : (
+                  <Button size="small" variant="text" disabled={ocupado}
+                    onClick={() => cambiarAsistencia(ESTADO_SIN_CERRAR, null).catch(() => {})}>
+                    Reabrir el registro
+                  </Button>
+                )}
+              </Box>
+            )}
           </Bloque>
 
           {sesion.notas && (
@@ -245,11 +425,6 @@ export default function ModalRegistroDia({
           ) : (
             puedeEscribir && (
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, pt: 0.5 }}>
-                {puedeCargarEvolucion && (
-                  <Button variant="contained" onClick={() => onCargarEvolucion(sesion.id)} disabled={ocupado}>
-                    Cargar evolución
-                  </Button>
-                )}
                 {esAusencia ? (
                   <Button variant="outlined" disabled={ocupado}
                     onClick={() => cambiarAsistencia(ESTADO_SIN_CERRAR, null).catch(() => {})}>

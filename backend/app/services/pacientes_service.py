@@ -230,13 +230,15 @@ def alta_paciente(datos):
     logger.info('Paciente %s dado de alta (%s)', paciente.id, paciente.nro_historia)
 
     # HDU 11: sin terapeuta asignado nadie puede registrarle sesiones, asi que
-    # el alta deja al paciente asignado al responsable elegido (por omision,
-    # quien lo da de alta). Si la asignacion falla, el paciente YA existe: no
-    # se deshace, se avisa en el mensaje y se asigna desde la ficha.
+    # el alta deja al paciente asignado a quien lo da de alta. Elegir otro
+    # responsable es potestad del administrador (por eso se ignora un
+    # `id_terapeuta` del cuerpo). Si la asignacion falla, el paciente YA
+    # existe: no se deshace, se avisa en el mensaje y lo resuelve el
+    # administrador.
     from app.services import asignaciones_service
     from app.services.sesiones_service import terapeuta_actual
 
-    id_terapeuta = datos.get('id_terapeuta') or terapeuta_actual().id
+    id_terapeuta = terapeuta_actual().id
     try:
         asignaciones_service.abrir_asignacion(
             paciente.id, {'id_terapeuta': id_terapeuta}
@@ -245,7 +247,7 @@ def alta_paciente(datos):
         db.session.rollback()
         mensaje = (
             f'{mensaje} Pero no se pudo asignar el terapeuta responsable: '
-            f'{error.mensaje} Asignalo desde la ficha.'
+            f'{error.mensaje} Solicite la asignación al administrador.'
         )
 
     return paciente, mensaje
@@ -355,7 +357,7 @@ def baja_paciente(id_paciente, datos=None):
     tipo = datos.get('tipo')
     if tipo not in ('pausa', 'alta'):
         raise ErrorAplicacion(
-            "Indicá si es una pausa o el alta del tratamiento.", campo='tipo'
+            "Indique si se trata de una pausa o del alta del tratamiento.", campo='tipo'
         )
 
     if tipo == 'pausa':

@@ -52,7 +52,7 @@ export default function RestablecerContrasena() {
 
         {listo ? (
           <Stack spacing={2}>
-            <Alert severity="success">Contraseña actualizada. Ya podés ingresar con la nueva.</Alert>
+            <Alert severity="success">Contraseña actualizada. Ya puede ingresar con la nueva.</Alert>
             <Button component={RouterLink} to="/login" variant="contained" size="large">Ir al inicio de sesión</Button>
           </Stack>
         ) : (

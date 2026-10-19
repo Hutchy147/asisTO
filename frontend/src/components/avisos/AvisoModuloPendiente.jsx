@@ -37,7 +37,7 @@ const CAPACIDAD_POR_ROL = {
   },
   paciente: {
     capacidad: 'paciente.portal',
-    detalle: 'Consulta de tus objetivos y tu progreso.',
+    detalle: 'Consulta de sus objetivos y su progreso.',
   },
 };
 
@@ -52,7 +52,7 @@ export default function AvisoModuloPendiente({ rol }) {
 
   return (
     <Aviso severidad="info" titulo={titulo}>
-      {info.detalle} Tu usuario y tus permisos ya funcionan: lo que falta es
+      {info.detalle} Su usuario y sus permisos ya funcionan: lo que falta es
       la pantalla, no el acceso.
     </Aviso>
   );

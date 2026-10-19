@@ -1,8 +1,8 @@
 # backend/app/services/asignaciones_service.py
 # Asignacion paciente-terapeuta (HDU 11). Las reglas las aplica la base;
-# aca se traduce. Quien puede abrir o cerrar: cualquier terapeuta (no existe
-# un rol coordinador, y el centro decide quien asigna). Queda registrado con
-# las fechas de cada asignacion.
+# aca se traduce. Quien puede abrir o cerrar: solo el rol administrador (un
+# terapeuta no decide quien atiende a quien). Queda registrado con las fechas
+# de cada asignacion.
 
 import datetime as dt
 import logging
@@ -198,4 +198,29 @@ def responsables_vigentes():
     resultado = {}
     for a in asignaciones:
         resultado.setdefault(a.id_paciente, []).append(nombres.get(a.id_terapeuta))
+    return resultado
+
+
+def listar_pacientes_admin():
+    """
+    Pacientes para la pantalla del administrador: identidad, estado y
+    asignaciones vigentes. Usa to_dict (sin diagnostico): el administrador no
+    ve contenido clinico.
+    """
+    pacientes = Paciente.query.order_by(Paciente.apellido, Paciente.nombre).all()
+    vigentes = Asignacion.query.filter(Asignacion.fecha_hasta.is_(None)).all()
+    nombres = _nombres({a.id_terapeuta for a in vigentes})
+    por_paciente = {}
+    for a in vigentes:
+        por_paciente.setdefault(a.id_paciente, []).append({
+            'id': a.id,
+            'id_terapeuta': a.id_terapeuta,
+            'terapeuta': nombres.get(a.id_terapeuta),
+            'fecha_desde': a.fecha_desde.isoformat() if a.fecha_desde else None,
+        })
+    resultado = []
+    for paciente in pacientes:
+        datos = paciente.to_dict()
+        datos['asignaciones_vigentes'] = por_paciente.get(paciente.id, [])
+        resultado.append(datos)
     return resultado

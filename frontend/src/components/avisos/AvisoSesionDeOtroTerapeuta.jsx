@@ -18,7 +18,7 @@ export default function AvisoSesionDeOtroTerapeuta({ sesion, terapeuta }) {
   return (
     <Aviso severidad="info" titulo="Sesión de otro terapeuta">
       {nombre ? <>Esta sesión la atendió <strong>{nombre}</strong>.</> : 'Esta sesión la atendió otro terapeuta.'}
-      {' '}Podés consultarla, pero la evolución solo puede cargarla quien la
+      {' '}Puede consultarla, pero la evolución solo puede cargarla quien la
       atendió.
     </Aviso>
   );

@@ -1,10 +1,9 @@
 // frontend/src/components/asignaciones/SeccionAsignaciones.jsx
 // Pestaña "Asignación" de la ficha (HDU 11): quién es responsable del
-// paciente hoy y quién lo fue. La lectura es abierta; abrir y cerrar
-// asignaciones se ofrece solo si el paciente está en tratamiento.
+// paciente hoy y quién lo fue. Es solo lectura: abrir y cerrar asignaciones
+// es una función del administrador (pantalla /admin).
 
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import Typography from '@mui/material/Typography';
 
@@ -12,9 +11,7 @@ import DataTable from '../data/DataTable.jsx';
 import { EstadoVacio } from '../estado/index.js';
 import { formatearFecha } from '../../utils/fechas.js';
 
-export default function SeccionAsignaciones({
-  datos, soloLectura, idTerapeutaActual, onAsignar, onCerrar,
-}) {
+export default function SeccionAsignaciones({ datos, idTerapeutaActual }) {
   const columnas = [
     {
       clave: 'terapeuta',
@@ -23,7 +20,7 @@ export default function SeccionAsignaciones({
       render: (a) => (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <span className="texto-libre">{a.terapeuta ?? '—'}</span>
-          {a.id_terapeuta === idTerapeutaActual && <Chip size="small" label="Vos" />}
+          {a.id_terapeuta === idTerapeutaActual && <Chip size="small" label="Usted" />}
         </Box>
       ),
     },
@@ -33,23 +30,6 @@ export default function SeccionAsignaciones({
       etiqueta: 'Hasta',
       ancho: 120,
       render: (a) => (a.vigente ? <Chip size="small" color="primary" label="Vigente" /> : formatearFecha(a.fecha_hasta)),
-    },
-    {
-      clave: 'acciones',
-      etiqueta: '',
-      ancho: 110,
-      alinear: 'right',
-      render: (a) => (
-        a.vigente && !soloLectura ? (
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={(evento) => { evento.stopPropagation(); onCerrar(a); }}
-          >
-            Cerrar
-          </Button>
-        ) : null
-      ),
     },
   ];
 
@@ -71,19 +51,17 @@ export default function SeccionAsignaciones({
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="h5">Terapeuta responsable</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-            Solo quien tiene asignado al paciente registra sus sesiones y evoluciones.
-            Todos los terapeutas pueden leer su ficha, su historial y sus gráficos.
+            Solo el terapeuta asignado registra las sesiones y evoluciones del paciente.
+            Todos los terapeutas pueden consultar su ficha, su historial y sus gráficos.
+            Las asignaciones las gestiona el administrador.
           </Typography>
         </Box>
-        {!soloLectura && (
-          <Button variant="contained" onClick={onAsignar}>Asignar terapeuta</Button>
-        )}
       </Box>
       {datos.asignaciones.length === 0 ? (
         <EstadoVacio
           plano
           titulo="Todavía no tiene terapeuta asignado"
-          descripcion="Hasta que se le asigne uno, nadie puede registrarle sesiones ni cargarle evoluciones."
+          descripcion="Hasta que el administrador le asigne uno, nadie puede registrar sesiones ni evoluciones de este paciente."
         />
       ) : (
         <DataTable columnas={columnas} filas={datos.asignaciones} />

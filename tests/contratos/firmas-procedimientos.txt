@@ -73,6 +73,7 @@ p_editar_paciente | 9 | IN p_id_paciente, IN p_nombre, IN p_apellido, IN p_fecha
 p_editar_sesion | 10 | IN p_id_sesion, IN p_id_terapeuta, IN p_estado, IN p_ausencia_de, IN p_notas, IN p_fecha, IN p_hora_inicio, IN p_hora_fin, OUT p_editado, OUT p_mensaje
 p_editar_renglon | 6 | IN p_id_renglon, IN p_id_terapeuta, IN p_texto, IN p_destacado, OUT p_editado, OUT p_mensaje
 p_evolucion_paciente | 4 | IN p_id_paciente, IN p_fecha_desde, IN p_fecha_hasta, OUT p_mensaje
+p_marcar_objetivo_sesion | 6 | IN p_id_sesion, IN p_id_terapeuta, IN p_id_objetivo, IN p_marcar, OUT p_ok, OUT p_mensaje
 p_pausar_paciente | 4 | IN p_id_paciente, IN p_motivo, OUT p_pausado, OUT p_mensaje
 p_reactivar_paciente | 3 | IN p_id_paciente, OUT p_reactivado, OUT p_mensaje
 p_registrar_evolucion | 7 | IN p_id_sesion, IN p_id_objetivo, IN p_valor, IN p_observaciones, IN p_id_terapeuta, OUT p_id_evolucion, OUT p_mensaje

@@ -88,7 +88,7 @@ export default function ModalAgendaSemanal({ abierto, pacientes = [], onCerrar, 
       soloCerrar
       onPedirCierre={onCerrar}
     >
-      {lista.cargando && !lista.datos && <Cargando texto="Abriendo tu agenda..." minHeight={120} />}
+      {lista.cargando && !lista.datos && <Cargando texto="Abriendo su agenda..." minHeight={120} />}
       {lista.error && <EstadoError error={lista.error} onReintentar={lista.recargar} />}
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
@@ -124,7 +124,7 @@ export default function ModalAgendaSemanal({ abierto, pacientes = [], onCerrar, 
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1.4fr 1fr' }, gap: 1.5, mb: 1.5 }}>
             <CampoTexto id="rec-paciente" etiqueta="Paciente" select valor={turno.id_paciente}
               onChange={set('id_paciente')} error={campoError.id_paciente} deshabilitado={ocupado}
-              ayuda={pacientes.length === 0 ? 'No tenés pacientes asignados.' : undefined}>
+              ayuda={pacientes.length === 0 ? 'No tiene pacientes asignados.' : undefined}>
               {pacientes.map((p) => (
                 <MenuItem key={p.id} value={p.id} className="texto-libre">{p.nombre_completo} · {p.nro_historia}</MenuItem>
               ))}
@@ -136,7 +136,7 @@ export default function ModalAgendaSemanal({ abierto, pacientes = [], onCerrar, 
             <CampoTexto id="rec-inicio" etiqueta="Hora de inicio" tipo="time" tabular valor={turno.hora_inicio}
               onChange={set('hora_inicio')} error={campoError.hora_inicio} deshabilitado={ocupado} />
             <CampoTexto id="rec-fin" etiqueta="Hora de fin" tipo="time" tabular valor={turno.hora_fin}
-              ayuda="Opcional: 45 minutos si la dejás vacía." onChange={set('hora_fin')}
+              ayuda="Opcional: 45 minutos si se deja vacía." onChange={set('hora_fin')}
               error={campoError.hora_fin} deshabilitado={ocupado} />
           </Box>
           <Button variant="outlined" onClick={agregar} disabled={ocupado}>Agregar turno</Button>
@@ -145,7 +145,7 @@ export default function ModalAgendaSemanal({ abierto, pacientes = [], onCerrar, 
 
           <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>Generar la agenda</Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-            Agenda las sesiones de tus turnos desde hoy. Si ya existen, no se duplican.
+            Agenda las sesiones de sus turnos desde hoy. Si ya existen, no se duplican.
           </Typography>
           <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <Box sx={{ width: 180 }}>

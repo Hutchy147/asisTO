@@ -320,7 +320,7 @@ export default function ModalFormulario({
               color="text.secondary"
               sx={{ flex: 1, alignSelf: 'center', lineHeight: 1.4 }}
             >
-              Cargaste datos sin guardar. Si cerrás ahora se pierden.
+              Hay datos sin guardar. Si cierra ahora, se perderán.
             </Typography>
             <Button variant="outlined" onClick={onSeguirEditando}>
               Seguir editando

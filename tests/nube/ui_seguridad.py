@@ -20,7 +20,7 @@ with sync_playwright() as p:
 
     # 1) bloqueo en pantalla: 5 intentos con clave mala
     pg.goto(B + '/login')
-    check(pg.get_by_text('¿Olvidaste tu contraseña?').count() == 1, 'login: link de recuperacion')
+    check(pg.get_by_text('¿Olvidó su contraseña?').count() == 1, 'login: link de recuperacion')
     for i in range(5):
         pg.fill('input[type=email]', EMAIL); pg.fill('input[type=password]', 'mala')
         pg.click('button[type=submit]'); pg.wait_for_timeout(700)
@@ -30,7 +30,7 @@ with sync_playwright() as p:
     pg.screenshot(path='/tmp/claude-0/ui/login_bloqueado.png')
 
     # 2) recuperar -> enlace (modo desarrollo) -> nueva clave
-    pg.get_by_text('¿Olvidaste tu contraseña?').click()
+    pg.get_by_text('¿Olvidó su contraseña?').click()
     pg.fill('input[type=email]', EMAIL); pg.click('button[type=submit]'); pg.wait_for_timeout(800)
     check(pg.get_by_text('se genero un enlace').count() == 1, 'recuperar: aviso generico')
     pg.get_by_text('abrir el enlace de recuperación').click(); pg.wait_for_timeout(500)

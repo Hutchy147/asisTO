@@ -21,9 +21,11 @@ from app.models.asignacion import Asignacion
 from app.models.auditoria_acceso import AuditoriaAcceso
 from app.models.sesion_renglon import SesionRenglon
 from app.models.agenda_recurrente import AgendaRecurrente
+from app.models.sesion_objetivo import SesionObjetivo
 
 __all__ = [
     'Usuario', 'Terapeuta', 'Rrhh', 'Familiar', 'Paciente',
     'ObjetivoTerapeutico', 'Sesion', 'Evolucion', 'ObservacionRrhh', 'Asignacion',
     'AuditoriaAcceso', 'SesionRenglon', 'AgendaRecurrente',
+    'SesionObjetivo',
 ]

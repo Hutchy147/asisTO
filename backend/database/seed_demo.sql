@@ -77,7 +77,9 @@ INSERT INTO usuarios (id, nombre, apellido, email, contrasena_hash, activo, rol)
   (12, 'Matias',   'Ojeda',     'matias.ojeda@asisto.local',    '$2b$12$PLACEHOLDER.paciente.cuat', TRUE,  'paciente'),
   -- Cuenta DESHABILITADA a proposito: sirve para probar que un usuario
   -- inactivo no puede loguear, sin tener que tocar la base a mano.
-  (13, 'Andrea',   'Suarez',    'andrea.suarez@asisto.local',   '$2b$12$PLACEHOLDER.paciente.cinc', FALSE, 'paciente');
+  (13, 'Andrea',   'Suarez',    'andrea.suarez@asisto.local',   '$2b$12$PLACEHOLDER.paciente.cinc', FALSE, 'paciente'),
+  -- Administrador: asigna terapeutas a pacientes. No tiene perfil clinico.
+  (14, 'Ramiro',   'Acosta',    'admin@asisto.local',           '$2b$12$PLACEHOLDER.admin.uno....', TRUE,  'admin');
 
 INSERT INTO terapeutas (id, id_usuario, matricula, especialidad, nro_licencia) VALUES
   (1, 1, 'MP-14523', 'Integracion sensorial infantil', 'LIC-2019-0087'),

@@ -5,7 +5,7 @@ from flask import Blueprint, jsonify, request
 
 from app.services.renglones_service import (
     agregar_renglon, borrar_renglon, cerrar_renglon, editar_renglon,
-    listar_de_sesion,
+    listar_de_sesion, marcar_objetivo,
 )
 from app.utils.security import requiere_rol
 
@@ -46,3 +46,12 @@ def cerrar(id_renglon):
 @requiere_rol('terapeuta')
 def borrar(id_renglon):
     return jsonify({'mensaje': borrar_renglon(id_renglon)}), 200
+
+
+@renglones_bp.post('/sesiones/<int:id_sesion>/objetivos')
+@requiere_rol('terapeuta')
+def objetivo_del_plan(id_sesion):
+    """Marca (`marcado: true`, por defecto) o desmarca un objetivo a trabajar."""
+    datos = request.get_json(silent=True) or {}
+    mensaje = marcar_objetivo(id_sesion, datos)
+    return jsonify({'mensaje': mensaje}), 200

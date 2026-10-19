@@ -113,7 +113,7 @@ mysql --login-path=asisto -e "source backend/database/schema.sql"
 mysql --login-path=asisto asisto -e "source backend/database/seed.sql"
 ```
 
-El primero deja **20 tablas, 2 vistas, 8 triggers y 22 procedimientos
+El primero deja **21 tablas, 2 vistas, 8 triggers y 23 procedimientos
 almacenados**. El segundo carga datos de prueba con id fijos, para que las
 cuatro instancias locales arranquen idénticas.
 
@@ -259,6 +259,7 @@ Con **`seed.sql`** (el chico, el de los tests):
 | `laura.fernandez@asisto.local` | terapeuta |
 | `diego.moyano@asisto.local` | terapeuta |
 | `silvia.quiroga@asisto.local` | rrhh |
+| `admin@asisto.local` | admin (asigna terapeutas a pacientes; sin acceso clínico) |
 | `marta.ledesma@asisto.local` | familiar |
 | `jorge.bustos@asisto.local` | familiar |
 | `camila.rios@asisto.local` | paciente |

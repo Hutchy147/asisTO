@@ -7,7 +7,7 @@ export const MOMENTO_PLAN = 'plan';
 export const MOMENTO_REGISTRO = 'registro';
 export const MAXIMO_CARACTERES_RENGLON = 160;
 
-/** Plan, registro y arrastre de una sesión. -> { plan, registro, arrastre, es_propia } */
+/** Plan, registro y arrastre de una sesión. -> { plan, registro, arrastre, objetivos_plan, es_propia } */
 export function listarRenglones(idSesion) {
   return get(`/sesiones/${idSesion}/renglones`);
 }
@@ -27,4 +27,9 @@ export function cerrarRenglon(idRenglon, cierre) {
 
 export function borrarRenglon(idRenglon) {
   return del(`/renglones/${idRenglon}`);
+}
+
+/** Marca (o desmarca) un objetivo del paciente como "a trabajar" en la sesión. */
+export function marcarObjetivoDelPlan(idSesion, idObjetivo, marcado = true) {
+  return post(`/sesiones/${idSesion}/objetivos`, { id_objetivo: idObjetivo, marcado });
 }

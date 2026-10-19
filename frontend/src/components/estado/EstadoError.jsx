@@ -19,7 +19,7 @@ export default function EstadoError({ error, onReintentar }) {
 
   const titulo = (() => {
     if (error.esDeRed) return 'Sin conexión con el servidor';
-    if (error.esDePermisos) return 'No tenés permiso';
+    if (error.esDePermisos) return 'No tiene permiso';
     if (error.esNoEncontrado) return 'No encontrado';
     return 'No se pudo completar la operación';
   })();

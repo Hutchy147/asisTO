@@ -2,7 +2,7 @@
 // Alta de paciente. Es el más simple de los cuatro modales y el que fija
 // el patrón: ver useFormularioModal y ModalFormulario.
 
-import MenuItem from '@mui/material/MenuItem';
+import Typography from '@mui/material/Typography';
 
 import CampoTexto from '../forms/CampoTexto.jsx';
 import ModalFormulario from '../modal/ModalFormulario.jsx';
@@ -16,7 +16,6 @@ const INICIAL = {
   fecha_nacimiento: '',
   nro_historia: '',
   diagnostico: '',
-  id_terapeuta: '',
 };
 
 // El diagnóstico es el único opcional: se puede completar después desde la
@@ -29,12 +28,13 @@ const OBLIGATORIOS = ['nombre', 'apellido', 'fecha_nacimiento', 'nro_historia'];
 // silencio si el mensaje de un trigger cambiaba.
 
 export default function ModalAltaPaciente({
-  abierto, onCerrar, onCreado, terapeutas = [], idTerapeutaActual = null,
+  abierto, onCerrar, onCreado,
 }) {
-  // HDU 11: el responsable se elige en el alta; por omision, quien lo da de alta.
+  // HDU 11: el paciente queda asignado a quien lo da de alta; el cambio de
+  // responsable es potestad del administrador.
   const conAsignaciones = hayCapacidad('asignaciones.gestionar');
   const formulario = useFormularioModal({
-    inicial: { ...INICIAL, id_terapeuta: idTerapeutaActual ?? '' },
+    inicial: INICIAL,
     obligatorios: OBLIGATORIOS,
     onEnviar: (valores) =>
       crearPaciente({
@@ -43,7 +43,6 @@ export default function ModalAltaPaciente({
         fecha_nacimiento: valores.fecha_nacimiento,
         nro_historia: valores.nro_historia.trim(),
         diagnostico: valores.diagnostico.trim() || null,
-        id_terapeuta: conAsignaciones && valores.id_terapeuta ? Number(valores.id_terapeuta) : null,
         id_usuario: null, // el alta no crea cuenta: es un registro clínico
       }),
     onExito: (respuesta) => {
@@ -128,20 +127,10 @@ export default function ModalAltaPaciente({
         deshabilitado={guardando}
       />
       {conAsignaciones && (
-        <CampoTexto
-          id="paciente-responsable"
-          etiqueta="Terapeuta responsable"
-          select
-          ayuda="Solo quien tiene asignado al paciente puede registrarle sesiones."
-          valor={valores.id_terapeuta}
-          onChange={setCampo('id_terapeuta')}
-          error={errorDe('id_terapeuta')}
-          deshabilitado={guardando}
-        >
-          {terapeutas.map((t) => (
-            <MenuItem key={t.id} value={t.id}>{t.nombre_completo ?? t.nombre}</MenuItem>
-          ))}
-        </CampoTexto>
+        <Typography variant="caption" color="text.secondary">
+          El paciente quedará asignado a su usuario. Cualquier cambio de terapeuta
+          responsable lo realiza el administrador.
+        </Typography>
       )}
     </ModalFormulario>
   );

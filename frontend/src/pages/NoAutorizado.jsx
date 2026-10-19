@@ -34,7 +34,7 @@ export default function NoAutorizado() {
           No tenes acceso a esta seccion
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Tu sesion es valida, pero el rol <strong>{rol}</strong> no puede ver esta
+          Su sesión es válida, pero el rol <strong>{rol}</strong> no puede ver esta
           pantalla. Si creias que si, avisale al equipo.
         </Typography>
 

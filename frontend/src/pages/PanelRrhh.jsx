@@ -52,7 +52,7 @@ import ModalObservacionesRrhh from '../components/rrhh/ModalObservacionesRrhh.js
 import { hayCapacidad } from '../config/entregas.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { usePeticion } from '../hooks/usePeticion.js';
-import { ESTADO_AUSENCIA } from '../services/sesionesService.js';
+import { ESTADO_AUSENCIA, estadoVisible } from '../services/sesionesService.js';
 import {
   ORIGENES_AUSENCIA, obtenerReporteSesiones, terapeutasDelReporte,
 } from '../services/rrhhService.js';
@@ -229,7 +229,7 @@ export default function PanelRrhh() {
       clave: 'estado',
       etiqueta: 'Estado',
       ancho: 128,
-      render: (s) => <SesionEstadoChip estado={s.estado} />,
+      render: (s) => <SesionEstadoChip {...estadoVisible(s)} />,
     },
     {
       clave: 'ausencia_de',
@@ -442,7 +442,7 @@ export default function PanelRrhh() {
             {sesiones.length === 0 ? (
               <EstadoVacio
                 titulo="No hubo sesiones en este período"
-                descripcion="Probá con un rango más amplio o sacá el filtro por terapeuta."
+                descripcion="Pruebe con un rango más amplio o quite el filtro por terapeuta."
               />
             ) : (
               <>

@@ -98,8 +98,8 @@ def crear_plantilla(datos):
     # Regla 8 aplicada a la plantilla: no se planifica a quien no se atiende.
     if paciente.id not in ids_de_pacientes_asignados(terapeuta.id):
         raise ErrorAplicacion(
-            'El paciente no esta asignado a vos: asignalo desde la ficha antes de '
-            'agendarlo.', campo='id_paciente',
+            'El paciente no está asignado a su usuario: solicite la asignación al '
+            'administrador antes de agendarlo.', campo='id_paciente',
         )
 
     activas = AgendaRecurrente.query.filter_by(id_terapeuta=terapeuta.id, activo=True)
@@ -114,7 +114,7 @@ def crear_plantilla(datos):
     for otra in activas.filter_by(dia_semana=dia).all():
         if inicio < _segundos_de_time(otra.hora_fin) and fin > _segundos_de_time(otra.hora_inicio):
             raise ErrorAplicacion(
-                'Ese horario se superpone con otro turno de tu agenda semanal.',
+                'Ese horario se superpone con otro turno de su agenda semanal.',
                 campo='hora_inicio',
             )
 
@@ -134,7 +134,7 @@ def quitar_plantilla(id_plantilla):
     if fila is None or not fila.activo:
         raise ErrorAplicacion('El turno indicado no existe.', http_status=404)
     if fila.id_terapeuta != terapeuta.id:
-        raise ErrorAplicacion('Solo podes modificar tu propia agenda.', http_status=403)
+        raise ErrorAplicacion('Solo puede modificar su propia agenda.', http_status=403)
     fila.activo = False
     db.session.commit()
     return {'mensaje': 'Turno quitado de la agenda semanal. Las sesiones ya generadas no se tocan.'}
@@ -169,7 +169,7 @@ def generar_agenda(datos, hoy=None):
     )
     if not plantillas:
         raise ErrorAplicacion(
-            'Todavia no cargaste turnos en tu agenda semanal.', http_status=409
+            'Todavía no cargó turnos en su agenda semanal.', http_status=409
         )
 
     creadas, existentes, omitidas = 0, 0, []

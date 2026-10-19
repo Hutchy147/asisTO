@@ -29,7 +29,7 @@ import bcrypt  # noqa: E402
 
 CONTRASENA_DESARROLLO = 'asisto2026'
 
-# Los 6 usuarios del seed. Si cambian en seed.sql, cambian aca.
+# Los 7 usuarios del seed. Si cambian en seed.sql, cambian aca.
 EMAILS_SEED = (
     'laura.fernandez@asisto.local',
     'diego.moyano@asisto.local',
@@ -37,6 +37,7 @@ EMAILS_SEED = (
     'marta.ledesma@asisto.local',
     'jorge.bustos@asisto.local',
     'camila.rios@asisto.local',
+    'admin@asisto.local',
 )
 
 

@@ -26,6 +26,7 @@ EMAILS = {
     'rrhh': 'silvia.quiroga@asisto.local',
     'familiar': 'marta.ledesma@asisto.local',
     'paciente': 'camila.rios@asisto.local',
+    'admin': 'admin@asisto.local',
 }
 
 

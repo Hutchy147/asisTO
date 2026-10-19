@@ -22,7 +22,7 @@ import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.j
 import { usePeticion } from '../hooks/usePeticion.js';
 import { listarPacientes } from '../services/pacientesService.js';
 import {
-  faltaEvolucion, listarPendientesDeEvolucion, listarSesiones, listarSesionesDeHoy,
+  estadoVisible, faltaEvolucion, listarPendientesDeEvolucion, listarSesiones, listarSesionesDeHoy,
 } from '../services/sesionesService.js';
 import { formatearFecha, textoEdad } from '../utils/fechas.js';
 
@@ -84,6 +84,11 @@ function Bloque({ titulo, descripcion, acciones, children }) {
       <Box sx={{ flex: 1, minWidth: 0 }}>{children}</Box>
     </Box>
   );
+}
+
+function hoyIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 export default function Panel() {
@@ -187,18 +192,18 @@ export default function Panel() {
       clave: 'estado',
       etiqueta: 'Estado',
       ancho: 210,
-      render: (s) => (
+      render: (s) => (conRegistro ? (
+        <SesionEstadoChip {...estadoVisible(s)} />
+      ) : (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <SesionEstadoChip estado={s.estado} />
-          {/* Mismas palabras que en el calendario: el pendiente NO es un
-              estado de la sesión, es trabajo por hacer. */}
           {faltaEvolucion(s) && (
             <Box component="span" sx={{ fontSize: 11, fontWeight: 500 }}>
               Falta la evolución
             </Box>
           )}
         </Box>
-      ),
+      )),
     },
   ];
 
@@ -256,7 +261,7 @@ export default function Panel() {
                 <EstadoVacio
                   plano
                   titulo="No hay sesiones hoy"
-                  descripcion="Es lo normal un fin de semana o un día sin agenda. Podés agendar una desde el calendario."
+                  descripcion="Es habitual en un fin de semana o en un día sin agenda. Puede agendar una desde el calendario."
                   acciones={
                     <Button variant="outlined" onClick={() => navigate('/calendario')}>
                       Ir al calendario
@@ -333,7 +338,7 @@ export default function Panel() {
                             {formatearFecha(sesion.fecha)} · {sesion.hora_inicio?.slice(0, 5)}
                           </Box>
                         </Box>
-                        <SesionEstadoChip estado={sesion.estado} />
+                        <SesionEstadoChip {...(conRegistro ? estadoVisible(sesion) : { estado: sesion.estado })} />
                       </Box>
                     ))}
                     {pendientes.datos.total > 8 && (
@@ -427,11 +432,6 @@ export default function Panel() {
           idSesion={idRegistro}
           onCerrar={() => setIdRegistro(null)}
           onCambio={recargarTodo}
-          // Un diálogo a la vez: se cierra el registro y se abre la carga.
-          onCargarEvolucion={(id) => {
-            setIdRegistro(null);
-            setIdEvolucion(id);
-          }}
         />
       )}
 

@@ -38,7 +38,7 @@ with sync_playwright() as p:
     check(pg.get_by_text('Registro del día').count() >= 1, 'abre el Registro del dia')
     check(pg.get_by_text('Pendiente de antes').count() == 1 and pg.get_by_text('tijera con punta roma').count() == 1, 'muestra lo arrastrado')
 
-    plan = pg.get_by_placeholder('Qué pensás trabajar')
+    plan = pg.get_by_placeholder('Otra actividad prevista')
     plan.fill('pinza trípode con broches'); plan.press('Enter'); pg.wait_for_timeout(700)
     check(pg.get_by_text('pinza trípode con broches').count() == 1, 'agrega un renglon de plan con Enter')
     pg.get_by_role('button', name='Destacar renglón').first.click(); pg.wait_for_timeout(600)

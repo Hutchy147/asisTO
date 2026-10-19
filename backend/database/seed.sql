@@ -58,7 +58,8 @@ SET FOREIGN_KEY_CHECKS = 1;
 
 -- =====================================================================
 -- USUARIOS
--- 2 terapeutas, 1 rrhh, 2 familiares, 1 paciente con login.
+-- 2 terapeutas, 1 rrhh, 2 familiares, 1 paciente con login, 1 administrador
+-- (sin perfil propio: solo asigna terapeutas a pacientes).
 -- =====================================================================
 INSERT INTO usuarios (id, nombre, apellido, email, contrasena_hash, activo, rol) VALUES
   (1, 'Laura',  'Fernandez', 'laura.fernandez@asisto.local', '$2b$12$PLACEHOLDER.reemplazar.con.bcrypt.real.terapeuta1', TRUE, 'terapeuta'),
@@ -66,7 +67,8 @@ INSERT INTO usuarios (id, nombre, apellido, email, contrasena_hash, activo, rol)
   (3, 'Silvia', 'Quiroga',   'silvia.quiroga@asisto.local',  '$2b$12$PLACEHOLDER.reemplazar.con.bcrypt.real.rrhh00001', TRUE, 'rrhh'),
   (4, 'Marta',  'Ledesma',   'marta.ledesma@asisto.local',   '$2b$12$PLACEHOLDER.reemplazar.con.bcrypt.real.familiar1', TRUE, 'familiar'),
   (5, 'Jorge',  'Bustos',    'jorge.bustos@asisto.local',    '$2b$12$PLACEHOLDER.reemplazar.con.bcrypt.real.familiar2', TRUE, 'familiar'),
-  (6, 'Camila', 'Rios',      'camila.rios@asisto.local',     '$2b$12$PLACEHOLDER.reemplazar.con.bcrypt.real.paciente1', TRUE, 'paciente');
+  (6, 'Camila', 'Rios',      'camila.rios@asisto.local',     '$2b$12$PLACEHOLDER.reemplazar.con.bcrypt.real.paciente1', TRUE, 'paciente'),
+  (7, 'Ramiro', 'Acosta',    'admin@asisto.local',           '$2b$12$PLACEHOLDER.reemplazar.con.bcrypt.real.admin00001', TRUE, 'admin');
 
 
 INSERT INTO terapeutas (id, id_usuario, matricula, especialidad, nro_licencia) VALUES

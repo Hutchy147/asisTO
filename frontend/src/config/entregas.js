@@ -160,6 +160,9 @@ export const CAPACIDADES = {
   // base y rige en cualquier modo; esta clave solo muestra u oculta pantallas.
   'asignaciones.gestionar': { entrega: 3, nombre: 'asignación de pacientes a terapeuta responsable (HDU 11)' },
 
+  // Administrador (V3): único rol que abre y cierra asignaciones. Pantalla /admin.
+  'admin.asignaciones': { entrega: 3, nombre: 'administración de asignaciones de terapeutas' },
+
   // --- Versión 4 (19/10) ---
   // LAS DOS DEL FAMILIAR VENÍAN EN 3 Y PASAN A 4. En el plan de cuatro, el
   // portal familiar era la V3 entera; en el de seis, la V3 es seguridad y

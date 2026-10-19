@@ -44,12 +44,13 @@ with sync_playwright() as p:
     page.locator('tbody tr').nth(1).click(); page.wait_for_timeout(1500)
     page.get_by_role('tab', name='Asignación').click(); page.wait_for_timeout(800)
     check(page.get_by_text('Terapeuta responsable').count() > 0, 'ficha: pestaña Asignación visible')
+    check(page.get_by_role('button', name='Asignar terapeuta').count() == 0, 'ficha: el terapeuta no puede asignar')
     page.screenshot(path=f'{SALIDA}/ficha_asignacion.png')
 
     # alta con responsable por defecto
     page.goto(BASE + '/pacientes'); page.wait_for_timeout(1200)
     page.get_by_role('button', name='Agregar paciente').first.click(); page.wait_for_timeout(500)
-    check(page.get_by_label('Terapeuta responsable').count() > 0, 'alta: campo Terapeuta responsable')
+    check(page.get_by_label('Terapeuta responsable').count() == 0 and page.get_by_text('Cualquier cambio de terapeuta').count() == 1, 'alta: sin selector de responsable; queda asignado a quien lo da de alta')
     page.screenshot(path=f'{SALIDA}/alta.png')
 
     # calendario: el selector solo ofrece pacientes asignados

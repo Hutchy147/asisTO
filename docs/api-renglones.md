@@ -9,8 +9,11 @@ Cada sesión tiene dos listas de renglones de una línea (máx. 160 caracteres, 
 | GET | `/api/sesiones/<id>/renglones` | `{id_sesion, es_propia, plan, registro, arrastre}` |
 | POST | `/api/sesiones/<id>/renglones` | Agrega `{momento, texto, destacado?}` |
 | PUT | `/api/renglones/<id>` | Edita `{texto?, destacado?}` |
+| POST | `/api/sesiones/<id>/objetivos` | Marca o desmarca un objetivo del plan: `{id_objetivo, marcado?: true}`. Solo el terapeuta de la sesión; el objetivo debe ser del paciente y estar activo |
 | POST | `/api/renglones/<id>/cierre` | `{cierre: 'hecho'｜'descartado'｜null}` (null reabre). Solo plan |
 | DELETE | `/api/renglones/<id>` | Borra |
+
+`GET /api/sesiones/<id>/renglones` devuelve además `objetivos_plan`: ids de los objetivos planeados.
 
 ## Reglas
 - Solo el terapeuta de la sesión escribe (403 si no); renglón inexistente → 404; el resto de rechazos → 400 con `campo`.

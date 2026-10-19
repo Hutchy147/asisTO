@@ -27,7 +27,7 @@ export default function AvisoSesionSinEvolucion({ sesion, modo = 'consulta' }) {
       <Aviso severidad="info" titulo="Esta sesión no va a poder tener evolución">
         El paciente no asistió, así que no hay nada que calificar: los
         objetivos no se puntúan en una ausencia. Si en realidad asistió y la
-        sesión se cortó, elegí <strong>Incompleta</strong>.
+        sesión se cortó, elija <strong>Incompleta</strong>.
       </Aviso>
     );
   }

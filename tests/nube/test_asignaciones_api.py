@@ -15,6 +15,7 @@ class AsignacionesApi(BaseApi):
         r = self.llamar('laura', 'get', '/api/terapeutas')
         self.assertEqual(r.status_code, 200)
         self.assertEqual(len(r.get_json()['terapeutas']), 2)
+        self.assertEqual(self.llamar('admin', 'get', '/api/terapeutas').status_code, 200)
         self.assertEqual(self.llamar('rrhh', 'get', '/api/terapeutas').status_code, 403)
         self.assertEqual(self.llamar('familiar', 'get', '/api/terapeutas').status_code, 403)
         self.assertEqual(self.llamar(None, 'get', '/api/terapeutas').status_code, 401)
@@ -36,48 +37,49 @@ class AsignacionesApi(BaseApi):
 
     def test_abrir_y_rechazos(self):
         # control positivo: paciente 3 no tiene a Diego -> entra
-        r = self.llamar('laura', 'post', '/api/pacientes/3/asignaciones', json={'id_terapeuta': 2})
+        r = self.llamar('admin', 'post', '/api/pacientes/3/asignaciones', json={'id_terapeuta': 2})
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         id_a = r.get_json()['asignacion']['id']
         self.assertTrue(r.get_json()['asignacion']['vigente'])
         # segunda vigente del mismo par
-        r = self.llamar('laura', 'post', '/api/pacientes/3/asignaciones', json={'id_terapeuta': 2})
+        r = self.llamar('admin', 'post', '/api/pacientes/3/asignaciones', json={'id_terapeuta': 2})
         self.assertEqual(r.status_code, 400)
         self.assertEqual(r.get_json()['campo'], 'id_terapeuta')
         # paciente de baja
-        r = self.llamar('laura', 'post', '/api/pacientes/4/asignaciones', json={'id_terapeuta': 1})
+        r = self.llamar('admin', 'post', '/api/pacientes/4/asignaciones', json={'id_terapeuta': 1})
         self.assertEqual(r.status_code, 400)
         self.assertEqual(r.get_json()['campo'], 'id_paciente')
         # terapeuta inexistente, faltante, fecha futura y fecha mal escrita
-        r = self.llamar('laura', 'post', '/api/pacientes/3/asignaciones', json={'id_terapeuta': 99})
+        r = self.llamar('admin', 'post', '/api/pacientes/3/asignaciones', json={'id_terapeuta': 99})
         self.assertEqual((r.status_code, r.get_json()['campo']), (400, 'id_terapeuta'))
-        r = self.llamar('laura', 'post', '/api/pacientes/3/asignaciones', json={})
+        r = self.llamar('admin', 'post', '/api/pacientes/3/asignaciones', json={})
         self.assertEqual((r.status_code, r.get_json()['campo']), (400, 'id_terapeuta'))
-        r = self.llamar('laura', 'post', '/api/pacientes/1/asignaciones',
+        r = self.llamar('admin', 'post', '/api/pacientes/1/asignaciones',
                         json={'id_terapeuta': 2, 'fecha_desde': dias(3)})
         self.assertEqual((r.status_code, r.get_json()['campo']), (400, 'fecha_desde'))
-        r = self.llamar('laura', 'post', '/api/pacientes/1/asignaciones',
+        r = self.llamar('admin', 'post', '/api/pacientes/1/asignaciones',
                         json={'id_terapeuta': 2, 'fecha_desde': '15/10/2026'})
         self.assertEqual((r.status_code, r.get_json()['campo']), (400, 'fecha_desde'))
-        r = self.llamar('laura', 'post', '/api/pacientes/999/asignaciones', json={'id_terapeuta': 1})
+        r = self.llamar('admin', 'post', '/api/pacientes/999/asignaciones', json={'id_terapeuta': 1})
         self.assertEqual(r.status_code, 400)
-        # RRHH y familiar no escriben
-        for quien in ('rrhh', 'familiar', 'paciente'):
+        # Ni siquiera un terapeuta: asignar es solo del administrador
+        for quien in ('laura', 'diego', 'rrhh', 'familiar', 'paciente'):
             r = self.llamar(quien, 'post', '/api/pacientes/3/asignaciones', json={'id_terapeuta': 1})
             self.assertEqual(r.status_code, 403, quien)
         # cierre: ok, repetido 409, inexistente 404, rol 403
-        self.assertEqual(self.llamar('rrhh', 'post', f'/api/asignaciones/{id_a}/cierre', json={}).status_code, 403)
-        r = self.llamar('laura', 'post', f'/api/asignaciones/{id_a}/cierre', json={})
+        for quien in ('laura', 'rrhh'):
+            self.assertEqual(self.llamar(quien, 'post', f'/api/asignaciones/{id_a}/cierre', json={}).status_code, 403, quien)
+        r = self.llamar('admin', 'post', f'/api/asignaciones/{id_a}/cierre', json={})
         self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
         self.assertFalse(r.get_json()['asignacion']['vigente'])
-        self.assertEqual(self.llamar('laura', 'post', f'/api/asignaciones/{id_a}/cierre', json={}).status_code, 409)
-        self.assertEqual(self.llamar('laura', 'post', '/api/asignaciones/99999/cierre', json={}).status_code, 404)
+        self.assertEqual(self.llamar('admin', 'post', f'/api/asignaciones/{id_a}/cierre', json={}).status_code, 409)
+        self.assertEqual(self.llamar('admin', 'post', '/api/asignaciones/99999/cierre', json={}).status_code, 404)
         # fecha de cierre anterior al inicio: la rechaza el trigger
-        r = self.llamar('laura', 'post', '/api/pacientes/3/asignaciones', json={'id_terapeuta': 2})
+        r = self.llamar('admin', 'post', '/api/pacientes/3/asignaciones', json={'id_terapeuta': 2})
         id_b = r.get_json()['asignacion']['id']
-        r = self.llamar('laura', 'post', f'/api/asignaciones/{id_b}/cierre', json={'fecha_hasta': '2020-01-01'})
+        r = self.llamar('admin', 'post', f'/api/asignaciones/{id_b}/cierre', json={'fecha_hasta': '2020-01-01'})
         self.assertEqual((r.status_code, r.get_json()['campo']), (400, 'fecha_hasta'))
-        self.assertEqual(self.llamar('laura', 'post', f'/api/asignaciones/{id_b}/cierre', json={}).status_code, 200)
+        self.assertEqual(self.llamar('admin', 'post', f'/api/asignaciones/{id_b}/cierre', json={}).status_code, 200)
 
     def test_listado_marca_asignado_a_mi(self):
         d = self.llamar('laura', 'get', '/api/pacientes').get_json()['pacientes']
@@ -109,11 +111,11 @@ class Regla8PorApi(BaseApi):
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         # Se le asigna el paciente 2 desde hace 10 dias y se la cierra hace 5
         # (dias corridos: las fechas de abajo se usan tal cual)
-        r = self.llamar('laura', 'post', '/api/pacientes/2/asignaciones',
+        r = self.llamar('admin', 'post', '/api/pacientes/2/asignaciones',
                         json={'id_terapeuta': 1, 'fecha_desde': dias(-10)})
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         id_a = r.get_json()['asignacion']['id']
-        r = self.llamar('laura', 'post', f'/api/asignaciones/{id_a}/cierre',
+        r = self.llamar('admin', 'post', f'/api/asignaciones/{id_a}/cierre',
                         json={'fecha_hasta': dias(-5)})
         self.assertEqual(r.status_code, 200)
         # carga retroactiva DENTRO de la ventana: entra
@@ -165,25 +167,45 @@ class AltaConAsignacionApi(BaseApi):
         self.assertEqual(d['vigentes'], 1)
         self.assertEqual(d['asignaciones'][0]['terapeuta'], 'Laura Fernandez')
 
-    def test_alta_con_responsable_elegido(self):
+    def test_alta_ignora_el_responsable_elegido(self):
+        # Un terapeuta no puede asignar a otro: el alta siempre queda a su nombre
         r = self._alta('laura', {'id_terapeuta': 2}, 'HC-9002')
         self.assertEqual(r.status_code, 201)
         idp = r.get_json()['paciente']['id']
         d = self.llamar('laura', 'get', f'/api/pacientes/{idp}/asignaciones').get_json()
-        self.assertEqual(d['asignaciones'][0]['id_terapeuta'], 2)
-        # el listado lo marca como de Diego y no mio para Laura
+        self.assertEqual(d['vigentes'], 1)
+        self.assertEqual(d['asignaciones'][0]['id_terapeuta'], 1)
         lista = self.llamar('laura', 'get', '/api/pacientes').get_json()['pacientes']
         p = next(x for x in lista if x['id'] == idp)
-        self.assertFalse(p['asignado_a_mi'])
-        self.assertEqual(p['responsables'], ['Diego Moyano'])
+        self.assertTrue(p['asignado_a_mi'])
 
-    def test_alta_con_responsable_inexistente_no_pierde_al_paciente(self):
-        r = self._alta('laura', {'id_terapeuta': 99}, 'HC-9003')
-        self.assertEqual(r.status_code, 201)
-        self.assertIn('Asignalo desde la ficha', r.get_json()['mensaje'])
-        idp = r.get_json()['paciente']['id']
-        d = self.llamar('laura', 'get', f'/api/pacientes/{idp}/asignaciones').get_json()
-        self.assertEqual(d['vigentes'], 0)
+
+class AdminApi(BaseApi):
+    def test_pacientes_para_asignar_solo_admin_y_sin_datos_clinicos(self):
+        r = self.llamar('admin', 'get', '/api/admin/pacientes')
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        lista = r.get_json()['pacientes']
+        self.assertEqual(r.get_json()['total'], len(lista))
+        por_id = {p['id']: p for p in lista}
+        self.assertEqual(por_id[2]['asignaciones_vigentes'][0]['terapeuta'], 'Diego Moyano')
+        self.assertTrue(all('diagnostico' not in p for p in lista))
+        for quien in ('laura', 'rrhh', 'familiar', 'paciente'):
+            self.assertEqual(self.llamar(quien, 'get', '/api/admin/pacientes').status_code, 403, quien)
+        self.assertEqual(self.llamar(None, 'get', '/api/admin/pacientes').status_code, 401)
+
+    def test_admin_no_accede_a_lo_clinico(self):
+        for ruta in ('/api/pacientes', '/api/pacientes/1', '/api/pacientes/1/sesiones', '/api/pacientes/1/evolucion'):
+            self.assertEqual(self.llamar('admin', 'get', ruta).status_code, 403, ruta)
+        # lee el historial de asignaciones (no es clinico)
+        self.assertEqual(self.llamar('admin', 'get', '/api/pacientes/1/asignaciones').status_code, 200)
+
+    def test_admin_reasigna_y_el_terapeuta_ve_el_cambio(self):
+        r = self.llamar('admin', 'post', '/api/pacientes/3/asignaciones', json={'id_terapeuta': 2})
+        self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+        id_a = r.get_json()['asignacion']['id']
+        lista = {p['id']: p for p in self.llamar('diego', 'get', '/api/pacientes').get_json()['pacientes']}
+        self.assertTrue(lista[3]['asignado_a_mi'])
+        self.assertEqual(self.llamar('admin', 'post', f'/api/asignaciones/{id_a}/cierre', json={}).status_code, 200)
 
 
 if __name__ == '__main__':

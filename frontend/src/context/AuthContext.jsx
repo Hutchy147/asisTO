@@ -21,6 +21,7 @@ export const RUTA_POR_ROL = {
   rrhh: '/rrhh',
   familiar: '/familiar',
   paciente: '/paciente',
+  admin: '/admin',
 };
 
 export function AuthProvider({ children }) {
@@ -46,8 +47,8 @@ export function AuthProvider({ children }) {
       limpiarSesion();
       setAvisoSesion(
         codigo === 'token_expirado'
-          ? 'Tu sesion expiro. Volve a iniciar sesion.'
-          : 'Tu sesion ya no es valida. Volve a iniciar sesion.'
+          ? 'Su sesión expiró. Vuelva a iniciar sesión.'
+          : 'Su sesión ya no es válida. Vuelva a iniciar sesión.'
       );
     });
   }, [limpiarSesion]);

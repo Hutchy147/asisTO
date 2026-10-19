@@ -55,8 +55,8 @@ def _mensaje_bloqueo(segundos):
     minutos = max(1, -(-int(segundos) // 60))  # redondeo hacia arriba
     unidad = 'minuto' if minutos == 1 else 'minutos'
     return (
-        'Demasiados intentos fallidos. Proba de nuevo en '
-        f'{minutos} {unidad} o restablece tu contrasena.'
+        'Demasiados intentos fallidos. Intente nuevamente en '
+        f'{minutos} {unidad} o restablezca su contraseña.'
     )
 
 
@@ -227,7 +227,7 @@ def solicitar_recuperacion(email):
     """
     email = (email or '').strip().lower()
     if not email:
-        raise ErrorAplicacion('Ingresa tu email.', campo='email')
+        raise ErrorAplicacion('Ingrese su email.', campo='email')
 
     token = secrets.token_urlsafe(32)
     db.session.execute(

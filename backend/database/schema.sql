@@ -48,7 +48,7 @@ CREATE TABLE usuarios (
   email               VARCHAR(180) NOT NULL,
   contrasena_hash     VARCHAR(255) NOT NULL,
   activo              BOOLEAN      NOT NULL DEFAULT TRUE,
-  rol                 ENUM('terapeuta','rrhh','familiar','paciente') NOT NULL,
+  rol                 ENUM('terapeuta','rrhh','familiar','paciente','admin') NOT NULL,
 
   -- Campos de seguridad: se usan recien en la Entrega 3 (bloqueo por
   -- intentos fallidos y recuperacion de contrasena). Se crean ahora para
@@ -535,6 +535,34 @@ CREATE TABLE sesion_renglones (
     CHECK (cierre IS NULL OR momento = 'plan'),
   CONSTRAINT chk_renglones_texto
     CHECK (CHAR_LENGTH(TRIM(texto)) > 0)
+) ENGINE=InnoDB;
+
+
+-- ---------------------------------------------------------------------
+-- SESION_OBJETIVOS — objetivos que se planea trabajar en una sesion (Entrega 3)
+--
+-- El PLAN de la sesion se arma eligiendo, de los objetivos del paciente, el o
+-- los que se van a trabajar (la TO no quiere reescribir un objetivo que ya
+-- existe). Es una relacion sesion-objetivo y no un renglon: la descripcion de
+-- un objetivo llega a 700 caracteres y el renglon a 160, y copiarla duplicaria
+-- el dato. Los renglones de plan siguen para lo que no es un objetivo.
+--
+-- Se escribe SOLO por p_marcar_objetivo_sesion. Si el objetivo se archiva
+-- despues, la fila queda: es historia de lo que se planeo ese dia.
+-- ---------------------------------------------------------------------
+CREATE TABLE sesion_objetivos (
+  id_sesion       INT UNSIGNED NOT NULL,
+  id_objetivo     INT UNSIGNED NOT NULL,
+  fecha_creacion  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (id_sesion, id_objetivo),
+  KEY idx_sesion_objetivos_objetivo (id_objetivo),
+  CONSTRAINT fk_sesion_objetivos_sesion
+    FOREIGN KEY (id_sesion) REFERENCES sesiones (id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_sesion_objetivos_objetivo
+    FOREIGN KEY (id_objetivo) REFERENCES objetivos_terapeuticos (id)
+    ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
 
@@ -3898,6 +3926,90 @@ BEGIN
       COMMIT;
       SET p_borrado = TRUE;
       SET p_mensaje = 'Renglon borrado';
+    END IF;
+  END IF;
+END$$
+
+-- Marca o desmarca un objetivo del paciente como "a trabajar" en la sesion.
+-- Idempotente: marcar lo ya marcado, o desmarcar lo no marcado, no es error.
+-- ORDEN DE LOCKS: sesiones -> objetivos_terapeuticos -> sesion_objetivos (el
+-- canonico). Solo se pueden marcar objetivos ACTIVOS del paciente de la
+-- sesion; desmarcar no exige que siga activo.
+CREATE PROCEDURE p_marcar_objetivo_sesion (
+  IN  p_id_sesion     INT UNSIGNED,
+  IN  p_id_terapeuta  INT UNSIGNED,
+  IN  p_id_objetivo   INT UNSIGNED,
+  IN  p_marcar        BOOLEAN,
+  OUT p_ok            BOOLEAN,
+  OUT p_mensaje       VARCHAR(255)
+)
+BEGIN
+  DECLARE v_ter       INT UNSIGNED DEFAULT NULL;
+  DECLARE v_paciente  INT UNSIGNED DEFAULT NULL;
+  DECLARE v_obj_pac   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_obj_act   BOOLEAN      DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_ok = FALSE;
+    SET p_mensaje = 'No se pudo actualizar el plan por un error interno';
+  END;
+
+  SET p_ok = FALSE;
+
+  START TRANSACTION;
+
+  SELECT id_terapeuta, id_paciente INTO v_ter, v_paciente
+    FROM sesiones
+   WHERE id = p_id_sesion
+   FOR UPDATE;
+
+  IF v_ter IS NULL THEN
+    ROLLBACK;
+    SET p_mensaje = 'La sesion indicada no existe';
+  ELSEIF v_ter <> p_id_terapeuta THEN
+    ROLLBACK;
+    SET p_mensaje = 'Solo el terapeuta que atendio la sesion puede armar su plan';
+  ELSE
+    SELECT id_paciente, activo INTO v_obj_pac, v_obj_act
+      FROM objetivos_terapeuticos
+     WHERE id = p_id_objetivo
+     FOR SHARE;
+
+    IF v_obj_pac IS NULL THEN
+      ROLLBACK;
+      SET p_mensaje = 'El objetivo indicado no existe';
+    ELSEIF v_obj_pac <> v_paciente THEN
+      ROLLBACK;
+      SET p_mensaje = 'El objetivo no pertenece al paciente de esta sesion';
+    ELSEIF IFNULL(p_marcar, TRUE) = FALSE THEN
+      DELETE FROM sesion_objetivos
+       WHERE id_sesion = p_id_sesion AND id_objetivo = p_id_objetivo;
+      COMMIT;
+      SET p_ok = TRUE;
+      SET p_mensaje = 'Objetivo quitado del plan';
+    ELSEIF v_obj_act = FALSE THEN
+      ROLLBACK;
+      SET p_mensaje = 'El objetivo esta archivado: no se puede planear';
+    ELSE
+      INSERT IGNORE INTO sesion_objetivos (id_sesion, id_objetivo)
+      VALUES (p_id_sesion, p_id_objetivo);
+      COMMIT;
+      SET p_ok = TRUE;
+      SET p_mensaje = 'Objetivo agregado al plan';
     END IF;
   END IF;
 END$$

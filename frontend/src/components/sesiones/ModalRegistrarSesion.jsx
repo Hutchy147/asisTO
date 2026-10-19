@@ -97,7 +97,7 @@ export default function ModalRegistrarSesion({
       subtitulo={
         valores.fecha
           ? `${formatearFecha(valores.fecha)}${valores.hora_inicio ? ` · ${valores.hora_inicio.slice(0, 5)}` : ''}`
-          : 'Se registra a tu nombre'
+          : 'Se registra a su nombre'
       }
       guardando={guardando}
       errorServidor={formulario.errorServidor}
@@ -116,7 +116,7 @@ export default function ModalRegistrarSesion({
         select
         obligatorio
         ayuda={pacientes.length === 0
-          ? 'No tenés pacientes asignados. Asignate uno desde su ficha, en la pestaña Asignación.'
+          ? 'No tiene pacientes asignados. Solicite la asignación al administrador.'
           : undefined}
         valor={valores.id_paciente}
         onChange={setCampo('id_paciente')}

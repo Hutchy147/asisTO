@@ -10,7 +10,7 @@ import logging
 from sqlalchemy import text
 
 from app import db
-from app.models import Sesion, SesionRenglon
+from app.models import Sesion, SesionObjetivo, SesionRenglon
 from app.services.sesiones_service import obtener_sesion, terapeuta_actual
 from app.utils.db import reintentar_en_deadlock
 from app.utils.errors import ErrorAplicacion
@@ -67,6 +67,11 @@ def listar_de_sesion(id_sesion):
     return {
         'id_sesion': sesion.id,
         'es_propia': sesion.id_terapeuta == terapeuta_actual().id,
+        # Ids de los objetivos del paciente que se planea trabajar. El texto
+        # de cada uno ya viaja en el detalle de la sesion (objetivos_activos).
+        'objetivos_plan': sorted(
+            o.id_objetivo for o in SesionObjetivo.query.filter_by(id_sesion=sesion.id).all()
+        ),
         'plan': [r.to_dict() for r in propios if r.momento == 'plan'],
         'registro': [r.to_dict() for r in propios if r.momento == 'registro'],
         'arrastre': [
@@ -152,4 +157,29 @@ def borrar_renglon(id_renglon):
 
     if not ok:
         raise _falla(mensaje, 'No se pudo borrar el renglon.')
+    return mensaje
+
+
+@reintentar_en_deadlock()
+def marcar_objetivo(id_sesion, datos):
+    """Agrega o quita un objetivo del plan de la sesion (p_marcar_objetivo_sesion)."""
+    terapeuta = terapeuta_actual()
+    obtener_sesion(id_sesion)  # 404 limpio antes de llamar al procedimiento
+
+    id_objetivo = datos.get('id_objetivo')
+    if not isinstance(id_objetivo, int) or isinstance(id_objetivo, bool):
+        raise ErrorAplicacion('Indique qué objetivo.', campo='id_objetivo')
+    marcado = datos.get('marcado', True)
+    if not isinstance(marcado, bool):
+        raise ErrorAplicacion('El campo marcado tiene que ser verdadero o falso.', campo='marcado')
+
+    db.session.execute(
+        text('CALL p_marcar_objetivo_sesion(:s, :t, :o, :m, @p_ok, @p_mensaje)'),
+        {'s': id_sesion, 't': terapeuta.id, 'o': id_objetivo, 'm': marcado},
+    )
+    ok, mensaje = db.session.execute(text('SELECT @p_ok, @p_mensaje')).first()
+    db.session.commit()
+
+    if not ok:
+        raise _falla(mensaje, 'No se pudo actualizar el plan.')
     return mensaje

@@ -13,7 +13,7 @@ from test_agenda_api import proximo_dia
 
 
 class RenglonesApi(BaseApi):
-    def _sesion(self, fecha, hora='09:00', paciente=1, estado='incompleta', quien='laura', **extra):
+    def _sesion(self, fecha, hora='06:45', paciente=1, estado='incompleta', quien='laura', **extra):
         cuerpo = {'id_paciente': paciente, 'fecha': fecha, 'hora_inicio': hora, 'estado': estado}
         cuerpo.update(extra)
         r = self.llamar(quien, 'post', '/api/sesiones', json=cuerpo)
@@ -26,8 +26,8 @@ class RenglonesApi(BaseApi):
 
     # --- escritura y reglas del momento -----------------------------------
     def test_plan_en_sesion_futura_y_registro_solo_si_ya_ocurrio(self):
-        futura = self._sesion(proximo_dia(1, 20), '08:00')
-        pasada = self._sesion(dia_habil_pasado(3), '08:00')
+        futura = self._sesion(proximo_dia(1, 20), '06:15')
+        pasada = self._sesion(dia_habil_pasado(3), '13:00')
         self.assertEqual(self._renglon(futura, 'plan').status_code, 201)
         r = self._renglon(futura, 'registro')
         self.assertEqual((r.status_code, r.get_json()['campo']), (400, 'momento'), r.get_data(as_text=True))
@@ -58,7 +58,7 @@ class RenglonesApi(BaseApi):
         self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
 
     def test_validaciones_de_texto_momento_y_tope(self):
-        id_s = self._sesion(proximo_dia(2, 20), '08:00')
+        id_s = self._sesion(proximo_dia(2, 20), '06:15')
         for cuerpo, campo in (({'momento': 'plan', 'texto': '   '}, 'texto'),
                               ({'momento': 'plan', 'texto': 'x' * 161}, 'texto'),
                               ({'momento': 'otro', 'texto': 'ok'}, 'momento'),
@@ -75,7 +75,7 @@ class RenglonesApi(BaseApi):
         self.assertIn('30 renglones', r.get_json()['mensaje'])
 
     def test_se_guarda_recortado_y_con_marca(self):
-        id_s = self._sesion(proximo_dia(3, 20), '08:00')
+        id_s = self._sesion(proximo_dia(3, 20), '06:15')
         r = self._renglon(id_s, 'plan', '  pinza trípode  ', destacado=True)
         self.assertEqual(r.status_code, 201)
         self.assertEqual(r.get_json()['renglon']['texto'], 'pinza trípode')
@@ -83,7 +83,7 @@ class RenglonesApi(BaseApi):
 
     # --- autoria -----------------------------------------------------------
     def test_solo_el_terapeuta_de_la_sesion_escribe_la_lectura_es_abierta(self):
-        id_s = self._sesion(dia_habil_pasado(6), '08:00')
+        id_s = self._sesion(dia_habil_pasado(6), '06:15')
         id_r = self._renglon(id_s, 'plan').get_json()['renglon']['id']
         # Diego NO escribe en la sesion de Laura...
         self.assertEqual(self._renglon(id_s, 'plan', quien='diego').status_code, 403)
@@ -104,7 +104,7 @@ class RenglonesApi(BaseApi):
         self.assertEqual(self.llamar('laura', 'put', '/api/renglones/99999', json={'texto': 'x'}).status_code, 404)
 
     def test_editar_marcar_cerrar_reabrir_y_borrar(self):
-        id_s = self._sesion(dia_habil_pasado(7), '08:00')
+        id_s = self._sesion(dia_habil_pasado(7), '06:15')
         id_r = self._renglon(id_s, 'plan').get_json()['renglon']['id']
         r = self.llamar('laura', 'put', f'/api/renglones/{id_r}', json={'texto': 'pinza fina', 'destacado': True})
         self.assertEqual(r.get_json()['renglon']['texto'], 'pinza fina')
@@ -124,9 +124,9 @@ class RenglonesApi(BaseApi):
 
     # --- arrastre ----------------------------------------------------------
     def test_arrastre_de_lo_pendiente_hasta_cerrarlo(self):
-        antes = self._sesion(dia_habil_pasado(20), '08:00', paciente=3)
-        despues = self._sesion(dia_habil_pasado(2), '08:00', paciente=3)
-        otro_paciente = self._sesion(dia_habil_pasado(2), '09:00', paciente=1)
+        antes = self._sesion(dia_habil_pasado(20), '06:15', paciente=3)
+        despues = self._sesion(dia_habil_pasado(2), '06:15', paciente=3)
+        otro_paciente = self._sesion(dia_habil_pasado(2), '10:30', paciente=1)
         r1 = self._renglon(antes, 'plan', 'tijera punta roma').get_json()['renglon']['id']
         r2 = self._renglon(antes, 'plan', 'secuencia de 3 pasos').get_json()['renglon']['id']
         self._renglon(antes, 'registro', 'esto no se arrastra')
@@ -146,8 +146,8 @@ class RenglonesApi(BaseApi):
 
     def test_el_plan_de_una_ausencia_se_arrastra(self):
         # "Ausente" anota al lado y lo planificado se mueve hacia adelante
-        ausente = self._sesion(dia_habil_pasado(15), '10:00', paciente=3, estado='ausencia', ausencia_de='paciente')
-        sig = self._sesion(dia_habil_pasado(1), '10:00', paciente=3)
+        ausente = self._sesion(dia_habil_pasado(15), '14:00', paciente=3, estado='ausencia', ausencia_de='paciente')
+        sig = self._sesion(dia_habil_pasado(1), '14:00', paciente=3)
         self._renglon(ausente, 'plan', 'juego con plastilina')
         d = self.llamar('laura', 'get', f'/api/sesiones/{sig}/renglones').get_json()
         self.assertEqual([a['texto'] for a in d['arrastre']], ['juego con plastilina'])
@@ -176,7 +176,7 @@ class RenglonesApi(BaseApi):
 
     def test_concurrencia_el_tope_de_30_es_exacto(self):
         import threading
-        id_s = self._sesion(proximo_dia(4, 25), '08:00')
+        id_s = self._sesion(proximo_dia(4, 25), '06:15')
         token = self.token('laura')
         resultados = []
 
@@ -196,7 +196,7 @@ class RenglonesApi(BaseApi):
 
     # --- la base, sin la API ----------------------------------------------
     def test_la_base_rechaza_lo_que_la_api_no_deja_pasar(self):
-        id_s = self._sesion(dia_habil_pasado(8), '08:00')
+        id_s = self._sesion(dia_habil_pasado(8), '06:15')
         with self.app.app_context():
             from sqlalchemy import text
             for sql in ("INSERT INTO sesion_renglones (id_sesion, momento, texto, cierre) VALUES (%d, 'registro', 'x', 'hecho')" % id_s,

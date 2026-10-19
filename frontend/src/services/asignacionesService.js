@@ -8,6 +8,11 @@ export function listarTerapeutas() {
   return get('/terapeutas');
 }
 
+/** Pacientes con sus asignaciones vigentes (solo administrador). */
+export function listarPacientesAdmin() {
+  return get('/admin/pacientes');
+}
+
 /** Historial de asignaciones del paciente. -> { id_paciente, asignaciones, vigentes } */
 export function listarAsignacionesDePaciente(idPaciente) {
   return get(`/pacientes/${idPaciente}/asignaciones`);

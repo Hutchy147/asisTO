@@ -66,7 +66,7 @@ export default function ModalAgendarSesion({
       subtitulo={
         valores.fecha
           ? `${formatearFecha(valores.fecha)}${valores.hora_inicio ? ` · ${valores.hora_inicio.slice(0, 5)}` : ''}`
-          : 'Se agenda a tu nombre'
+          : 'Se agenda a su nombre'
       }
       guardando={guardando}
       errorServidor={formulario.errorServidor}
@@ -85,7 +85,7 @@ export default function ModalAgendarSesion({
         select
         obligatorio
         ayuda={pacientes.length === 0
-          ? 'No tenés pacientes asignados. Asignate uno desde su ficha, en la pestaña Asignación.'
+          ? 'No tiene pacientes asignados. Solicite la asignación al administrador.'
           : undefined}
         valor={valores.id_paciente}
         onChange={setCampo('id_paciente')}
@@ -126,7 +126,7 @@ export default function ModalAgendarSesion({
         etiqueta="Hora de fin"
         tipo="time"
         tabular
-        ayuda="Opcional. Si la dejás vacía, la sesión dura 45 minutos."
+        ayuda="Opcional. Si se deja vacía, la sesión dura 45 minutos."
         valor={valores.hora_fin}
         onChange={setCampo('hora_fin')}
         error={errorDe('hora_fin')}
@@ -137,7 +137,7 @@ export default function ModalAgendarSesion({
         etiqueta="Notas"
         multilinea
         filas={3}
-        ayuda="Opcional. Lo que querés tener presente para esta sesión."
+        ayuda="Opcional. Aspectos que desea tener presentes para esta sesión."
         valor={valores.notas}
         onChange={setCampo('notas')}
         error={errorDe('notas')}

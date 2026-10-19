@@ -242,7 +242,7 @@ def registrar_evolucion(datos):
     if activos == 0:
         raise ErrorAplicacion(
             'El paciente no tiene objetivos activos: no hay contra que '
-            'calificar. Creá un objetivo antes de cargar la evolucion.',
+            'calificar. Cree un objetivo antes de cargar la evolución.',
             http_status=409,
         )
 

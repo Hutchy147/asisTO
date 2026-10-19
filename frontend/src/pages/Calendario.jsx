@@ -23,6 +23,7 @@ import ModalDetalleSesion from '../components/sesiones/ModalDetalleSesion.jsx';
 import ModalEditarSesion from '../components/sesiones/ModalEditarSesion.jsx';
 import ModalRegistrarSesion from '../components/sesiones/ModalRegistrarSesion.jsx';
 import { Cargando, EstadoError } from '../components/estado/index.js';
+import CalendarioSemanal from './CalendarioSemanal.jsx';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { hayCapacidad } from '../config/entregas.js';
 import { listarPacientes } from '../services/pacientesService.js';
@@ -168,7 +169,7 @@ function Leyenda() {
   );
 }
 
-export default function Calendario() {
+function CalendarioPorDia() {
   const [lunes, setLunes] = useState(() => inicioDeSemana(new Date()));
   const [modalSesion, setModalSesion] = useState(null); // null | {fecha, hora}
   const [agendaSemanal, setAgendaSemanal] = useState(false);
@@ -402,8 +403,8 @@ export default function Calendario() {
           {sesiones.datos.total === 0 && (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               {soloAgenda
-                ? 'No hay sesiones agendadas en esta semana. Podés agendar una o mirar otra semana con los botones de arriba.'
-                : 'No hay sesiones registradas en esta semana. Podés registrar una o mirar otra semana con los botones de arriba.'}
+                ? 'No hay sesiones agendadas en esta semana. Puede agendar una o consultar otra semana con los botones superiores.'
+                : 'No hay sesiones registradas en esta semana. Puede registrar una o consultar otra semana con los botones superiores.'}
             </Typography>
           )}
 
@@ -655,4 +656,11 @@ export default function Calendario() {
       </Snackbar>
     </AppLayout>
   );
+}
+
+
+// Desde la Entrega 3 el calendario es la semana tipo (turnos que se repiten);
+// antes de esa entrega se conserva el calendario por día.
+export default function Calendario() {
+  return hayCapacidad('agenda.recurrente') ? <CalendarioSemanal /> : <CalendarioPorDia />;
 }

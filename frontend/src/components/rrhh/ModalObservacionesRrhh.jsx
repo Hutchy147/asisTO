@@ -157,7 +157,7 @@ export default function ModalObservacionesRrhh({ sesion, abierto, onCerrar, onGu
           onChange={(e) => setTexto(e.target.value)}
           disabled={guardando}
           inputProps={{ maxLength: MAXIMO_CARACTERES }}
-          helperText={`${texto.length} / ${MAXIMO_CARACTERES}. Queda firmada con tu nombre y no se puede editar después.`}
+          helperText={`${texto.length} / ${MAXIMO_CARACTERES}. Queda firmada con su nombre y no se puede editar después.`}
           error={Boolean(error)}
         />
         {error && (

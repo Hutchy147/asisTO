@@ -1,6 +1,6 @@
 # API de asignaciones (HDU 11)
 
-Un paciente tiene un terapeuta responsable. **Solo quien lo tiene asignado en la fecha de la sesión puede registrarle sesiones y evoluciones nuevas** (regla 8, en la base). La lectura sigue abierta entre terapeutas. Todos los endpoints requieren rol `terapeuta`.
+Un paciente tiene un terapeuta responsable. **Solo quien lo tiene asignado en la fecha de la sesión puede registrarle sesiones y evoluciones nuevas** (regla 8, en la base). La lectura sigue abierta entre terapeutas. **Abrir y cerrar asignaciones es exclusivo del rol `admin`**: un terapeuta recibe 403. Las lecturas admiten `terapeuta` y `admin`.
 
 La regla vive en los procedimientos `p_abrir_asignacion` / `p_cerrar_asignacion` y en los triggers `trg_sesiones_solape_insert` y `trg_evoluciones_validar_insert`. La API solo traduce.
 
@@ -8,10 +8,11 @@ La regla vive en los procedimientos `p_abrir_asignacion` / `p_cerrar_asignacion`
 |---|---|
 | `GET /api/terapeutas` | Terapeutas con usuario activo: `{terapeutas: [{id, nombre_completo, especialidad}], total}` |
 | `GET /api/pacientes/<id>/asignaciones` | Historial (vigentes primero): `{id_paciente, asignaciones: [{id, id_terapeuta, terapeuta, fecha_desde, fecha_hasta, vigente}], vigentes}`. Incluye pacientes de baja. 404 si no existe |
-| `POST /api/pacientes/<id>/asignaciones` | Abre. Cuerpo `{id_terapeuta, fecha_desde?}` (AAAA-MM-DD, no futura; por omisión hoy). 201 `{asignacion, mensaje}` |
+| `GET /api/admin/pacientes` | Solo `admin`. Pacientes sin datos clínicos, con `asignaciones_vigentes: [{id, id_terapeuta, terapeuta, fecha_desde}]` |
+| `POST /api/pacientes/<id>/asignaciones` | Solo `admin`. Abre. Cuerpo `{id_terapeuta, fecha_desde?}` (AAAA-MM-DD, no futura; por omisión hoy). 201 `{asignacion, mensaje}` |
 | `POST /api/asignaciones/<id>/cierre` | Cierra. Cuerpo `{fecha_hasta?}` (por omisión hoy; no anterior al inicio). 200 `{asignacion, mensaje}` |
 | `GET /api/pacientes` | Suma `asignado_a_mi` (bool) y `responsables` (lista de nombres vigentes) |
-| `POST /api/pacientes` | Acepta `id_terapeuta` opcional: abre la asignación en el alta. Por omisión, el terapeuta que da el alta. Si la asignación falla, el paciente queda creado y el `mensaje` lo avisa |
+| `POST /api/pacientes` | El alta deja al paciente asignado al terapeuta que lo da de alta; un `id_terapeuta` en el cuerpo se ignora. Si la asignación falla, el paciente queda creado y el `mensaje` lo avisa |
 
 ## Errores (con `campo`)
 

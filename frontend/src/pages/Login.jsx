@@ -147,7 +147,7 @@ export default function Login() {
 
             {hayCapacidad('auth.recuperar') && (
               <Link component={RouterLink} to="/recuperar" underline="hover" sx={{ textAlign: 'center' }}>
-                ¿Olvidaste tu contraseña?
+                ¿Olvidó su contraseña?
               </Link>
             )}
           </Stack>

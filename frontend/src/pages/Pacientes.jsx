@@ -180,7 +180,7 @@ export default function Pacientes() {
             <EstadoVacio
               titulo="Ningún paciente coincide con la búsqueda"
               descripcion={soloMios && !busqueda.trim()
-                ? 'No tenés pacientes asignados. Podés asignarte uno desde su ficha, en la pestaña Asignación.'
+                ? 'No tiene pacientes asignados. Solicite la asignación al administrador.'
                 : `No encontramos a nadie que coincida con “${busqueda.trim()}”. Probá con parte del apellido o con el número de historia.`}
               acciones={
                 <Button variant="outlined" onClick={() => { setBusqueda(''); setSoloMios(false); }}>

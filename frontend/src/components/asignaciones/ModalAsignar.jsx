@@ -50,7 +50,7 @@ export default function ModalAsignar({
         etiqueta="Terapeuta responsable"
         select
         obligatorio
-        ayuda="Solo quien tiene asignado al paciente puede registrar sus sesiones y evoluciones. Los demás terapeutas lo siguen viendo."
+        ayuda="Solo el terapeuta asignado puede registrar las sesiones y evoluciones del paciente. Los demás terapeutas pueden consultarlo."
         valor={valores.id_terapeuta}
         onChange={setCampo('id_terapeuta')}
         error={errorDe('id_terapeuta')}
@@ -67,7 +67,7 @@ export default function ModalAsignar({
         etiqueta="Desde"
         tipo="date"
         tabular
-        ayuda="Opcional. Sin dato, desde hoy. Una fecha anterior permite cargar sesiones retroactivas."
+        ayuda="Opcional. Si se deja vacía, rige desde hoy. Una fecha anterior permite cargar sesiones retroactivas."
         valor={valores.fecha_desde}
         onChange={setCampo('fecha_desde')}
         error={errorDe('fecha_desde')}

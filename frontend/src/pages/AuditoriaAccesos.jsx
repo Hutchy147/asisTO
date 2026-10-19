@@ -131,7 +131,7 @@ export default function AuditoriaAccesos() {
             </Grid>
 
             {datos.accesos.length === 0 ? (
-              <EstadoVacio titulo="No hay accesos con ese filtro" descripcion="Probá con un rango más amplio o sacá el filtro de resultado." />
+              <EstadoVacio titulo="No hay accesos con ese filtro" descripcion="Pruebe con un rango más amplio o quite el filtro de resultado." />
             ) : (
               <>
                 <DataTable columnas={columnas} filas={datos.accesos} claveFila={(a) => a.id} />

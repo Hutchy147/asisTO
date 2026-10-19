@@ -109,6 +109,7 @@ const theme = createTheme({
       rrhh: { fg: NAVY, bg: NAVY_100 },
       familiar: { fg: ARCILLA_700, bg: ARCILLA_100 },
       paciente: { fg: SALVIA_700, bg: SALVIA_100 },
+      admin: { fg: NAVY, bg: NAVY_100 },
     },
 
     // Estados de sesión (calendario, chips, listados) — HDU4.
@@ -124,6 +125,7 @@ const theme = createTheme({
       completa: { fg: EUCALIPTO_700, bg: EUCALIPTO_100 },
       incompleta: { fg: AMBAR_700, bg: AMBAR_100 },
       ausencia: { fg: LADRILLO_700, bg: LADRILLO_100 },
+      agendada: { fg: NAVY, bg: NAVY_100 },
     },
 
     // Feedback: reutiliza los semánticos. No hay azul de "info".

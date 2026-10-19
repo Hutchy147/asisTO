@@ -38,7 +38,7 @@ import { Cargando, EstadoError, EstadoVacio } from '../estado/index.js';
 import { usePeticion } from '../../hooks/usePeticion.js';
 import { etiquetaDeValor } from '../../services/evolucionesService.js';
 import {
-  ESTADO_AUSENCIA, ETIQUETA_AUSENCIA_DE, obtenerSesion,
+  ESTADO_AUSENCIA, ETIQUETA_AUSENCIA_DE, estadoVisible, obtenerSesion,
 } from '../../services/sesionesService.js';
 import { formatearFecha } from '../../utils/fechas.js';
 
@@ -190,7 +190,7 @@ export default function ModalDetalleSesion({
         <>
           <Box sx={{ mb: 2.5 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-              <SesionEstadoChip estado={sesion.estado} />
+              <SesionEstadoChip {...estadoVisible(sesion)} />
               <Typography variant="body2" color="text.secondary">
                 Atendió {datos.terapeuta?.nombre_completo ?? 'un terapeuta del centro'}
                 {esPropia ? '' : ' · otro terapeuta'}

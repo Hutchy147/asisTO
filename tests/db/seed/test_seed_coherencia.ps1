@@ -44,7 +44,7 @@ SELECT CONCAT_WS(',',
 # ya habia corrido otro modulo: con `run_all.ps1` cada modulo tiene su propia
 # base, pero corriendo dos modulos a mano contra la misma base estos numeros
 # dan cualquier cosa.
-$esperado = "6,4,3,9,6,13,15"
+$esperado = "7,4,3,9,6,13,15"
 $resultados += Assert-True $modulo "conteos_iniciales_coinciden_con_estado_md" ($conteos -eq $esperado) `
     "Conteos: $conteos" "Conteos no coinciden. Esperado $esperado, obtenido $conteos"
 
@@ -126,7 +126,7 @@ SELECT CONCAT_WS(',',
 );
 "@
 $resultados += Assert-True $modulo "seed_recargable_dos_veces_seguidas_sin_error" `
-    ($rReload1.ExitCode -eq 0 -and $rReload2.ExitCode -eq 0 -and $conteosTrasRecarga -eq "6,4,9,13,15") `
+    ($rReload1.ExitCode -eq 0 -and $rReload2.ExitCode -eq 0 -and $conteosTrasRecarga -eq "7,4,9,13,15") `
     "Conteos estables tras recargar dos veces: $conteosTrasRecarga" `
     "Recargar el seed dos veces seguidas fallo o cambio los conteos: $conteosTrasRecarga. Error1: $($rReload1.StdErr.Trim()) Error2: $($rReload2.StdErr.Trim())"
 

@@ -63,7 +63,7 @@ export default function RecuperarContrasena() {
           <form onSubmit={enviar} noValidate>
             <Stack spacing={2}>
               <Typography variant="body2" color="text.secondary">
-                Ingresá el email de tu cuenta y te generamos un enlace para elegir una contraseña nueva.
+                Ingrese el email de su cuenta y se generará un enlace para elegir una contraseña nueva.
               </Typography>
               <TextField
                 label="Email" type="email" value={email} autoFocus required fullWidth

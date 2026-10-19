@@ -21,8 +21,10 @@ const ETIQUETAS = {
   ausencia: 'Ausencia',
 };
 
-export default function SesionEstadoChip({ estado }) {
-  const etiqueta = ETIQUETAS[estado] ?? estado;
+export default function SesionEstadoChip({ estado, etiqueta: etiquetaPropia }) {
+  // `etiqueta` permite mostrar el estado visible (ver estadoVisible) sin
+  // cambiar el color por estado declarado.
+  const etiqueta = etiquetaPropia ?? ETIQUETAS[estado] ?? estado;
 
   return (
     <Box
