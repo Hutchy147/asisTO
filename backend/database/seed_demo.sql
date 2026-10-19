@@ -687,15 +687,18 @@ INSERT INTO preferencias_notificacion (id_familiar, tipo, habilitada) VALUES
   (3, 'nueva_sesion', FALSE), (3, 'informe_generado', TRUE),  (3, 'cambio_objetivo', TRUE),
   (4, 'nueva_sesion', TRUE),  (4, 'informe_generado', FALSE), (4, 'cambio_objetivo', TRUE);
 
+-- Los textos llevan tildes pero el archivo es ASCII: se escriben como bytes
+-- UTF-8 en hexadecimal y se convierten (Windows carga este archivo sin
+-- depender de la codificacion de consola).
 INSERT INTO notificaciones (id_familiar, id_paciente, tipo, mensaje, leida, fecha) VALUES
-  (1, 1,  'nueva_sesion',     'Se registro una nueva sesion para Tomas.',        TRUE,  '2026-06-02 10:05:00'),
-  (1, 1,  'cambio_objetivo',  'Se archivo un objetivo de Tomas.',                TRUE,  '2026-06-20 11:05:00'),
-  (1, 5,  'informe_generado', 'El informe del segundo trimestre esta listo.',    FALSE, '2026-07-01 09:00:00'),
-  (2, 2,  'nueva_sesion',     'Se registro una nueva sesion para Valentina.',    FALSE, '2026-06-10 12:05:00'),
-  (3, 7,  'nueva_sesion',     'Se registro una nueva sesion para Lucia.',        FALSE, '2026-06-11 09:30:00'),
-  (3, 10, 'informe_generado', 'El informe de Benicio esta disponible.',          FALSE, '2026-07-01 09:10:00'),
-  (4, 8,  'cambio_objetivo',  'Se agrego un objetivo nuevo para Thiago.',        TRUE,  '2026-06-15 16:20:00'),
-  (4, 11, 'nueva_sesion',     'Se registro una nueva sesion para Renata.',       FALSE, '2026-06-18 11:00:00');
+  (1, 1, 'nueva_sesion', CONVERT(0x53652072656769737472C3B3206C612073657369C3B36E2064656C2030322F30362F3230323620646520546F6D61732E USING utf8mb4), TRUE, '2026-06-02 10:05:00'),
+  (1, 1, 'cambio_objetivo', CONVERT(0x536520617263686976C3B320756E206F626A657469766F2064656C20706C616E20646520546F6D61733A20536F7374656E6572206C61206174656E6369C3B36E20656E207461726561732064652063696E636F206D696E75746F732E USING utf8mb4), TRUE, '2026-06-20 11:05:00'),
+  (1, 5, 'informe_generado', CONVERT(0x596120657374C3A120646973706F6E69626C6520756E20696E666F726D65206E7565766F206465204D69612E USING utf8mb4), FALSE, '2026-07-01 09:00:00'),
+  (2, 2, 'nueva_sesion', CONVERT(0x53652072656769737472C3B3206C612073657369C3B36E2064656C2030332F30362F323032362064652056616C656E74696E612E USING utf8mb4), FALSE, '2026-06-10 12:05:00'),
+  (3, 7, 'nueva_sesion', CONVERT(0x53652072656769737472C3B3206C612073657369C3B36E2064656C2030342F30362F32303236206465204C7563C3AD612E USING utf8mb4), FALSE, '2026-06-11 09:30:00'),
+  (3, 10, 'informe_generado', CONVERT(0x596120657374C3A120646973706F6E69626C6520756E20696E666F726D65206E7565766F2064652042656E6963696F2E USING utf8mb4), FALSE, '2026-07-01 09:10:00'),
+  (4, 8, 'cambio_objetivo', CONVERT(0x5365206167726567C3B320756E206F626A657469766F20616C20706C616E2064652054686961676F3A205265636F6E6F6365722079206E6F6D627261722063756174726F20656D6F63696F6E65732062C3A173696361732E USING utf8mb4), TRUE, '2026-06-15 16:20:00'),
+  (4, 11, 'nueva_sesion', CONVERT(0x53652072656769737472C3B3206C612073657369C3B36E2064656C2031372F30362F323032362064652052656E6174612E USING utf8mb4), FALSE, '2026-06-18 11:00:00');
 
 -- Observaciones tecnicas de RRHH sobre las primeras ausencias registradas
 INSERT INTO observaciones_rrhh (id_sesion, id_rrhh, texto)

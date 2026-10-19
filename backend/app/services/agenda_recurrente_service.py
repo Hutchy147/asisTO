@@ -197,7 +197,7 @@ def generar_agenda(datos, hoy=None):
                     'id_paciente': pl.id_paciente, 'fecha': dia.isoformat(),
                     'hora_inicio': hora_inicio, 'hora_fin': formatear_hora(pl.hora_fin),
                     'estado': 'incompleta',
-                })
+                }, notificar=False)  # turnos generados: no son sesiones cargadas
                 creadas += 1
             except ErrorAplicacion as error:
                 db.session.rollback()

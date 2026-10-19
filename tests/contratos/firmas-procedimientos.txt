@@ -87,3 +87,4 @@ p_solicitar_recuperacion | 4 | IN p_email, IN p_token_hash, IN p_minutos, OUT p_
 p_vincular_familiar | 4 | IN p_id_familiar, IN p_id_paciente, OUT p_ok, OUT p_mensaje
 p_desvincular_familiar | 4 | IN p_id_familiar, IN p_id_paciente, OUT p_ok, OUT p_mensaje
 p_crear_familiar_y_vincular | 9 | IN p_nombre, IN p_apellido, IN p_email, IN p_hash, IN p_parentesco, IN p_telefono, IN p_id_paciente, OUT p_id_familiar, OUT p_mensaje
+p_notificar_paciente | 5 | IN p_id_paciente, IN p_tipo, IN p_texto, OUT p_enviadas, OUT p_mensaje

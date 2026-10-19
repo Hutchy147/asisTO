@@ -198,6 +198,12 @@ def obtener_objetivo(id_objetivo):
     return objetivo
 
 
+def _avisar(objetivo, accion):
+    """Aviso a la familia (Entrega 4), ya confirmado el cambio. Mejor esfuerzo."""
+    from app.services.notificaciones_service import avisar_objetivo
+    avisar_objetivo(objetivo, accion)
+
+
 @reintentar_en_deadlock()
 def crear_objetivo(datos):
     """
@@ -235,6 +241,7 @@ def crear_objetivo(datos):
         raise
 
     logger.info('Objetivo %s creado para paciente %s', objetivo.id, paciente.id)
+    _avisar(objetivo, 'agregado')
     return objetivo
 
 
@@ -271,6 +278,7 @@ def editar_descripcion(id_objetivo, datos):
         raise
 
     logger.info('Objetivo %s editado', objetivo.id)
+    _avisar(objetivo, 'modificado')
     return objetivo
 
 
@@ -298,4 +306,5 @@ def archivar_objetivo(id_objetivo):
     db.session.commit()
 
     logger.info('Objetivo %s archivado', objetivo.id)
+    _avisar(objetivo, 'archivado')
     return objetivo

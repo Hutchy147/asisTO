@@ -19,6 +19,7 @@ import PacienteFicha from './pages/PacienteFicha.jsx';
 import Pacientes from './pages/Pacientes.jsx';
 import Panel from './pages/Panel.jsx';
 import PanelRrhh from './pages/PanelRrhh.jsx';
+import NotificacionesFamiliar from './pages/NotificacionesFamiliar.jsx';
 import PortalFamiliar from './pages/PortalFamiliar.jsx';
 import RecuperarContrasena from './pages/RecuperarContrasena.jsx';
 import RestablecerContrasena from './pages/RestablecerContrasena.jsx';
@@ -42,6 +43,7 @@ const ELEMENTO_POR_RUTA = {
   '/rrhh/auditoria': <AuditoriaAccesos />,
   '/admin': <AdminAsignaciones />,
   '/familiar': <PortalFamiliar />,
+  '/familiar/notificaciones': <NotificacionesFamiliar />,
   '/paciente': <Dashboard rol="paciente" />,
 };
 

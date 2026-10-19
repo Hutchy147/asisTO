@@ -23,10 +23,11 @@ from app.models.sesion_renglon import SesionRenglon
 from app.models.agenda_recurrente import AgendaRecurrente
 from app.models.sesion_objetivo import SesionObjetivo
 from app.models.familiar_paciente import FamiliarPaciente
+from app.models.notificacion import Notificacion, PreferenciaNotificacion
 
 __all__ = [
     'Usuario', 'Terapeuta', 'Rrhh', 'Familiar', 'Paciente',
     'ObjetivoTerapeutico', 'Sesion', 'Evolucion', 'ObservacionRrhh', 'Asignacion',
     'AuditoriaAcceso', 'SesionRenglon', 'AgendaRecurrente',
-    'SesionObjetivo', 'FamiliarPaciente',
+    'SesionObjetivo', 'FamiliarPaciente', 'Notificacion', 'PreferenciaNotificacion',
 ]

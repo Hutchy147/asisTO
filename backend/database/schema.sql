@@ -3558,6 +3558,97 @@ END$$
 
 
 -- ---------------------------------------------------------------------
+-- p_notificar_paciente (Entrega 4)
+--
+-- Un aviso por cada familiar vinculado al paciente, con cuenta activa y que
+-- NO haya desactivado ese tipo. Sin fila en preferencias_notificacion el tipo
+-- esta habilitado (los familiares nuevos no tienen filas). Una sola sentencia
+-- INSERT ... SELECT: o salen todos los avisos o ninguno.
+--
+-- La aplicacion lo llama DESPUES de confirmar el cambio que se avisa, en una
+-- transaccion aparte y sin que su falla deshaga ese cambio: un aviso perdido
+-- no puede tirar abajo el registro de una sesion. p_enviadas dice a cuantos
+-- familiares llego (0 es un resultado valido: nadie vinculado o tipo apagado).
+--
+-- Lock: pacientes FOR SHARE (orden general: pacientes primero). Protege
+-- contra una baja o un cambio de vinculos a mitad del envio.
+-- ---------------------------------------------------------------------
+CREATE PROCEDURE p_notificar_paciente (
+  IN  p_id_paciente  INT UNSIGNED,
+  IN  p_tipo         VARCHAR(30),
+  IN  p_texto        VARCHAR(500),
+  OUT p_enviadas     INT,
+  OUT p_mensaje      VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error     VARCHAR(255) DEFAULT '';
+  DECLARE v_paciente  INT UNSIGNED DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_enviadas = 0;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_enviadas = 0;
+    SET p_mensaje = 'No se pudo enviar el aviso por un error interno';
+  END;
+
+  SET p_enviadas = 0;
+
+  IF p_tipo NOT IN ('nueva_sesion', 'informe_generado', 'cambio_objetivo') THEN
+    SET p_mensaje = 'El tipo de aviso indicado no es valido';
+  ELSEIF p_texto IS NULL OR TRIM(p_texto) = '' THEN
+    SET p_mensaje = 'El aviso no puede estar vacio';
+  ELSE
+    START TRANSACTION;
+
+    SELECT id INTO v_paciente
+      FROM pacientes
+     WHERE id = p_id_paciente
+     FOR SHARE;
+
+    IF v_paciente IS NULL THEN
+      ROLLBACK;
+      SET p_mensaje = 'El paciente indicado no existe';
+    ELSE
+      INSERT INTO notificaciones (id_familiar, id_paciente, tipo, mensaje)
+      SELECT fp.id_familiar, p_id_paciente, p_tipo, p_texto
+        FROM familiares_pacientes fp
+        JOIN familiares f ON f.id = fp.id_familiar
+        JOIN usuarios u   ON u.id = f.id_usuario AND u.activo = TRUE
+        LEFT JOIN preferencias_notificacion pn
+               ON pn.id_familiar = fp.id_familiar AND pn.tipo = p_tipo
+       WHERE fp.id_paciente = p_id_paciente
+         AND COALESCE(pn.habilitada, TRUE) = TRUE;
+
+      SET p_enviadas = ROW_COUNT();
+
+      COMMIT;
+      SET p_mensaje = 'Aviso enviado';
+    END IF;
+  END IF;
+END$$
+
+
+-- ---------------------------------------------------------------------
 -- p_reporte_sesiones_periodo — modulo RRHH
 --
 -- LIMITE DURO: este procedimiento NO devuelve contenido clinico. Nada de

@@ -496,7 +496,7 @@ def obtener_detalle(id_sesion):
 
 
 @reintentar_en_deadlock()
-def registrar_sesion(datos):
+def registrar_sesion(datos, notificar=True):
     """
     Registra via p_registrar_sesion. No se duplica la validacion de
     superposicion: la hace el procedimiento y ademas el trigger.
@@ -570,6 +570,14 @@ def registrar_sesion(datos):
 
     sesion = Sesion.query.get(int(id_creada))
     logger.info('Sesion %s registrada por terapeuta %s', sesion.id, terapeuta.id)
+
+    # Aviso a la familia (Entrega 4), ya confirmada la sesion. Mejor esfuerzo:
+    # si falla, la sesion queda registrada igual. La agenda recurrente genera
+    # turnos a futuro y pasa notificar=False: lo agendado no es una sesion
+    # cargada.
+    if notificar:
+        from app.services.notificaciones_service import avisar_sesion
+        avisar_sesion(sesion)
 
     return sesion, mensaje
 
