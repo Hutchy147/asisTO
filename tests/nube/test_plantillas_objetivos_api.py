@@ -95,7 +95,13 @@ class PlantillasObjetivosApi(BaseApi):
 
     def test_quitar_una_plantilla_no_toca_objetivos_ya_creados(self):
         p = self.crear(descripcion='Texto copiado al objetivo').get_json()['plantilla']
-        r = self.llamar('laura', 'post', '/api/objetivos', json={'id_paciente': 1, 'descripcion': p['descripcion']})
+        # Un paciente de Laura con cupo (otros modulos pueden dejar a uno en 4).
+        filas = self.sql("""SELECT p.id FROM pacientes p
+                              LEFT JOIN objetivos_terapeuticos o ON o.id_paciente = p.id AND o.activo = TRUE
+                             WHERE p.id IN (1, 3) GROUP BY p.id HAVING COUNT(o.id) < 4 LIMIT 1""")
+        if not filas:
+            self.skipTest('Ningun paciente de Laura tiene cupo de objetivos')
+        r = self.llamar('laura', 'post', '/api/objetivos', json={'id_paciente': filas[0][0], 'descripcion': p['descripcion']})
         self.assertIn(r.status_code, (200, 201), r.get_data(as_text=True))
         id_obj = (r.get_json().get('objetivo') or r.get_json())['id']
         self.addCleanup(lambda: self.sql(f'DELETE FROM objetivos_terapeuticos WHERE id = {id_obj}'))
