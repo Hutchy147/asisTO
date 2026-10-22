@@ -6,6 +6,7 @@ import hashlib
 import logging
 import re
 import secrets
+import time
 
 from flask import current_app, request
 from sqlalchemy import text
@@ -68,6 +69,28 @@ def _segundos_de_bloqueo(id_usuario):
             'FROM usuarios WHERE id = :id'
         ),
         {'id': id_usuario},
+    ).scalar()
+    db.session.rollback()  # cierra la transaccion de lectura
+    return restantes if restantes and restantes > 0 else 0
+
+
+def _segundos_de_bloqueo_sin_cuenta(email):
+    """
+    Bloqueo de un email SIN cuenta, con la misma regla que tiene una cuenta
+    real: MAX_INTENTOS fallos en BLOQUEO_MINUTOS. Sin esto, el 429 aparecia
+    solo para los emails que existen y permitia averiguar cuales tienen
+    cuenta. El contador sale de auditoria_accesos (los fallos sin usuario).
+    """
+    restantes = db.session.execute(
+        text(
+            'SELECT TIMESTAMPDIFF(SECOND, NOW(), '
+            'DATE_ADD(fecha, INTERVAL :minutos MINUTE)) '
+            'FROM auditoria_accesos '
+            "WHERE email = :email AND id_usuario IS NULL AND resultado = 'fallido' "
+            'AND fecha > DATE_SUB(NOW(), INTERVAL :minutos MINUTE) '
+            'ORDER BY fecha DESC, id DESC LIMIT 1 OFFSET :corte'
+        ),
+        {'email': email[:180], 'minutos': BLOQUEO_MINUTOS, 'corte': MAX_INTENTOS - 1},
     ).scalar()
     db.session.rollback()  # cierra la transaccion de lectura
     return restantes if restantes and restantes > 0 else 0
@@ -138,13 +161,22 @@ def autenticar(email, contrasena):
     #
     # Que se filtre no es una contrasena: es si una direccion esta
     # registrada en un centro de terapia ocupacional, que ya es informacion
-    # sensible por si sola. Y se combina mal con que todavia no haya limite
-    # de intentos: primero se enumeran cuentas validas, despues se prueban
-    # contrasenas contra esas.
+    # sensible por si sola. Por la misma razon el bloqueo por intentos
+    # tambien corre para los emails sin cuenta (ver
+    # _segundos_de_bloqueo_sin_cuenta): si solo bloqueara a los reales, el
+    # 429 diria cuales existen.
     if usuario is None:
         consumir_tiempo_de_verificacion(contrasena)
         logger.info('Login fallido: email inexistente')
+        segundos = _segundos_de_bloqueo_sin_cuenta(email)
+        if segundos:
+            _auditar(None, email, 'bloqueado')
+            raise ErrorAplicacion(_mensaje_bloqueo(segundos), http_status=429)
         _auditar(None, email, 'fallido')
+        # El fallo que completa el cupo se bloquea igual que en una cuenta real.
+        segundos = _segundos_de_bloqueo_sin_cuenta(email)
+        if segundos:
+            raise ErrorAplicacion(_mensaje_bloqueo(segundos), http_status=429)
         raise ErrorAplicacion(MENSAJE_CREDENCIALES, http_status=401)
 
     id_usuario = usuario.id
@@ -214,6 +246,18 @@ def _hash_token(token):
     return hashlib.sha256(token.encode('utf-8')).hexdigest()
 
 
+# Piso de tiempo de la recuperacion: con cuenta el pedido escribe un token
+# (~50 ms) y sin cuenta no (~5 ms); esa diferencia delataba que emails existen.
+# Los dos caminos tardan al menos esto.
+TIEMPO_MINIMO_RECUPERACION = 0.3
+
+
+def _igualar_tiempo(inicio):
+    faltante = TIEMPO_MINIMO_RECUPERACION - (time.perf_counter() - inicio)
+    if faltante > 0:
+        time.sleep(faltante)
+
+
 @reintentar_en_deadlock()
 def solicitar_recuperacion(email):
     """
@@ -229,6 +273,7 @@ def solicitar_recuperacion(email):
     if not email:
         raise ErrorAplicacion('Ingrese su email.', campo='email')
 
+    inicio = time.perf_counter()
     token = secrets.token_urlsafe(32)
     db.session.execute(
         text(
@@ -241,13 +286,16 @@ def solicitar_recuperacion(email):
 
     if id_usuario is None:
         logger.info('Recuperacion pedida para un email sin cuenta activa')
+        _igualar_tiempo(inicio)
         return MENSAJE_RECUPERACION, None
 
     logger.info('Recuperacion generada para usuario %s', id_usuario)
     if current_app.config.get('RECUPERACION_MOSTRAR_TOKEN'):
         # Solo desarrollo: sin mail, el enlace se loguea y se devuelve.
         logger.warning('ENLACE DE RECUPERACION (usuario %s): /restablecer/%s', id_usuario, token)
+        _igualar_tiempo(inicio)
         return MENSAJE_RECUPERACION, token
+    _igualar_tiempo(inicio)
     return MENSAJE_RECUPERACION, None
 
 

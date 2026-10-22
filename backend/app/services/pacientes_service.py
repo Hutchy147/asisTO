@@ -279,6 +279,13 @@ def _texto_valido(datos, clave, etiqueta, maximo, obligatorio=True):
 
 
 @reintentar_en_deadlock()
+def _exigir_responsable(id_paciente, accion, **opciones):
+    """404 si el paciente no existe; 403 si el terapeuta no es el responsable."""
+    from app.services.asignaciones_service import exigir_responsable
+    obtener_paciente(id_paciente, incluir_inactivos=True)
+    exigir_responsable(id_paciente, accion, **opciones)
+
+
 def editar_paciente(id_paciente, datos):
     """
     Edicion via p_editar_paciente. NO toca id_usuario ni el estado de baja.
@@ -290,6 +297,8 @@ def editar_paciente(id_paciente, datos):
 
     Devuelve (paciente, mensaje).
     """
+    _exigir_responsable(id_paciente, 'editar sus datos', omitir_si_de_baja=True)
+
     nombre = _texto_valido(datos, 'nombre', 'nombre', MAXIMO_CARACTERES_NOMBRE)
     apellido = _texto_valido(datos, 'apellido', 'apellido', MAXIMO_CARACTERES_APELLIDO)
     nro_historia = _texto_valido(
@@ -360,6 +369,11 @@ def baja_paciente(id_paciente, datos=None):
             "Indique si se trata de una pausa o del alta del tratamiento.", campo='tipo'
         )
 
+    _exigir_responsable(
+        id_paciente,
+        'pausar el tratamiento' if tipo == 'pausa' else 'dar el alta',
+        omitir_si_de_baja=True,
+    )
     if tipo == 'pausa':
         return _pausar(id_paciente, datos.get('motivo'))
     return _alta(id_paciente)
@@ -437,7 +451,14 @@ def reactivar_paciente(id_paciente):
 
     Ver p_reactivar_paciente en schema.sql para el porque de cada una de esas
     dos omisiones: las dos son decisiones, no simplificaciones.
+
+    Lo puede hacer el terapeuta responsable (la pausa no cierra la
+    asignacion) o, si el alta dejo al paciente sin responsable, cualquier
+    terapeuta: de otro modo nadie podria volver a abrirlo.
     """
+    _exigir_responsable(
+        id_paciente, 'reactivar el tratamiento', permitir_sin_responsable=True
+    )
     db.session.execute(
         text('CALL p_reactivar_paciente(:id_paciente, @p_reactivado, @p_mensaje)'),
         {'id_paciente': id_paciente},

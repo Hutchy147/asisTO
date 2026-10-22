@@ -650,6 +650,7 @@ def editar_sesion(id_sesion, datos):
     # hermana de dupla (la base mueve las dos juntas).
     horario_antes = (sesion.fecha, sesion.hora_inicio, sesion.hora_fin)
     id_dupla = sesion.id_dupla
+    estado_antes = sesion.estado
 
     fecha = (datos.get('fecha') or '').strip()
     hora_inicio = (datos.get('hora_inicio') or '').strip()
@@ -708,6 +709,12 @@ def editar_sesion(id_sesion, datos):
     db.session.expire_all()
     sesion = Sesion.query.get(sesion.id)
     logger.info('Sesion %s editada por terapeuta %s', sesion.id, terapeuta.id)
+
+    # Aviso a la familia (Entrega 4): al cerrar el registro del dia. Mejor
+    # esfuerzo, una sola vez por sesion. Ver avisar_sesion_cerrada.
+    if sesion.estado != estado_antes and sesion.estado in ('completa', 'ausencia'):
+        from app.services.notificaciones_service import avisar_sesion_cerrada
+        avisar_sesion_cerrada(sesion)
 
     mensaje = acentuar(mensaje)
     if id_dupla and horario_antes != (sesion.fecha, sesion.hora_inicio, sesion.hora_fin):

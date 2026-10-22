@@ -191,6 +191,44 @@ def ids_de_pacientes_asignados(id_terapeuta):
     return {f[0] for f in filas}
 
 
+def _tiene_responsable_vigente(id_paciente):
+    return db.session.query(Asignacion.id).filter(
+        Asignacion.id_paciente == id_paciente,
+        Asignacion.fecha_hasta.is_(None),
+    ).first() is not None
+
+
+def exigir_responsable(id_paciente, accion, permitir_sin_responsable=False,
+                       omitir_si_de_baja=False):
+    """
+    La escritura clinica sobre un paciente (objetivos, datos, pausa, alta) es
+    de quien lo tiene asignado: la lectura es abierta entre terapeutas, pero
+    una terapeuta sin asignacion no decide sobre un paciente ajeno.
+
+    permitir_sin_responsable: para reactivar a un paciente que quedo sin
+    ninguna asignacion vigente (el alta las cierra todas) y que nadie mas
+    podria volver a abrir.
+
+    omitir_si_de_baja: con el paciente dado de baja no se controla nada: la
+    base rechaza la operacion con su propio mensaje, que explica mejor que un
+    "no esta asignado" (el alta cierra todas las asignaciones).
+    """
+    from app.services.sesiones_service import terapeuta_actual
+    if omitir_si_de_baja:
+        paciente = db.session.get(Paciente, id_paciente)
+        if paciente is not None and not paciente.activo:
+            return
+    if id_paciente in ids_de_pacientes_asignados(terapeuta_actual().id):
+        return
+    if permitir_sin_responsable and not _tiene_responsable_vigente(id_paciente):
+        return
+    raise ErrorAplicacion(
+        f'Este paciente no está asignado a usted: solo el terapeuta '
+        f'responsable puede {accion}.',
+        http_status=403,
+    )
+
+
 def responsables_vigentes():
     """{id_paciente: [nombre terapeuta, ...]} de las asignaciones vigentes."""
     asignaciones = Asignacion.query.filter(Asignacion.fecha_hasta.is_(None)).all()

@@ -77,16 +77,44 @@ def _nombre(id_paciente):
     return paciente.nombre if paciente else 'el paciente'
 
 
-def avisar_sesion(sesion):
-    """Aviso de sesion cargada. Solo sesiones ya ocurridas (fecha <= hoy)."""
-    fecha = sesion.fecha
-    if fecha > dt.date.today():
-        return 0
+def _texto_sesion(sesion):
+    fecha = _fecha(sesion.fecha)
     nombre = _nombre(sesion.id_paciente)
     if sesion.estado == 'ausencia':
-        texto = f'Se registró una ausencia en la sesión del {_fecha(fecha)} de {nombre}.'
-    else:
-        texto = f'Se registró la sesión del {_fecha(fecha)} de {nombre}.'
+        return f'Se registró una ausencia en la sesión del {fecha} de {nombre}.'
+    return f'Se registró la sesión del {fecha} de {nombre}.'
+
+
+def avisar_sesion(sesion):
+    """
+    Aviso de sesion cargada. Solo sesiones ya ocurridas (fecha <= hoy) y con
+    el registro cerrado: una sesion 'incompleta' todavia no se informa, el
+    aviso sale cuando pasa a realizada o a ausencia.
+    """
+    if sesion.estado not in ('completa', 'ausencia'):
+        return 0
+    return avisar_sesion_cerrada(sesion)
+
+
+def avisar_sesion_cerrada(sesion):
+    """
+    Aviso al cerrar el registro del dia (la sesion pasa a realizada o a
+    ausencia). Las sesiones salen de la agenda recurrente ya creadas y sin
+    aviso, asi que este es el momento en que la familia se entera.
+
+    Una sola vez por sesion: reabrir y volver a cerrar el registro no repite
+    el aviso (el texto lleva la fecha, que identifica a la sesion del
+    paciente).
+    """
+    if sesion.fecha > dt.date.today():
+        return 0
+    texto = _texto_sesion(sesion)[:500]
+    ya_avisado = Notificacion.query.filter_by(
+        id_paciente=sesion.id_paciente, tipo='nueva_sesion', mensaje=texto,
+    ).first()
+    db.session.rollback()  # cierra la transaccion de lectura
+    if ya_avisado is not None:
+        return 0
     return emitir(sesion.id_paciente, 'nueva_sesion', texto)
 
 

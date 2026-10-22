@@ -27,8 +27,8 @@ if cabecera not in s:
 open(dst, 'w', encoding='utf-8').write(s.replace(cabecera, '', 1))
 PY
 mysql -e "DROP DATABASE IF EXISTS \`$BASE\`; CREATE DATABASE \`$BASE\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-mysql "$BASE" < "$TMP" > /dev/null
-mysql "$BASE" < "$RAIZ/backend/database/$SEED" > /dev/null
+mysql --default-character-set=utf8mb4 "$BASE" < "$TMP" > /dev/null
+mysql --default-character-set=utf8mb4 "$BASE" < "$RAIZ/backend/database/$SEED" > /dev/null
 mysql -e "GRANT ALL ON \`$BASE\`.* TO 'asisto_app'@'localhost'; FLUSH PRIVILEGES;"
 rm -f "$TMP"
 ( cd "$RAIZ/backend" && DB_NAME="$BASE" /home/claude/venv/bin/python scripts/generar_hashes.py --aplicar --todos | tail -1 )

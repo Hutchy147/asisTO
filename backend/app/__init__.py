@@ -33,6 +33,7 @@ def create_app(config_class=Config):
     )
 
     registrar_manejadores_de_error(app)
+    registrar_acentuacion_de_mensajes(app)
     register_blueprints(app)
 
     return app
@@ -105,6 +106,34 @@ def registrar_manejadores_de_error(app):
             'mensaje': 'Ocurrio un error inesperado. Intente nuevamente.',
             'codigo': 'error_interno',
         }), 500
+
+
+def registrar_acentuacion_de_mensajes(app):
+    """
+    Restituye las tildes del `mensaje` de primer nivel de cada respuesta JSON.
+
+    Los mensajes del sistema (los de los procedimientos y los de la capa de
+    aplicacion) se escriben en ASCII; las tildes se ponen aca, en un solo
+    lugar, para que no dependan de que cada servicio se acuerde de hacerlo.
+    Solo toca `mensaje`: lo que escribe la gente nunca pasa por aca.
+    """
+    from app.utils.textos import acentuar
+
+    @app.after_request
+    def acentuar_respuesta(respuesta):
+        if respuesta.mimetype != 'application/json' or respuesta.direct_passthrough:
+            return respuesta
+        datos = respuesta.get_data()
+        if b'"mensaje"' not in datos:
+            return respuesta
+        cuerpo = respuesta.get_json(silent=True)
+        if not isinstance(cuerpo, dict) or not isinstance(cuerpo.get('mensaje'), str):
+            return respuesta
+        acentuado = acentuar(cuerpo['mensaje'])
+        if acentuado != cuerpo['mensaje']:
+            cuerpo['mensaje'] = acentuado
+            respuesta.set_data(app.json.dumps(cuerpo) + '\n')
+        return respuesta
 
 
 def register_blueprints(app):

@@ -72,11 +72,30 @@ class SeguridadApi(BaseApi):
         self.assertEqual(self._estado('diego'), (1, 0))
         self.assertEqual(self._login('diego', CONTRASENA).status_code, 200)
 
-    def test_email_inexistente_no_bloquea_ni_cambia_el_mensaje(self):
-        for _ in range(7):
-            r = self.cliente.post(URL, json={'email': 'nadie@asisto.local', 'contrasena': 'x'})
+    def test_email_inexistente_se_bloquea_igual_que_una_cuenta_real(self):
+        """
+        El bloqueo no puede delatar que emails existen: un email sin cuenta
+        recibe el mismo 401 los primeros 4 fallos y el mismo 429 desde el 5.
+        """
+        email = 'sin.cuenta.bloqueo@asisto.local'
+        try:
+            for i in range(4):
+                r = self.cliente.post(URL, json={'email': email, 'contrasena': 'x'})
+                self.assertEqual(r.status_code, 401, i)
+                self.assertEqual(r.get_json()['mensaje'], 'Email o contraseña incorrectos.')
+            r = self.cliente.post(URL, json={'email': email, 'contrasena': 'x'})   # quinto
+            self.assertEqual(r.status_code, 429)
+            self.assertIn('Demasiados intentos', r.get_json()['mensaje'])
+            self.assertIn('15 minutos', r.get_json()['mensaje'])
+            # bloqueado: sigue el 429 y el rechazo no suma intentos
+            r = self.cliente.post(URL, json={'email': email, 'contrasena': 'otra'})
+            self.assertEqual(r.status_code, 429)
+            # control positivo: otro email sin cuenta empieza de cero
+            r = self.cliente.post(URL, json={'email': 'otro.nadie@asisto.local', 'contrasena': 'x'})
             self.assertEqual(r.status_code, 401)
-            self.assertEqual(r.get_json()['mensaje'], 'Email o contrasena incorrectos.')
+        finally:
+            self.sql("DELETE FROM auditoria_accesos WHERE email IN "
+                     "('sin.cuenta.bloqueo@asisto.local', 'otro.nadie@asisto.local')")
 
     # --- recuperacion -----------------------------------------------------
     def _pedir(self, email):
@@ -90,6 +109,17 @@ class SeguridadApi(BaseApi):
         self.assertIn('token_desarrollo', a.get_json())      # solo en modo desarrollo
         self.assertNotIn('token_desarrollo', b.get_json())   # no delata la cuenta
         self.assertEqual(self._pedir('').status_code, 400)
+
+    def test_recuperar_tarda_parecido_exista_o_no_la_cuenta(self):
+        import time
+        tiempos = []
+        for email in (EMAILS['laura'], 'nadie@asisto.local'):
+            t0 = time.perf_counter()
+            self._pedir(email)
+            tiempos.append(time.perf_counter() - t0)
+        # los dos pagan el piso: la diferencia ya no delata a la cuenta
+        self.assertGreaterEqual(min(tiempos), 0.25)
+        self.assertLess(abs(tiempos[0] - tiempos[1]), 0.15)
 
     def test_restablecer_flujo_completo_y_un_solo_uso(self):
         token = self._pedir(EMAILS['diego']).get_json()['token_desarrollo']

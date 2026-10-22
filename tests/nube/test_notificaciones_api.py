@@ -120,7 +120,7 @@ class NotificacionesApi(BaseApi):
         # control positivo: encendido otra vez, vuelve a llegar
         antes = self._total()
         r = self.llamar('laura', 'post', '/api/sesiones',
-                        json={'id_paciente': 1, 'fecha': dia_habil_pasado(6), 'hora_inicio': '18:00', 'estado': 'completa'})
+                        json={'id_paciente': 1, 'fecha': dia_habil_pasado(6), 'hora_inicio': '19:00', 'estado': 'completa'})
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         self.assertEqual(self._total(), antes + 1)
         # validaciones

@@ -34,6 +34,12 @@ CREATE DATABASE asisto
   COLLATE utf8mb4_unicode_ci;
 USE asisto;
 
+-- La conexion que carga este archivo fija el collation con el que se
+-- crean los procedimientos. Sin esta linea, un cliente `mysql` que conecte
+-- en utf8mb4 (el de MySQL 8 en Windows) los crea con utf8mb4_0900_ai_ci y las
+-- columnas de JSON_TABLE chocan con las de las tablas (ERROR 1267).
+SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
+
 
 -- =====================================================================
 -- 1. USUARIOS Y PERFILES
@@ -3392,6 +3398,7 @@ BEGIN
   DECLARE v_terapeuta  INT UNSIGNED DEFAULT NULL;
   DECLARE v_activo     BOOLEAN      DEFAULT NULL;
   DECLARE v_desde      DATE         DEFAULT NULL;
+  DECLARE v_ingreso    DATE         DEFAULT NULL;
 
   -- Ver CRITERIO GENERAL DE ERRORES
   DECLARE EXIT HANDLER FOR SQLSTATE '45000'
@@ -3430,7 +3437,7 @@ BEGIN
     START TRANSACTION;
 
     -- 1) pacientes, con lock: lo toman igual los triggers de asignaciones
-    SELECT id, activo INTO v_paciente, v_activo
+    SELECT id, activo, fecha_alta INTO v_paciente, v_activo, v_ingreso
       FROM pacientes
      WHERE id = p_id_paciente
      FOR UPDATE;
@@ -3450,6 +3457,11 @@ BEGIN
     ELSEIF v_activo = FALSE THEN
       ROLLBACK;
       SET p_mensaje = 'El paciente esta dado de baja: no se le pueden abrir asignaciones';
+    ELSEIF v_desde < v_ingreso THEN
+      -- Una asignacion anterior al ingreso del paciente dejaria cargar
+      -- sesiones de fechas en que todavia no era paciente del centro.
+      ROLLBACK;
+      SET p_mensaje = 'La asignacion no puede empezar antes del ingreso del paciente al centro';
     ELSE
       -- 3) asignaciones. Los triggers rechazan la segunda vigente del par.
       INSERT INTO asignaciones (id_terapeuta, id_paciente, fecha_desde)
@@ -4117,7 +4129,7 @@ BEGIN
     ELSE
       SELECT COUNT(*) INTO v_invalidas
         FROM JSON_TABLE(p_respuestas, '$[*]'
-               COLUMNS (clave VARCHAR(40) PATH '$.clave')) j
+               COLUMNS (clave VARCHAR(40) COLLATE utf8mb4_unicode_ci PATH '$.clave')) j
         LEFT JOIN ingreso_campos c
                ON c.etapa = p_etapa AND c.clave = j.clave AND c.activo = TRUE
        WHERE c.id IS NULL;
@@ -4131,7 +4143,7 @@ BEGIN
           FROM ingreso_respuestas r
           JOIN ingreso_campos c ON c.id = r.id_campo AND c.etapa = p_etapa
           JOIN JSON_TABLE(p_respuestas, '$[*]'
-                 COLUMNS (clave VARCHAR(40) PATH '$.clave',
+                 COLUMNS (clave VARCHAR(40) COLLATE utf8mb4_unicode_ci PATH '$.clave',
                           valor TEXT PATH '$.valor' NULL ON EMPTY)) j
             ON j.clave = c.clave
          WHERE r.id_ingreso = p_id_ingreso
@@ -4140,7 +4152,7 @@ BEGIN
         INSERT INTO ingreso_respuestas (id_ingreso, id_campo, valor)
         SELECT p_id_ingreso, c.id, TRIM(j.valor)
           FROM JSON_TABLE(p_respuestas, '$[*]'
-                 COLUMNS (clave VARCHAR(40) PATH '$.clave',
+                 COLUMNS (clave VARCHAR(40) COLLATE utf8mb4_unicode_ci PATH '$.clave',
                           valor TEXT PATH '$.valor' NULL ON EMPTY)) j
           JOIN ingreso_campos c
             ON c.etapa = p_etapa AND c.clave = j.clave AND c.activo = TRUE

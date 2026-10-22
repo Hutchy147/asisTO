@@ -20,9 +20,13 @@ import {
 } from '../../services/familiaresService.js';
 import { formatearFecha } from '../../utils/fechas.js';
 
-export default function SeccionFamiliares({ paciente, puedeGestionar = true, onAviso }) {
+export default function SeccionFamiliares({ paciente, puedeGestionar = true, soloQuitar = false, onAviso }) {
   const lista = usePeticion(() => listarFamiliaresDePaciente(paciente.id), [paciente.id]);
-  const candidatos = usePeticion(() => listarCandidatos(paciente.id), [paciente.id]);
+  const candidatos = usePeticion(
+    // Con el paciente de baja no se vincula a nadie: no hace falta la lista.
+    () => (soloQuitar ? Promise.resolve({ familiares: [] }) : listarCandidatos(paciente.id)),
+    [paciente.id, soloQuitar],
+  );
 
   const [modal, setModal] = useState(null); // null | 'existente' | 'nuevo'
   const [aDesvincular, setADesvincular] = useState(null);
@@ -93,7 +97,7 @@ export default function SeccionFamiliares({ paciente, puedeGestionar = true, onA
             avisos del tratamiento. No ve el diagnóstico ni las observaciones clínicas.
           </Typography>
         </Box>
-        {puedeGestionar && (
+        {puedeGestionar && !soloQuitar && (
           <Box sx={{ display: 'flex', gap: 1, flex: 'none' }}>
             <Button variant="outlined" onClick={() => setModal('existente')}>Vincular existente</Button>
             <Button variant="contained" onClick={() => setModal('nuevo')}>Crear cuenta</Button>

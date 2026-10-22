@@ -17,6 +17,7 @@ from app.models import ObjetivoTerapeutico
 from app.models.objetivo import (
     MAXIMO_CARACTERES_DESCRIPCION, MAXIMO_OBJETIVOS_ACTIVOS,
 )
+from app.services.asignaciones_service import exigir_responsable
 from app.services.pacientes_service import obtener_paciente
 from app.utils.db import reintentar_en_deadlock
 from app.utils.errors import ERRNO_DUPLICADO, ErrorAplicacion, obtener_errno
@@ -198,6 +199,22 @@ def obtener_objetivo(id_objetivo):
     return objetivo
 
 
+def _verificar_escritura(objetivo):
+    """
+    Solo el terapeuta responsable toca los objetivos de un paciente, y solo
+    mientras el paciente esta en tratamiento: con la baja (pausa o alta) los
+    objetivos quedan de solo lectura.
+    """
+    exigir_responsable(objetivo.id_paciente, 'modificar sus objetivos',
+                       omitir_si_de_baja=True)
+    paciente = obtener_paciente(objetivo.id_paciente, incluir_inactivos=True)
+    if not paciente.activo:
+        raise ErrorAplicacion(
+            'El paciente está dado de baja: sus objetivos quedan solo para lectura.',
+            http_status=409,
+        )
+
+
 def _avisar(objetivo, accion):
     """Aviso a la familia (Entrega 4), ya confirmado el cambio. Mejor esfuerzo."""
     from app.services.notificaciones_service import avisar_objetivo
@@ -223,6 +240,7 @@ def crear_objetivo(datos):
     # Cortesia: un 404 claro en vez del error de FK. No es una regla de
     # negocio duplicada, es resolver a que paciente se refiere el pedido.
     paciente = obtener_paciente(id_paciente)
+    exigir_responsable(paciente.id, 'modificar sus objetivos')
 
     objetivo = ObjetivoTerapeutico(
         id_paciente=paciente.id,
@@ -261,6 +279,7 @@ def editar_descripcion(id_objetivo, datos):
     descripcion = _descripcion_valida(datos)
 
     objetivo = obtener_objetivo(id_objetivo)
+    _verificar_escritura(objetivo)
 
     if objetivo.descripcion == descripcion:
         # Nada que hacer: se evita una escritura y su lock
@@ -296,6 +315,7 @@ def archivar_objetivo(id_objetivo):
     lugares que puedan escribir valores distintos.
     """
     objetivo = obtener_objetivo(id_objetivo)
+    _verificar_escritura(objetivo)
 
     if not objetivo.activo:
         raise ErrorAplicacion('El objetivo ya estaba archivado.', http_status=409)

@@ -250,6 +250,12 @@ export default function PacienteFicha() {
       (a) => a.vigente && a.id_terapeuta === idTerapeutaActual,
     ),
   );
+  // Un paciente de baja ya no tiene responsable: quien lo fue puede seguir
+  // quitando el acceso de los familiares (cierre del circuito de salida).
+  const fueMio = Boolean(
+    asignaciones.datos?.asignaciones?.some((a) => a.id_terapeuta === idTerapeutaActual),
+  );
+  const verFamiliaAhora = verFamilia && (esMio || (soloLectura && fueMio));
   const avisarNoEsMio = verAsignaciones && !soloLectura && asignaciones.datos && !esMio;
 
   const confirmarArchivado = async () => {
@@ -443,7 +449,7 @@ export default function PacienteFicha() {
         {verAsignaciones && <Tab value="asignacion" label="Asignación" />}
         {verIngreso && <Tab value="ingreso" label="Ingreso" />}
         {verInformes && <Tab value="informes" label="Informes" />}
-        {verFamilia && esMio && <Tab value="familia" label="Familia" />}
+        {verFamiliaAhora && <Tab value="familia" label="Familia" />}
       </Tabs>
 
       {/* --- Pestaña Ingreso (Entrega 4) --- */}
@@ -462,8 +468,8 @@ export default function PacienteFicha() {
       )}
 
       {/* --- Pestaña Familia (Entrega 4) --- */}
-      {verFamilia && esMio && pestania === 'familia' && (
-        <SeccionFamiliares paciente={paciente} onAviso={setAviso} />
+      {verFamiliaAhora && pestania === 'familia' && (
+        <SeccionFamiliares paciente={paciente} soloQuitar={soloLectura} onAviso={setAviso} />
       )}
 
       {/* --- Pestaña Asignación (HDU 11) --- */}

@@ -15,7 +15,7 @@ from flask import g
 from sqlalchemy import text
 
 from app import db
-from app.models import Familiar, FamiliarPaciente, Usuario
+from app.models import Asignacion, Familiar, FamiliarPaciente, Usuario
 from app.services.asignaciones_service import ids_de_pacientes_asignados
 from app.services.pacientes_service import obtener_paciente
 from app.services.sesiones_service import terapeuta_actual
@@ -28,18 +28,37 @@ logger = logging.getLogger(__name__)
 _EMAIL = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 
 
-def _verificar_acceso(id_paciente):
-    """Administrador, o terapeuta con asignacion vigente sobre el paciente."""
+def _fue_responsable(id_paciente, id_terapeuta):
+    """El terapeuta tuvo al paciente asignado en algun momento."""
+    fila = db.session.query(Asignacion.id).filter(
+        Asignacion.id_paciente == id_paciente,
+        Asignacion.id_terapeuta == id_terapeuta,
+    ).first()
+    return fila is not None
+
+
+def _verificar_acceso(id_paciente, ex_responsable=False):
+    """
+    Administrador, o terapeuta con asignacion vigente sobre el paciente.
+
+    ex_responsable: con el paciente de baja, el alta cerro todas las
+    asignaciones y nadie mas podria quitarle el acceso a la familia desde el
+    sistema. Para listar y desvincular alcanza con haberlo atendido antes.
+    Vincular a alguien nuevo sigue exigiendo la asignacion vigente.
+    """
     paciente = obtener_paciente(id_paciente, incluir_inactivos=True)
     if g.usuario_actual.rol == 'admin':
         return paciente
-    if paciente.id not in ids_de_pacientes_asignados(terapeuta_actual().id):
-        raise ErrorAplicacion(
-            'Solo el administrador o el terapeuta asignado pueden gestionar '
-            'los familiares de este paciente.',
-            http_status=403,
-        )
-    return paciente
+    terapeuta = terapeuta_actual()
+    if paciente.id in ids_de_pacientes_asignados(terapeuta.id):
+        return paciente
+    if ex_responsable and not paciente.activo and _fue_responsable(paciente.id, terapeuta.id):
+        return paciente
+    raise ErrorAplicacion(
+        'Solo el administrador o el terapeuta asignado pueden gestionar '
+        'los familiares de este paciente.',
+        http_status=403,
+    )
 
 
 def _serializar(familiar, usuario, vinculo=None):
@@ -60,7 +79,7 @@ def _serializar(familiar, usuario, vinculo=None):
 
 def listar_de_paciente(id_paciente):
     """Familiares vinculados al paciente."""
-    paciente = _verificar_acceso(id_paciente)
+    paciente = _verificar_acceso(id_paciente, ex_responsable=True)
     filas = (
         db.session.query(Familiar, Usuario, FamiliarPaciente)
         .join(Usuario, Usuario.id == Familiar.id_usuario)
@@ -95,12 +114,15 @@ def listar_candidatos(id_paciente, busqueda=None):
     )
     texto = (busqueda or '').strip()
     if texto:
-        patron = f'%{texto}%'
+        # Los comodines del LIKE que escribe la persona (% y _) se buscan como
+        # texto: si no, "%" devolvia todas las cuentas.
+        escapado = texto.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+        patron = f'%{escapado}%'
         consulta = consulta.filter(
             db.or_(
-                Usuario.nombre.like(patron),
-                Usuario.apellido.like(patron),
-                Usuario.email.like(patron),
+                Usuario.nombre.like(patron, escape='\\'),
+                Usuario.apellido.like(patron, escape='\\'),
+                Usuario.email.like(patron, escape='\\'),
             )
         )
     filas = consulta.order_by(Usuario.apellido, Usuario.nombre).limit(50).all()
@@ -224,7 +246,7 @@ def vincular(id_paciente, datos):
 
 @reintentar_en_deadlock()
 def desvincular(id_paciente, id_familiar):
-    paciente = _verificar_acceso(id_paciente)
+    paciente = _verificar_acceso(id_paciente, ex_responsable=True)
     db.session.execute(
         text('CALL p_desvincular_familiar(:fam, :pac, @p_ok, @p_mensaje)'),
         {'fam': id_familiar, 'pac': paciente.id},
