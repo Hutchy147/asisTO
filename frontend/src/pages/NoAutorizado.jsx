@@ -10,6 +10,15 @@ import { useNavigate } from 'react-router-dom';
 
 import { RUTA_POR_ROL, useAuth } from '../context/AuthContext.jsx';
 
+// Nombre del rol para una persona, no la clave interna ("rrhh", "admin").
+const NOMBRE_DE_ROL = {
+  terapeuta: 'terapeuta',
+  rrhh: 'Recursos Humanos',
+  familiar: 'familiar',
+  paciente: 'paciente',
+  admin: 'administrador',
+};
+
 export default function NoAutorizado() {
   const { rol, logout } = useAuth();
   const navigate = useNavigate();
@@ -34,7 +43,7 @@ export default function NoAutorizado() {
           No tiene acceso a esta sección
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Su sesión es válida, pero el rol <strong>{rol}</strong> no puede ver esta
+          Su sesión es válida, pero el rol <strong>{NOMBRE_DE_ROL[rol] ?? rol}</strong> no puede ver esta
           pantalla. Si considera que debería tenerlo, avise al equipo.
         </Typography>
 

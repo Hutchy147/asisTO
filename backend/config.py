@@ -36,7 +36,10 @@ class Config:
     # --- Flask ---
     # SIN valor por defecto a proposito. Ver Config.validar().
     SECRET_KEY = os.getenv('SECRET_KEY')
-    DEBUG = os.getenv('FLASK_DEBUG', '1') == '1'
+    # Sin FLASK_DEBUG en el .env, apagado: el modo debug prende el depurador
+    # interactivo de Werkzeug y, por arrastre, que la recuperacion devuelva el
+    # token en la respuesta. Desarrollo lo pide explicito (.env.example).
+    DEBUG = os.getenv('FLASK_DEBUG', '0') == '1'
 
     # --- JWT ---
     # Tampoco cae en SECRET_KEY si falta: son dos secretos distintos y
@@ -50,7 +53,7 @@ class Config:
     # devuelve en la respuesta y se loguea. Por omision sigue a FLASK_DEBUG:
     # en produccion (FLASK_DEBUG=0) la API NUNCA devuelve el token.
     RECUPERACION_MOSTRAR_TOKEN = os.getenv(
-        'RECUPERACION_MOSTRAR_TOKEN', os.getenv('FLASK_DEBUG', '1')
+        'RECUPERACION_MOSTRAR_TOKEN', os.getenv('FLASK_DEBUG', '0')
     ) == '1'
 
     # --- Informes con IA (Entrega 6) ---

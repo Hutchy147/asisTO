@@ -22,6 +22,7 @@ import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.j
 import { useAuth } from '../context/AuthContext.jsx';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { obtenerAuditoriaAccesos } from '../services/rrhhService.js';
+import { aIsoLocal } from '../utils/fechas.js';
 
 const RESULTADOS = {
   exitoso: { etiqueta: 'Exitoso', color: 'success' },
@@ -29,7 +30,8 @@ const RESULTADOS = {
   bloqueado: { etiqueta: 'Bloqueado', color: 'error' },
 };
 
-const iso = (f) => f.toISOString().slice(0, 10);
+// Local, no UTC: ver aIsoLocal.
+const iso = aIsoLocal;
 
 function ventanaInicial() {
   const hasta = new Date();

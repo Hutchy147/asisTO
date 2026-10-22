@@ -58,6 +58,9 @@ def _es_dato_con_tipo_equivocado(error):
         )
     if isinstance(error, TypeError):
         return 'can not be used as parameter' in texto
+    # Una fecha valida pero extrema (9999-12-31) desborda al sumarle dias.
+    if isinstance(error, OverflowError):
+        return 'date value out of range' in texto
     return False
 
 
@@ -118,8 +121,13 @@ def registrar_manejadores_de_error(app):
             app.logger.warning('Dato con tipo invalido en %s %s: %s',
                                request.method, request.path, error)
             db.session.rollback()
+            mensaje = (
+                'Alguna de las fechas indicadas está fuera del rango permitido.'
+                if isinstance(error, OverflowError)
+                else 'Alguno de los datos enviados tiene un formato inválido.'
+            )
             return jsonify({
-                'mensaje': 'Alguno de los datos enviados tiene un formato inválido.',
+                'mensaje': mensaje,
                 'codigo': 'error_aplicacion',
             }), 400
         # Red final: nada que no este contemplado arriba puede filtrar su

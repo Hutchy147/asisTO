@@ -45,6 +45,34 @@ respuestas 4xx/5xx inesperadas, en los modos de entrega 3, 5 y 6 (30 rutas por m
 - Nombres de estados ("En registro"/"incompleta"), F5.5 (error mostrado como éxito).
 - Paginación del PDF de informes, nombre del PTI, mes repetido en la tabla de control.
 - H37: salida para el paciente en los modos de demostración 4/5.
-- `DialogoConfirmacion` anida `<ul>` dentro de `<p>` (aviso de React), el 403 muestra el nombre interno del rol.
 - Ruido de log: los errores de negocio de la base (triggers) se registran como ERROR con traza; conviene bajarlos a WARNING.
-- La deduplicación del aviso de cierre es por fecha y paciente: dos sesiones del mismo día generan un solo aviso.
+
+## 3. Segunda pasada (22/10/2026, auditoría profunda)
+
+Barrido de los 89 endpoints con parámetros de consulta raros (fechas extremas,
+números mal formados), cuerpos mal formados y content-types distintos; escrituras
+cruzadas entre terapeutas, familiares y roles; lectura de código del backend y
+del frontend (lint con reglas de hooks); recorrido de pantallas de los 6 roles en
+los modos 6 y 3, con reloj simulado a las 23:30.
+
+| Hallazgo | Gravedad | Corrección |
+|---|---|---|
+| Una fecha válida pero extrema (`9999-12-31`) en `desde`/`hasta` daba **500** en 6 endpoints (sesiones, registradas, evolución, portal familiar, portal del paciente, auditoría). | Media | Manejador global: 400 «Alguna de las fechas indicadas está fuera del rango permitido». |
+| `GET /familiar/notificaciones?id_paciente=abc` daba **500**. | Baja | 400 con `campo: id_paciente`. |
+| Al anonimizar los datos para la IA, el nombre se reemplazaba como subcadena: «Ana» rompía «semana», «Paz» rompía «capaz», y «Lucia» no tapaba «Lucía». | Media | Reemplazo por palabra entera y sin distinguir tildes. |
+| RRHH y Auditoría armaban el rango por omisión con `toISOString()` (UTC): después de las 21 h la fecha «hasta» era mañana. | Baja | Fecha local (`aIsoLocal` en `utils/fechas.js`). |
+| Edad en meses (menores de un año) leía la fecha en UTC: el día 1 contaba un mes de más y no miraba el día del mes. | Baja | Cálculo con las partes de la fecha. |
+| Portal familiar y del paciente: el campo «Desde» quedaba más abajo que «Hasta». | Baja | Mismo espacio de ayuda en los dos campos. |
+| Exportación CSV de RRHH: un nombre que empieza con `=`, `+`, `-` o `@` se ejecutaba como fórmula en Excel. | Baja | Se antepone un apóstrofo a esos textos. |
+| Dos sesiones del mismo paciente el mismo día generaban un solo aviso de cierre. | Baja | El texto del aviso lleva la hora («del 22/10/2026 a las 15:00»). |
+| Mensajes sin tilde: renglón, vacía, después, límite, reactívelo, válida, creó, vínculo. | Baja | Agregadas al diccionario de `acentuar`. |
+| `DialogoConfirmacion` anidaba `<ul>` en `<p>`; el 403 mostraba la clave interna del rol. | Baja | `div` en vez de `p`; nombre legible del rol. |
+| Generar informe semestral ofrecía (y preseleccionaba entre enero y junio) el segundo semestre del año en curso, que todavía no empezó. | Baja | Solo semestres ya empezados. |
+| `FLASK_DEBUG` valía 1 si faltaba en el `.env`: depurador de Werkzeug encendido y el token de recuperación en la respuesta. | Media | Sin la variable, 0. `.env.example` sigue pidiendo 1 para desarrollo. |
+| Prueba de pantalla `ui_seguridad` esperaba «se genero» sin tilde (quedó vieja con la ronda anterior). | Baja | Actualizada. |
+| Código muerto: import de `Dashboard`, `hoyIso`, `MARCA`, import de `Paciente` en sesiones. | — | Quitado. |
+
+Verificación: suite de API 177 OK (5 pruebas nuevas en `test_auditoria_profunda.py`);
+sondeo de 500 → 0; pruebas de pantalla `ui_portal_familiar`, `ui_portal_paciente`,
+`ui_notificaciones`, `ui_seguridad`, `ui_auditoria` e `ui_informes` en verde;
+recorrido de los 6 roles sin errores de consola en los modos 6 y 3.

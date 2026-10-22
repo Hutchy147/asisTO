@@ -57,7 +57,7 @@ import {
   ORIGENES_AUSENCIA, obtenerReporteSesiones, terapeutasDelReporte,
 } from '../services/rrhhService.js';
 import { armarCsv, descargarCsv } from '../utils/csv.js';
-import { formatearFecha } from '../utils/fechas.js';
+import { aIsoLocal, formatearFecha } from '../utils/fechas.js';
 
 // Ventana por omision: los ultimos 90 dias.
 //
@@ -81,9 +81,8 @@ const DIAS_POR_DEFECTO = 90;
 // un listado recortado que no lo dijera si estaria mintiendo.
 const MAXIMO_FILAS_VISIBLES = 100;
 
-function iso(fecha) {
-  return fecha.toISOString().slice(0, 10);
-}
+// Local, no UTC: ver aIsoLocal.
+const iso = aIsoLocal;
 
 function ventanaInicial() {
   const hasta = new Date();

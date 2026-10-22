@@ -45,11 +45,21 @@ export function textoEdad(iso) {
   if (edad === null) return '';
   if (edad >= 1) return `${edad} ${edad === 1 ? 'año' : 'años'}`;
 
-  const nacimiento = new Date(iso.slice(0, 10));
+  // Con las partes del texto y no con new Date('AAAA-MM-DD'), que se lee en
+  // UTC y en Argentina corre la fecha al dia anterior (y de mes, el dia 1).
+  const [anio, mes, dia] = iso.slice(0, 10).split('-').map(Number);
   const hoy = new Date();
-  const meses = Math.max(
-    0,
-    (hoy.getFullYear() - nacimiento.getFullYear()) * 12 + hoy.getMonth() - nacimiento.getMonth()
-  );
+  let meses = (hoy.getFullYear() - anio) * 12 + (hoy.getMonth() + 1 - mes);
+  if (hoy.getDate() < dia) meses -= 1; // el mes en curso todavia no se cumplio
+  meses = Math.max(0, meses);
   return `${meses} ${meses === 1 ? 'mes' : 'meses'}`;
+}
+
+/**
+ * Date -> "AAAA-MM-DD" en la hora LOCAL. toISOString() la pasa a UTC: en
+ * Argentina, despues de las 21 devuelve el dia siguiente.
+ */
+export function aIsoLocal(fecha) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${fecha.getFullYear()}-${p(fecha.getMonth() + 1)}-${p(fecha.getDate())}`;
 }

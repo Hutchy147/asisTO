@@ -21,10 +21,17 @@ import { TIPOS_INFORME, generarInforme } from '../../services/informesService.js
 const pad = (n) => String(n).padStart(2, '0');
 
 function opcionesSemestre() {
-  const anio = new Date().getFullYear();
+  const hoy = new Date();
+  const anio = hoy.getFullYear();
+  // Entre enero y junio el segundo semestre del año todavía no empezó: no se
+  // ofrece (y no queda elegido por omisión).
+  const semestreActual = hoy.getMonth() < 6 ? 1 : 2;
   const lista = [];
   for (const a of [anio, anio - 1]) {
-    for (const s of [2, 1]) lista.push({ valor: `${a}-S${s}`, etiqueta: `${s === 1 ? 'Primer' : 'Segundo'} semestre de ${a}` });
+    for (const s of [2, 1]) {
+      if (a === anio && s > semestreActual) continue;
+      lista.push({ valor: `${a}-S${s}`, etiqueta: `${s === 1 ? 'Primer' : 'Segundo'} semestre de ${a}` });
+    }
   }
   return lista;
 }

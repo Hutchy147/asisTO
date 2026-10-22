@@ -88,7 +88,8 @@ export default function PortalPaciente() {
               })}
             >
               <TextField id="filtro-desde" label="Desde" type="date" size="small" value={desde}
-                onChange={(e) => setDesde(e.target.value)} InputLabelProps={{ shrink: true }} error={rangoInvalido} />
+                onChange={(e) => setDesde(e.target.value)} InputLabelProps={{ shrink: true }} error={rangoInvalido}
+                helperText=" " />
               <TextField id="filtro-hasta" label="Hasta" type="date" size="small" value={hasta}
                 onChange={(e) => setHasta(e.target.value)} InputLabelProps={{ shrink: true }} error={rangoInvalido}
                 helperText={rangoInvalido ? 'La fecha final no puede ser anterior a la inicial.' : ' '} />

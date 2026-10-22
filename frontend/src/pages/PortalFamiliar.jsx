@@ -106,6 +106,8 @@ function EvolucionDe({ paciente }) {
           id="filtro-desde" label="Desde" type="date" size="small" value={desde}
           onChange={(e) => setDesde(e.target.value)} InputLabelProps={{ shrink: true }}
           error={rangoInvalido}
+          // Mismo hueco de ayuda que "Hasta": si no, quedan desalineados.
+          helperText=" "
         />
         <TextField
           id="filtro-hasta" label="Hasta" type="date" size="small" value={hasta}

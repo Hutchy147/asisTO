@@ -32,7 +32,7 @@ with sync_playwright() as p:
     # 2) recuperar -> enlace (modo desarrollo) -> nueva clave
     pg.get_by_text('¿Olvidó su contraseña?').click()
     pg.fill('input[type=email]', EMAIL); pg.click('button[type=submit]'); pg.wait_for_timeout(800)
-    check(pg.get_by_text('se genero un enlace').count() == 1, 'recuperar: aviso generico')
+    check(pg.get_by_text('se generó un enlace').count() == 1, 'recuperar: aviso generico')
     pg.get_by_text('abrir el enlace de recuperación').click(); pg.wait_for_timeout(500)
     check('/restablecer/' in pg.url, 'restablecer: se abre con el token')
     campos = pg.locator('input[type=password]')

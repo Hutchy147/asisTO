@@ -52,7 +52,15 @@ const FIN_DE_LINEA = '\r\n';
  */
 export function celda(valor) {
   if (valor === null || valor === undefined) return '';
-  const texto = String(valor);
+  let texto = String(valor);
+  // Un texto que empieza con = + - @ (o tabulador/retorno) Excel lo ejecuta
+  // como fórmula: un nombre cargado como "=HYPERLINK(...)" se volvería un
+  // enlace activo en la planilla de RRHH. Con el apóstrofo se lee como texto.
+  // Los números no pasan por acá: un recuento negativo no existe, pero un
+  // número no es un texto escrito por alguien.
+  if (typeof valor === 'string' && /^[=+\-@\t\r]/.test(texto)) {
+    texto = `'${texto}`;
+  }
   if (/[;,"\r\n]/.test(texto)) {
     return `"${texto.replace(/"/g, '""')}"`;
   }

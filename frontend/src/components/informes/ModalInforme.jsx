@@ -29,8 +29,6 @@ import {
 } from '../../services/informesService.js';
 import { formatearFecha } from '../../utils/fechas.js';
 
-const MARCA = '[COMPLETAR';
-
 export default function ModalInforme({ idInforme, puedeEscribir, advertencia = '', onCerrar, onCambio, onAbrir }) {
   const abierto = idInforme !== null && idInforme !== undefined;
   const informe = usePeticion(() => (abierto ? obtenerInforme(idInforme) : Promise.resolve(null)), [idInforme]);

@@ -30,6 +30,7 @@ import datetime as dt
 import json
 import logging
 import re
+import unicodedata
 import urllib.error
 import urllib.request
 
@@ -428,12 +429,31 @@ def ia_disponible():
     return obtener_proveedor() is not None
 
 
+_VARIANTES = {
+    'a': 'aáàäâ', 'e': 'eéèëê', 'i': 'iíìïî', 'o': 'oóòöô', 'u': 'uúùüû', 'n': 'nñ',
+}
+
+
+def _patron_nombre(nombre):
+    """
+    Patron del nombre como PALABRA ENTERA y sin distinguir tildes.
+
+    Sin los limites de palabra, "Ana" se comia el "ana" de "semana" y "Paz" el
+    de "capaz": la IA recibia texto roto. Sin las variantes, "Lucia" (como esta
+    cargado) no tapaba "Lucía" (como lo escribe la terapeuta) y el nombre
+    viajaba igual.
+    """
+    sin_tildes = unicodedata.normalize('NFKD', nombre).encode('ascii', 'ignore').decode().lower()
+    partes = [f'[{_VARIANTES[c]}]' if c in _VARIANTES else re.escape(c) for c in sin_tildes]
+    return re.compile(r'(?<!\w)' + ''.join(partes) + r'(?!\w)', re.IGNORECASE)
+
+
 def _sin_nombre(valor, nombres):
     """Reemplaza el nombre y el apellido del paciente por 'el paciente'."""
     if isinstance(valor, str):
         for nombre in nombres:
             if nombre and len(nombre) >= 3:
-                valor = re.sub(re.escape(nombre), 'el paciente', valor, flags=re.IGNORECASE)
+                valor = _patron_nombre(nombre).sub('el paciente', valor)
         return valor
     if isinstance(valor, list):
         return [_sin_nombre(v, nombres) for v in valor]

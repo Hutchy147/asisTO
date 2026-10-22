@@ -18,6 +18,7 @@ from sqlalchemy import text
 from app import db
 from app.models import Familiar, Notificacion, Paciente, PreferenciaNotificacion
 from app.models.notificacion import TIPOS
+from app.models.sesion import formatear_hora
 from app.utils.errors import ErrorAplicacion
 
 logger = logging.getLogger(__name__)
@@ -78,11 +79,16 @@ def _nombre(id_paciente):
 
 
 def _texto_sesion(sesion):
+    # La hora va en el texto porque el texto es lo que identifica la sesion
+    # al deduplicar (avisar_sesion_cerrada): con solo la fecha, dos sesiones
+    # del mismo paciente el mismo dia generaban un unico aviso.
     fecha = _fecha(sesion.fecha)
+    hora = (formatear_hora(sesion.hora_inicio) or '')[:5] or None
+    cuando = f'{fecha} a las {hora}' if hora else fecha
     nombre = _nombre(sesion.id_paciente)
     if sesion.estado == 'ausencia':
-        return f'Se registró una ausencia en la sesión del {fecha} de {nombre}.'
-    return f'Se registró la sesión del {fecha} de {nombre}.'
+        return f'Se registró una ausencia en la sesión del {cuando} de {nombre}.'
+    return f'Se registró la sesión del {cuando} de {nombre}.'
 
 
 def avisar_sesion(sesion):
@@ -177,6 +183,11 @@ def listar(tipo=None, leida=None, id_paciente=None, limite=50, desplazamiento=0)
         desplazamiento = max(0, int(desplazamiento))
     except (TypeError, ValueError):
         raise ErrorAplicacion('La paginación indicada no es válida.')
+    if id_paciente:
+        try:
+            id_paciente = int(id_paciente)
+        except (TypeError, ValueError):
+            raise ErrorAplicacion('El paciente indicado no es válido.', campo='id_paciente')
 
     consulta = Notificacion.query.filter_by(id_familiar=familiar.id)
     if tipo:
@@ -184,7 +195,7 @@ def listar(tipo=None, leida=None, id_paciente=None, limite=50, desplazamiento=0)
     if leida in ('0', '1', 0, 1, True, False, 'true', 'false'):
         consulta = consulta.filter_by(leida=leida in ('1', 1, True, 'true'))
     if id_paciente:
-        consulta = consulta.filter_by(id_paciente=int(id_paciente))
+        consulta = consulta.filter_by(id_paciente=id_paciente)
 
     total = consulta.count()
     filas = (

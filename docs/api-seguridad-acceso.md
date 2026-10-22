@@ -16,7 +16,7 @@
 | `POST /api/auth/restablecer` | `{token, contrasena_nueva}` | 200, o 400 con `campo`: `contrasena_nueva` (mínimo 8, letras y números, máx. 72 bytes) o `token` (inválido, vencido o ya usado) |
 
 - El token (`secrets.token_urlsafe(32)`) **no se guarda**: en `usuarios.token_recuperacion` queda su SHA-256. Vale 60 minutos y es de un solo uso; un pedido nuevo invalida el anterior.
-- **Sin servidor de mail**: en desarrollo la API devuelve el token y se loguea. `RECUPERACION_MOSTRAR_TOKEN` sigue a `FLASK_DEBUG`; **en producción tiene que ser 0**, y el envío por mail queda pendiente de definir.
+- **Sin servidor de mail**: en desarrollo la API devuelve el token y se loguea. `RECUPERACION_MOSTRAR_TOKEN` sigue a `FLASK_DEBUG` (que, si falta en el `.env`, vale 0); **en producción tiene que ser 0**, y el envío por mail queda pendiente de definir.
 - Procedimientos: `p_solicitar_recuperacion`, `p_restablecer_contrasena`.
 
 ## Pantallas

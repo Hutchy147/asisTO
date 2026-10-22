@@ -36,6 +36,10 @@ _TILDES = {
     'politica': 'política', 'diagnostico': 'diagnóstico', 'tenia': 'tenía',
     'existia': 'existía', 'califico': 'calificó', 'mas': 'más',
     'codigo': 'código', 'pagina': 'página', 'razon': 'razón',
+    # Barrido de los mensajes del sistema (22-oct): quedaban sin tilde.
+    'renglon': 'renglón', 'vacia': 'vacía', 'despues': 'después',
+    'limite': 'límite', 'reactivelo': 'reactívelo', 'valida': 'válida',
+    'creo': 'creó', 'vinculo': 'vínculo',
 }
 
 # "esta" se acentua solo cuando es el verbo ("esta cerrada", "no esta

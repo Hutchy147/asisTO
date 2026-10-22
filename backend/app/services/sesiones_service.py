@@ -8,7 +8,7 @@ from flask import g
 from sqlalchemy import bindparam, text
 
 from app import db
-from app.models import Evolucion, ObjetivoTerapeutico, Paciente, Sesion, Terapeuta, Usuario
+from app.models import Evolucion, ObjetivoTerapeutico, Sesion, Terapeuta, Usuario
 from app.models.sesion import ESTADO_AUSENCIA, ESTADOS, ESTADOS_CON_EVOLUCION, ORIGENES_AUSENCIA
 from app.utils.db import reintentar_en_deadlock
 from app.utils.errors import ErrorAplicacion

@@ -16,7 +16,6 @@ import AdminPlantillasObjetivos from './pages/AdminPlantillasObjetivos.jsx';
 import SesionesRegistradas from './pages/SesionesRegistradas.jsx';
 import ControlInformes from './pages/ControlInformes.jsx';
 import Calendario from './pages/Calendario.jsx';
-import Dashboard from './pages/Dashboard.jsx';
 import Login from './pages/Login.jsx';
 import NoAutorizado from './pages/NoAutorizado.jsx';
 import PacienteFicha from './pages/PacienteFicha.jsx';

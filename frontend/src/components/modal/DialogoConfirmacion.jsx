@@ -22,7 +22,7 @@ export default function DialogoConfirmacion({
   // Distinto de `procesando`, que además bloquea Cancelar y el Escape.
   confirmarDeshabilitado = false,
   // Contenido interactivo (un campo de texto, por ejemplo) debajo del texto.
-  // Va aparte de `children` porque este va dentro de un <p>.
+  // Va aparte de `children`, que es el texto de la confirmación.
   extra = null,
   onConfirmar,
   onCancelar,
@@ -38,7 +38,8 @@ export default function DialogoConfirmacion({
         <Typography variant="h5">{titulo}</Typography>
       </Box>
       <DialogContent sx={{ px: 3, py: 2 }}>
-        <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+        {/* div y no p: hay confirmaciones que traen una lista, y un <ul> dentro de un <p> es HTML inválido. */}
+        <Typography component="div" variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
           {children}
         </Typography>
         {extra}
