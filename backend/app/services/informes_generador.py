@@ -260,7 +260,10 @@ def _frase_asistencia(datos):
         partes.append(f"{n} sesión realizada" if n == 1 else f"{n} sesiones realizadas")
     if a:
         partes.append(f"{a} ausencia" if a == 1 else f"{a} ausencias")
-    return 'Se registró ' + ' y '.join(partes) + ' en el período.'
+    # Verbo concordado con lo que se cuenta: "Se registró 1 ausencia" pero
+    # "Se registraron 22 sesiones realizadas y 1 ausencia".
+    verbo = 'Se registró' if (n + a) == 1 else 'Se registraron'
+    return f"{verbo} " + ' y '.join(partes) + ' en el período.'
 
 
 _TEXTO_TENDENCIA = {'mejora': 'tendencia de mejora', 'se_mantiene': 'se mantiene estable', 'retrocede': 'requiere atención por un retroceso'}

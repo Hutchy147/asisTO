@@ -329,8 +329,11 @@ def _mejor(informes):
     finales = [i for i in informes if i.estado == 'final']
     if finales:
         elegido = max(finales, key=lambda i: i.version)
+        pendiente = [i for i in informes if i.estado == 'borrador']
         return {'estado': 'publicado', 'id': elegido.id, 'version': elegido.version,
-                'hay_borrador': any(i.estado == 'borrador' for i in informes)}
+                'hay_borrador': bool(pendiente),
+                # Correccion en curso: el borrador que reemplazara al publicado.
+                'id_borrador': max(pendiente, key=lambda i: i.version).id if pendiente else None}
     borradores = [i for i in informes if i.estado == 'borrador']
     if borradores:
         elegido = max(borradores, key=lambda i: i.version)
@@ -388,13 +391,20 @@ def control_mensual(mes=None):
 
     cierra_semestre = desde.month in (6, 12)
     filas_control = []
-    resumen = {'publicados': 0, 'borradores': 0, 'pendientes': 0}
+    resumen = {'publicados': 0, 'borradores': 0, 'pendientes': 0, 'en_borrador_total': 0}
     for p in pacientes:
         propios = por_paciente[p.id]
         mensual = _mejor([i for i in propios if i.tipo == 'mensual'])
         semestral = _mejor([i for i in propios if i.tipo == 'semestral'])
         pti = _mejor([i for i in propios if i.tipo == 'pti'])
-        if mensual is None:
+        # Cuenta todo lo que sigue abierto (mensual, semestral, PTI y
+        # correcciones de publicados), no solo el borrador mensual.
+        resumen['en_borrador_total'] += sum(1 for i in propios if i.estado == 'borrador')
+        sin_actividad = (not p.activo) and int(sesiones.get(p.id, 0)) == 0
+        if mensual is None and sin_actividad:
+            # De baja y sin sesiones en el mes: no hay nada que informar.
+            mensual = {'estado': 'no_corresponde'}
+        elif mensual is None:
             mensual = {'estado': 'pendiente'}
             resumen['pendientes'] += 1
         elif mensual['estado'] == 'publicado':

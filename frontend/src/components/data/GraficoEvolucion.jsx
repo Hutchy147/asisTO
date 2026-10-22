@@ -101,7 +101,7 @@ function tramosEntreCalificaciones(puntos) {
 }
 
 /** Una entrada del conteo al pie, con el color de su marca al lado. */
-function Conteo({ color, cantidad, texto }) {
+function Conteo({ color, cantidad, texto, singular }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
       <Box
@@ -114,7 +114,7 @@ function Conteo({ color, cantidad, texto }) {
         })}
       />
       <Typography variant="body2" color="text.secondary">
-        <strong>{cantidad}</strong> {texto}
+        <strong>{cantidad}</strong> {cantidad === 1 && singular ? singular : texto}
       </Typography>
     </Box>
   );
@@ -364,16 +364,19 @@ export default function GraficoEvolucion({ serie, titulo }) {
           color={archivado ? 'text.secondary' : 'primary.main'}
           cantidad={calificados.length}
           texto="calificaciones"
+          singular="calificación"
         />
         <Conteo
           color={(t) => t.palette.sesionEstado.incompleta.fg}
           cantidad={trabajadasSinCalificar}
           texto="sesiones sin calificar este objetivo"
+          singular="sesión sin calificar este objetivo"
         />
         <Conteo
           color={(t) => t.palette.sesionEstado.ausencia.fg}
           cantidad={ausencias.length}
           texto="ausencias"
+          singular="ausencia"
         />
       </Box>
 

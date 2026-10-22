@@ -257,6 +257,10 @@ export default function PacienteFicha() {
   );
   const verFamiliaAhora = verFamilia && (esMio || (soloLectura && fueMio));
   const avisarNoEsMio = verAsignaciones && !soloLectura && asignaciones.datos && !esMio;
+  // Quien no es el responsable lee la ficha pero no la modifica: el servidor
+  // lo rechaza con 403, así que tampoco se le ofrecen los botones.
+  const noResponsable = Boolean(avisarNoEsMio);
+  const objetivosSoloLectura = soloLectura || noResponsable;
 
   const confirmarArchivado = async () => {
     setArchivando(true);
@@ -332,7 +336,7 @@ export default function PacienteFicha() {
             )
           ) : (
             <>
-              {puedeEditar && (
+              {puedeEditar && !noResponsable && (
                 <Button variant="outlined" onClick={() => setEditando(true)}>
                   Editar datos
                 </Button>
@@ -340,12 +344,12 @@ export default function PacienteFicha() {
               {/* Sin color de alarma: dar de baja es una acción clínica
                   normal —un tratamiento que termina— y no un borrado. Lo que
                   la hace segura es la confirmación con números, no el rojo. */}
-              {puedeDarDeBaja && conPausa && (
+              {puedeDarDeBaja && conPausa && !noResponsable && (
                 <Button variant="outlined" onClick={() => setPausando(true)}>
                   Pausar tratamiento
                 </Button>
               )}
-              {puedeDarDeBaja && (
+              {puedeDarDeBaja && !noResponsable && (
                 <Button variant="outlined" onClick={pedirConfirmacionDeBaja}>
                   {conPausa ? 'Dar el alta' : 'Dar de baja'}
                 </Button>
@@ -369,12 +373,12 @@ export default function PacienteFicha() {
           {paciente.fecha_baja ? ` el ${formatearFecha(paciente.fecha_baja)}` : ''}. Su
           historia clínica se sigue consultando entera —objetivos archivados y todas
           sus sesiones— pero no se puede modificar. Para retomar el tratamiento,
-          reactivalo.
+          reactívelo.
         </Alert>
       )}
       {verMinimo && !soloLectura && activos.length < 3 && (
         <Alert severity="warning" sx={{ mb: 2.5 }}>
-          <strong>Faltan {3 - activos.length} objetivo(s) activo(s).</strong> Un paciente en
+          <strong>{3 - activos.length === 1 ? 'Falta 1 objetivo activo.' : `Faltan ${3 - activos.length} objetivos activos.`}</strong> Un paciente en
           tratamiento tiene que tener al menos 3. Mientras no llegue a 3 no se pueden
           archivar objetivos.
         </Alert>
@@ -566,7 +570,7 @@ export default function PacienteFicha() {
               // Con el paciente dado de baja no se ofrece el alta: el aviso de
               // arriba ya explica por qué, y un botón deshabilitado más
               // repetiría el motivo en un lugar donde no se lee.
-              soloLectura ? null : (
+              objetivosSoloLectura ? null : (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                   {/* La razón del bloqueo va escrita al lado, no en un
                       tooltip: el terapeuta necesita entender el límite, no
@@ -601,7 +605,7 @@ export default function PacienteFicha() {
                     : `Los objetivos son las frases que describen qué se busca lograr con ${paciente.nombre}. Se califican sesión a sesión, así que conviene cargarlos antes de la primera.`
                 }
                 acciones={
-                  soloLectura ? null : (
+                  objetivosSoloLectura ? null : (
                     <Button variant="contained" onClick={() => setModalObjetivo({})}>
                       Cargar el primer objetivo
                     </Button>
@@ -616,8 +620,8 @@ export default function PacienteFicha() {
                   numero={indice + 1}
                   // Sin handlers, la fila no dibuja sus botones: es el mismo
                   // mecanismo que ya usa ObjetivoArchivado.
-                  onEditar={soloLectura ? undefined : (o) => setModalObjetivo({ objetivo: o })}
-                  onArchivar={soloLectura ? undefined : setAArchivar}
+                  onEditar={objetivosSoloLectura ? undefined : (o) => setModalObjetivo({ objetivo: o })}
+                  onArchivar={objetivosSoloLectura ? undefined : setAArchivar}
                 />
               ))
             )}

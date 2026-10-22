@@ -8,8 +8,8 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 
 function ConMarcas({ texto }) {
-  const partes = texto.split(/(\[COMPLETAR[^\]]*\])/g);
-  return partes.map((parte, i) => (parte.startsWith('[COMPLETAR') ? (
+  const partes = texto.split(/(\[COMPLETAR[^\]]*\])/gi);
+  return partes.map((parte, i) => (/^\[COMPLETAR/i.test(parte) ? (
     <Box
       key={i}
       component="mark"

@@ -34,6 +34,15 @@ const ESTADO = {
 };
 
 function Celda({ celda, onAbrir, onGenerar }) {
+  if (celda.estado === 'publicado' && celda.hay_borrador && celda.id_borrador) {
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+        <Chip size="small" color="warning" label="Corrección en borrador" />
+        <Button size="small" onClick={() => onAbrir(celda.id_borrador)}>Seguir</Button>
+        <Button size="small" color="inherit" onClick={() => onAbrir(celda.id)}>Ver publicado</Button>
+      </Box>
+    );
+  }
   const info = ESTADO[celda.estado] ?? ESTADO.pendiente;
   if (celda.estado === 'no_corresponde') {
     return <Typography variant="body2" color="text.secondary">—</Typography>;
@@ -118,7 +127,7 @@ export default function ControlInformes() {
         <>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2 }}>
             <StatTile etiqueta="Mensuales publicados" valor={datos.resumen.publicados} />
-            <StatTile etiqueta="En borrador" valor={datos.resumen.borradores} />
+            <StatTile etiqueta="En borrador" valor={datos.resumen.en_borrador_total ?? datos.resumen.borradores} />
             <StatTile etiqueta="Pendientes" valor={datos.resumen.pendientes} />
           </Box>
           {datos.pacientes.length === 0 ? (

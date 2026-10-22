@@ -55,7 +55,7 @@ export default function ModalInforme({ idInforme, puedeEscribir, advertencia = '
   const esBorrador = datos?.estado === 'borrador';
   const editable = Boolean(esBorrador && puedeEscribir);
   const cambiado = Boolean(datos) && texto !== (datos.contenido ?? '');
-  const pendientes = (texto.match(/\[COMPLETAR[^\]]*\]/g) ?? []).length;
+  const pendientes = (texto.match(/\[COMPLETAR[^\]]*\]/gi) ?? []).length;
 
   const ejecutar = async (clave, accion) => {
     setTrabajando(clave);
@@ -153,6 +153,11 @@ export default function ModalInforme({ idInforme, puedeEscribir, advertencia = '
                 {editable && pendientes > 0 && (
                   <Aviso severidad="warning">
                     Quedan {pendientes} {pendientes === 1 ? 'marca' : 'marcas'} [COMPLETAR…] por resolver. Mientras existan, el informe no se puede publicar.
+                  </Aviso>
+                )}
+                {editable && /##\s*Observaciones de las sesiones/i.test(texto) && (
+                  <Aviso severidad="info">
+                    Al publicar, la familia lee este informe tal como queda, incluida la sección de observaciones de las sesiones. Revise que no incluya detalles clínicos que no deba ver.
                   </Aviso>
                 )}
                 {datos.estado === 'reemplazado' && (

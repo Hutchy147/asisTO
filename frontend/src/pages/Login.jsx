@@ -81,7 +81,7 @@ export default function Login() {
       // El backend devuelve el mismo mensaje si el email no existe o si la
       // contrasena esta mal. Se muestra tal cual: no hay que "mejorarlo"
       // aclarando cual de los dos fallo.
-      setError(fallo.message || 'No se pudo iniciar sesion.');
+      setError(fallo.message || 'No se pudo iniciar sesión.');
     } finally {
       setEnviando(false);
     }
@@ -102,7 +102,7 @@ export default function Login() {
           AsisTO
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Gestion de asistencias y seguimiento terapeutico
+          Gestión de asistencias y seguimiento terapéutico
         </Typography>
 
         {avisoSesion && (
@@ -124,7 +124,7 @@ export default function Login() {
               fullWidth
             />
             <TextField
-              label="Contrasena"
+              label="Contraseña"
               type="password"
               value={contrasena}
               onChange={(e) => setContrasena(e.target.value)}

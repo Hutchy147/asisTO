@@ -43,7 +43,7 @@ export default function NoAutorizado() {
             Ir a mi inicio
           </Button>
           <Button variant="outlined" onClick={logout}>
-            Cerrar sesion
+            Cerrar sesión
           </Button>
         </Stack>
       </Paper>

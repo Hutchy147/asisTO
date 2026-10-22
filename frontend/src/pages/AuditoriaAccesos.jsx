@@ -70,7 +70,7 @@ export default function AuditoriaAccesos() {
     },
     {
       clave: 'cuenta', etiqueta: 'Cuenta', ancho: 150,
-      render: (a) => (a.id_usuario ? `Usuario ${a.id_usuario}` : <Box component="span" sx={{ color: 'text.secondary' }}>Sin cuenta</Box>),
+      render: (a) => (a.id_usuario ? 'Registrada' : <Box component="span" sx={{ color: 'text.secondary' }}>Sin cuenta</Box>),
     },
     { clave: 'ip', etiqueta: 'IP', ancho: 140, render: (a) => a.ip ?? '—' },
   ];
