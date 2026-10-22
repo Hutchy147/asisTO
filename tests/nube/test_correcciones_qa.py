@@ -115,5 +115,22 @@ class CorreccionesQa(BaseApi):
         self.assertEqual(r.get_json()['familiares'], [])
 
 
+    # ---- cuerpos mal formados: 400, nunca 500 ----
+    def test_cuerpos_mal_formados_dan_400(self):
+        for cuerpo in ([], 'texto', 5, [{'a': 1}]):
+            for quien, ruta in (('laura', '/api/objetivos'), ('laura', '/api/sesiones'),
+                                ('laura', '/api/pacientes/1/informes'), ('admin', '/api/pacientes/3/asignaciones'),
+                                (None, '/api/auth/recuperar')):
+                r = self.llamar(quien, 'post', ruta, json=cuerpo)
+                self.assertEqual(r.status_code, 400, (ruta, cuerpo, r.get_data(as_text=True)))
+        for valor in (123, [], {'a': 1}, True):
+            r = self.llamar('laura', 'post', '/api/objetivos', json={'id_paciente': 1, 'descripcion': valor})
+            self.assertEqual(r.status_code, 400, (valor, r.get_data(as_text=True)))
+            r = self.llamar('laura', 'post', '/api/pacientes/1/informes', json={'tipo': valor, 'periodo': valor})
+            self.assertEqual(r.status_code, 400, (valor, r.get_data(as_text=True)))
+        r = self.llamar(None, 'post', '/api/auth/recuperar', json={'email': ['a@b.c']})
+        self.assertEqual(r.status_code, 400)
+
+
 if __name__ == '__main__':
     unittest.main()

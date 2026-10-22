@@ -205,6 +205,9 @@ def generar(id_paciente, datos):
     IA se usa solo si el centro la configuro y la terapeuta no la apago.
     """
     datos = datos or {}
+    for campo in ('tipo', 'periodo'):
+        if not isinstance(datos.get(campo) or '', str):
+            raise ErrorAplicacion(f'El campo {campo} debe ser un texto.', campo=campo)
     tipo = (datos.get('tipo') or '').strip().lower()
     paciente = obtener_paciente(id_paciente, incluir_inactivos=True)
     terapeuta = terapeuta_actual()

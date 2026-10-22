@@ -3,7 +3,7 @@
 
 import logging
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import SQLAlchemyError
@@ -34,6 +34,7 @@ def create_app(config_class=Config):
 
     registrar_manejadores_de_error(app)
     registrar_acentuacion_de_mensajes(app)
+    registrar_validacion_de_cuerpo(app)
     register_blueprints(app)
 
     return app
@@ -46,6 +47,18 @@ def configurar_logging(app):
         level=nivel,
         format='%(asctime)s %(levelname)s [%(name)s] %(message)s',
     )
+
+
+def _es_dato_con_tipo_equivocado(error):
+    """AttributeError de str sobre otro tipo, o parametro SQL que no es escalar."""
+    texto = str(error)
+    if isinstance(error, AttributeError):
+        return ' object has no attribute ' in texto and texto.rsplit("'", 2)[-2] in (
+            'strip', 'lower', 'upper', 'split', 'encode', 'isdigit',
+        )
+    if isinstance(error, TypeError):
+        return 'can not be used as parameter' in texto
+    return False
 
 
 def registrar_manejadores_de_error(app):
@@ -98,6 +111,17 @@ def registrar_manejadores_de_error(app):
 
     @app.errorhandler(Exception)
     def manejar_error_inesperado(error):
+        # Datos con el tipo equivocado (un numero o una lista donde iba un
+        # texto): los servicios llaman `.strip()` sobre lo que llega y fallan
+        # recien ahi. Es un error de quien manda la solicitud, no del servidor.
+        if _es_dato_con_tipo_equivocado(error):
+            app.logger.warning('Dato con tipo invalido en %s %s: %s',
+                               request.method, request.path, error)
+            db.session.rollback()
+            return jsonify({
+                'mensaje': 'Alguno de los datos enviados tiene un formato inválido.',
+                'codigo': 'error_aplicacion',
+            }), 400
         # Red final: nada que no este contemplado arriba puede filtrar su
         # texto al cliente. El detalle completo queda en el log.
         app.logger.exception('Error no controlado: %s', error)
@@ -106,6 +130,27 @@ def registrar_manejadores_de_error(app):
             'mensaje': 'Ocurrio un error inesperado. Intente nuevamente.',
             'codigo': 'error_interno',
         }), 500
+
+
+def registrar_validacion_de_cuerpo(app):
+    """
+    Todos los endpoints esperan un objeto JSON. Si llega otra cosa (una lista,
+    un texto, un numero) se rechaza aca con 400 en vez de dejar que cada
+    servicio falle con un 500 al llamar `.get` sobre algo que no es un dict.
+    """
+    from flask import request
+    from app.utils.errors import ErrorAplicacion
+
+    @app.before_request
+    def exigir_cuerpo_objeto():
+        if request.method not in ('POST', 'PUT', 'PATCH', 'DELETE'):
+            return None
+        if not request.is_json or not request.get_data(cache=True):
+            return None
+        cuerpo = request.get_json(silent=True)
+        if cuerpo is not None and not isinstance(cuerpo, dict):
+            raise ErrorAplicacion('El cuerpo de la solicitud debe ser un objeto JSON.')
+        return None
 
 
 def registrar_acentuacion_de_mensajes(app):
