@@ -33,9 +33,27 @@ def _ip():
     return (request.remote_addr or 'desconocida')[:45]
 
 
+_ULTIMA_PODA = [0.0]
+PODA_CADA = 300  # segundos
+
+
 def _limpiar(cola, ventana, ahora):
     while cola and ahora - cola[0] > ventana:
         cola.popleft()
+
+
+def _podar(ahora):
+    """
+    Saca las IP sin intentos recientes. Sin esto el diccionario crece con cada
+    IP distinta que alguna vez probo (un ataque desde muchas direcciones lo
+    inflaria sin limite). Se llama con el lock tomado.
+    """
+    if ahora - _ULTIMA_PODA[0] < PODA_CADA:
+        return
+    _ULTIMA_PODA[0] = ahora
+    ventana_maxima = max(m for _, m in current_app.config['LIMITES_POR_IP'].values()) * 60
+    for clave in [k for k, cola in _eventos.items() if not cola or ahora - cola[-1] > ventana_maxima]:
+        del _eventos[clave]
 
 
 def _regla(nombre):
@@ -65,6 +83,7 @@ def registrar(nombre):
         return
     ahora = time.monotonic()
     with _lock:
+        _podar(ahora)
         cola = _eventos[(nombre, _ip())]
         _limpiar(cola, ventana, ahora)
         cola.append(ahora)
