@@ -95,7 +95,7 @@ export default function ModalGenerarInforme({
         )}
         {tipo === 'pti' && (
           <Typography variant="body2" color="text.secondary">
-            El plan terapéutico individual se arma con la información del ingreso del paciente.
+            El plan terapéutico integral (PTI) se arma con la información del ingreso del paciente.
           </Typography>
         )}
         <FormControlLabel

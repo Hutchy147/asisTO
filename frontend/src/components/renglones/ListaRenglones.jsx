@@ -56,8 +56,28 @@ export default function ListaRenglones({
   onDestacar,               // (renglon) => Promise
   onBorrar,                 // (renglon) => Promise
   onCerrar,                 // (renglon, cierre) => Promise
+  onEditar,                 // (renglon, texto) => Promise (T4.1)
   alPie,                    // nodo opcional (el campo de alta)
 }) {
+  // Edición en el lugar: un renglón por vez. Enter guarda, Escape cancela.
+  const [editando, setEditando] = useState(null); // null | { id, texto, error }
+  const [guardando, setGuardando] = useState(false);
+
+  async function guardarEdicion(r) {
+    const limpio = (editando?.texto ?? '').trim();
+    if (!limpio) { setEditando((e) => ({ ...e, error: 'El renglón no puede quedar vacío.' })); return; }
+    if (limpio === r.texto) { setEditando(null); return; }
+    setGuardando(true);
+    try {
+      await onEditar(r, limpio);
+      setEditando(null);
+    } catch (fallo) {
+      setEditando((e) => ({ ...e, error: fallo?.message || 'No se pudo guardar el cambio.' }));
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   return (
     <Box>
       {renglones.length === 0 ? (
@@ -82,6 +102,28 @@ export default function ListaRenglones({
                   deshabilitada={!editable || ocupado}
                   onClick={() => onDestacar?.(r)}
                 />
+                {editando?.id === r.id ? (
+                  <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'flex-start', gap: 0.75 }}>
+                    <TextField
+                      size="small" fullWidth autoFocus value={editando.texto}
+                      disabled={guardando}
+                      onChange={(e) => setEditando({ id: r.id, texto: e.target.value, error: '' })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); guardarEdicion(r); }
+                        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setEditando(null); }
+                      }}
+                      inputProps={{ maxLength: MAXIMO_CARACTERES_RENGLON, 'aria-label': `Editar el renglón ${r.texto}` }}
+                      error={Boolean(editando.error)}
+                      helperText={editando.error || 'Enter guarda; Escape cancela.'}
+                    />
+                    <BotonChico deshabilitado={guardando} onClick={() => guardarEdicion(r)} etiqueta="Guardar el cambio">
+                      Guardar
+                    </BotonChico>
+                    <BotonChico deshabilitado={guardando} onClick={() => setEditando(null)} etiqueta="Cancelar la edición">
+                      Cancelar
+                    </BotonChico>
+                  </Box>
+                ) : (
                 <Box
                   className="texto-libre"
                   sx={(t) => ({
@@ -102,7 +144,13 @@ export default function ListaRenglones({
                     <Box component="span" sx={{ ml: 1, fontSize: 11 }}>descartado</Box>
                   )}
                 </Box>
-                {editable && conCierre && (
+                )}
+                {editable && onEditar && !resuelto && editando?.id !== r.id && (
+                  <BotonChico deshabilitado={ocupado} onClick={() => setEditando({ id: r.id, texto: r.texto, error: '' })} etiqueta={`Editar el renglón ${r.texto}`}>
+                    Editar
+                  </BotonChico>
+                )}
+                {editable && conCierre && editando?.id !== r.id && (
                   resuelto ? (
                     <BotonChico deshabilitado={ocupado} onClick={() => onCerrar?.(r, null)} etiqueta="Reabrir renglón">
                       Reabrir
@@ -118,7 +166,7 @@ export default function ListaRenglones({
                     </>
                   )
                 )}
-                {editable && onBorrar && (
+                {editable && onBorrar && editando?.id !== r.id && (
                   <BotonChico deshabilitado={ocupado} onClick={() => onBorrar(r)} etiqueta={`Borrar el renglón ${r.texto}`}>
                     Borrar
                   </BotonChico>

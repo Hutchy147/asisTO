@@ -23,6 +23,7 @@ import SesionEstadoChip from '../components/data/SesionEstadoChip.jsx';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { hayCapacidad } from '../config/entregas.js';
 import { usePeticion } from '../hooks/usePeticion.js';
+import { useEstadoEnUrl } from '../hooks/useEstadoEnUrl.js';
 import { contarNoLeidas } from '../services/notificacionesService.js';
 import { obtenerEvolucionVinculada, listarPacientesVinculados } from '../services/portalFamiliarService.js';
 import { etiquetaDeValor } from '../services/evolucionesService.js';
@@ -59,7 +60,7 @@ function EvolucionDe({ paciente }) {
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [filtro, setFiltro] = useState({ desde: '', hasta: '' });
-  const [pestania, setPestania] = useState('objetivos');
+  const [pestania, setPestania] = useEstadoEnUrl('vista', 'objetivos');
   const rangoInvalido = Boolean(desde && hasta && desde > hasta);
 
   const evolucion = usePeticion(
@@ -128,6 +129,7 @@ function EvolucionDe({ paciente }) {
       {datos && !evolucion.cargando && !evolucion.error && (
         <>
           <Tabs
+            variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile
             value={pestania} onChange={(e, v) => setPestania(v)}
             sx={(t) => ({ mb: 2, borderBottom: `1px solid ${t.palette.superficie.borde}` })}
           >
@@ -197,7 +199,9 @@ export default function PortalFamiliar() {
     () => (hayCapacidad('notificaciones') ? contarNoLeidas() : Promise.resolve({ no_leidas: 0 })),
     [],
   );
-  const [elegido, setElegido] = useState(null);
+  // El paciente elegido va en la URL (?paciente=7): F5 no vuelve al primero (H32).
+  const [elegidoUrl, setElegido] = useEstadoEnUrl('paciente', '');
+  const elegido = Number(elegidoUrl) || null;
 
   const lista = pacientes.datos?.pacientes ?? [];
   const paciente = lista.find((p) => p.id === elegido) ?? lista[0] ?? null;
@@ -228,6 +232,7 @@ export default function PortalFamiliar() {
           </Box>
           {lista.length > 1 && (
             <Tabs
+              variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile
               value={paciente.id} onChange={(e, v) => setElegido(v)}
               sx={(t) => ({ mb: 2, borderBottom: `1px solid ${t.palette.superficie.borde}` })}
             >

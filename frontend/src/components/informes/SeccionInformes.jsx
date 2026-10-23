@@ -60,7 +60,7 @@ export default function SeccionInformes({ paciente, puedeEscribir, onAviso, tien
         <Box sx={{ flex: 1, minWidth: 260 }}>
           <Typography variant="h5">Informes</Typography>
           <Typography variant="body2" color="text.secondary">
-            Mensual, semestral y plan terapéutico individual. Cada uno se genera como borrador, se revisa y recién entonces se publica.
+            Mensual, semestral y plan terapéutico integral. Cada uno se genera como borrador, se revisa y recién entonces se publica.
           </Typography>
         </Box>
         {puedeEscribir ? (

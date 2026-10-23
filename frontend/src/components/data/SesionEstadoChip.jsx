@@ -15,11 +15,7 @@
 
 import Box from '@mui/material/Box';
 
-const ETIQUETAS = {
-  completa: 'Completa',
-  incompleta: 'Incompleta',
-  ausencia: 'Ausencia',
-};
+import { ETIQUETA_ESTADO as ETIQUETAS } from '../../services/sesionesService.js';
 
 export default function SesionEstadoChip({ estado, etiqueta: etiquetaPropia }) {
   // `etiqueta` permite mostrar el estado visible (ver estadoVisible) sin

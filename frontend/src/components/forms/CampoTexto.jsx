@@ -3,6 +3,7 @@
 // etiqueta, el asterisco de obligatorio, la ayuda y el error se vean igual
 // en los cuatro modales.
 
+import { useState } from 'react';
 import Box from '@mui/material/Box';
 import TextField from '@mui/material/TextField';
 
@@ -29,7 +30,21 @@ export default function CampoTexto({
   // error === ' ' marca el campo sin repetir texto: lo usa el rechazo del
   // servidor, cuyo mensaje ya se muestra completo arriba del formulario.
   const tieneError = Boolean(error);
-  const textoAyuda = tieneError && error.trim() ? error : ayuda;
+  // Al pegar un texto más largo que el tope, el navegador lo corta sin
+  // decir nada y el texto quedaba a medias (F6.2). Se avisa.
+  const [recortado, setRecortado] = useState(false);
+  const alPegar = (evento) => {
+    if (!Number.isFinite(maximoCaracteres)) return;
+    const pegado = evento.clipboardData?.getData('text') ?? '';
+    const campo = evento.target;
+    const seleccion = (campo.selectionEnd ?? 0) - (campo.selectionStart ?? 0);
+    setRecortado((valor ?? '').length - seleccion + pegado.length > maximoCaracteres);
+  };
+  const textoAyuda = tieneError && error.trim()
+    ? error
+    : recortado
+      ? `El texto pegado superaba los ${maximoCaracteres} caracteres y se recortó. Revise el final.`
+      : ayuda;
 
   const usados = (valor ?? '').length;
   const conContador = Number.isFinite(maximoCaracteres);
@@ -63,7 +78,11 @@ export default function CampoTexto({
       id={id}
       label={etiqueta}
       value={valor ?? ''}
-      onChange={onChange}
+      onChange={(evento) => {
+        if (recortado && (evento.target.value ?? '').length < maximoCaracteres) setRecortado(false);
+        onChange?.(evento);
+      }}
+      onPaste={alPegar}
       required={obligatorio}
       error={tieneError}
       helperText={ayudaConContador}

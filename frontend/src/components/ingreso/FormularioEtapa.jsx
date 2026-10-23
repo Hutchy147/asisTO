@@ -53,7 +53,9 @@ export default function FormularioEtapa({ etapa, editable, onGuardar, onCerrar, 
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 2.25 }}>
       {cerrada && (
         <Alert severity="info">
-          Esta etapa está cerrada. Para modificarla, reábrala primero.
+          {editable
+            ? 'Esta etapa está cerrada. Para modificarla, reábrala primero.'
+            : 'Esta etapa está cerrada.'}
         </Alert>
       )}
       {error && <Alert severity="error">{error.message}</Alert>}

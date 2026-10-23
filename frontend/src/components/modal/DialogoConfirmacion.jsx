@@ -24,6 +24,9 @@ export default function DialogoConfirmacion({
   // Contenido interactivo (un campo de texto, por ejemplo) debajo del texto.
   // Va aparte de `children`, que es el texto de la confirmación.
   extra = null,
+  // Acción que borra sin vuelta atrás: el botón va en rojo, no en el color
+  // de una acción normal (F8.6).
+  peligro = false,
   onConfirmar,
   onCancelar,
 }) {
@@ -50,6 +53,7 @@ export default function DialogoConfirmacion({
         </Button>
         <Button
           variant="contained"
+          color={peligro ? 'error' : 'primary'}
           onClick={onConfirmar}
           disabled={procesando || confirmarDeshabilitado}
           startIcon={procesando ? <CircularProgress size={14} color="inherit" thickness={5} /> : null}

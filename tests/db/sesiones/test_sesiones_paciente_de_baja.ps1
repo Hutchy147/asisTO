@@ -59,7 +59,7 @@ DELETE a FROM asignaciones a JOIN pacientes p ON p.id = a.id_paciente
 DELETE FROM pacientes WHERE nro_historia LIKE 'HC-SESBAJA-%';
 "@
 
-$MENSAJE_ESPERADO = 'El paciente esta dado de baja: solo se pueden cargar sesiones hasta el dia de la baja'
+$MENSAJE_ESPERADO = 'El paciente no esta en tratamiento activo: solo se pueden cargar sesiones hasta el dia del cierre'
 
 function Nuevo-Paciente {
     param([string]$Sufijo)

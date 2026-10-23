@@ -310,7 +310,10 @@ def redactar_plantilla(datos):
     objetivos = [o for o in datos['objetivos'] if o['activo'] or o['calificaciones'] > 0]
     if objetivos:
         lineas = [_linea_objetivo(o, con_comparacion=(tipo == 'semestral')) for o in objetivos]
-        partes.append('## Objetivos trabajados\n' + '\n'.join(lineas) + '\n')
+        # Franco: no se sabia si el nivel era la ultima calificacion o un resumen.
+        aclaracion = ('El nivel de cada objetivo resume todas sus calificaciones del período; '
+                      'no es la última calificación.')
+        partes.append('## Objetivos trabajados\n' + aclaracion + '\n\n' + '\n'.join(lineas) + '\n')
     else:
         partes.append('## Objetivos trabajados\nNo hay objetivos con actividad en el período.\n')
 

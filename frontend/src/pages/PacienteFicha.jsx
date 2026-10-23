@@ -36,6 +36,7 @@ import { hayCapacidad } from '../config/entregas.js';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { usePeticion } from '../hooks/usePeticion.js';
+import { useEstadoEnUrl } from '../hooks/useEstadoEnUrl.js';
 import {
   listarAsignacionesDePaciente,
 } from '../services/asignacionesService.js';
@@ -45,7 +46,7 @@ import {
   obtenerPaciente, reactivarPaciente,
 } from '../services/pacientesService.js';
 import { estadoVisible } from '../services/sesionesService.js';
-import { formatearFecha, formatearMes, textoEdad } from '../utils/fechas.js';
+import { aIsoLocal, formatearFecha, formatearMes, textoEdad } from '../utils/fechas.js';
 
 /** Panel con encabezado, para las secciones de la ficha. */
 function Seccion({ titulo, descripcion, acciones, children }) {
@@ -98,6 +99,11 @@ function Dato({ etiqueta, children }) {
   );
 }
 
+/** Elige el texto según la cantidad (1 = singular). */
+function plural(cantidad, singular, varios) {
+  return Number(cantidad) === 1 ? singular : varios;
+}
+
 export default function PacienteFicha() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -109,7 +115,8 @@ export default function PacienteFicha() {
   const { perfil } = useAuth();
   const idTerapeutaActual = perfil?.id ?? null;
 
-  const [pestania, setPestania] = useState('objetivos');
+  // La pestaña va en la URL (?pestania=progreso): F5 vuelve a la misma (H32).
+  const [pestaniaUrl, setPestania] = useEstadoEnUrl('pestania', 'objetivos');
   const [modalObjetivo, setModalObjetivo] = useState(null); // null | { objetivo? }
   const [aArchivar, setAArchivar] = useState(null);
   const [archivando, setArchivando] = useState(false);
@@ -120,7 +127,10 @@ export default function PacienteFicha() {
   // La sesión entera (no solo el id): ModalEditarSesion la usa para
   // precargar el formulario sin pedirla de nuevo. Ver ModalEditarSesion.
   const [sesionAEditar, setSesionAEditar] = useState(null);
-  const [aviso, setAviso] = useState('');
+  // aviso: texto (éxito) o { texto, tipo } para un rechazo.
+  const [avisoCrudo, setAviso] = useState('');
+  const aviso = typeof avisoCrudo === 'string' ? avisoCrudo : avisoCrudo.texto;
+  const avisoTipo = typeof avisoCrudo === 'string' ? 'success' : avisoCrudo.tipo;
   const [editando, setEditando] = useState(false);
   // null | { cargando } | { objetivos_activos, asignaciones_vigentes }
   const [confirmandoBaja, setConfirmandoBaja] = useState(null);
@@ -185,7 +195,7 @@ export default function PacienteFicha() {
       setConfirmandoBaja(detalle.baja_arrastra);
     } catch (error) {
       setConfirmandoBaja(null);
-      setAviso(error.message);
+      setAviso({ texto: error.message, tipo: 'error' });
     }
   };
 
@@ -201,7 +211,7 @@ export default function PacienteFicha() {
       sesiones.recargar();
       setAviso(`${respuesta.mensaje}. Sus objetivos y su asignación quedaron como estaban.`);
     } catch (error) {
-      setAviso(error.message);
+      setAviso({ texto: error.message, tipo: 'error' });
     } finally {
       setProcesandoEstado(false);
     }
@@ -217,12 +227,12 @@ export default function PacienteFicha() {
       // Se informa lo que arrastró, no solo que salió bien: son dos efectos
       // que el terapeuta no pidió explícitamente.
       setAviso(
-        `${respuesta.mensaje}. Se archivaron ${respuesta.objetivos_archivados} `
-        + `objetivo(s) y se cerraron ${respuesta.asignaciones_cerradas} asignación(es).`,
+        `${respuesta.mensaje}. ${plural(respuesta.objetivos_archivados, 'Se archivó 1 objetivo', `Se archivaron ${respuesta.objetivos_archivados} objetivos`)}`
+        + ` y ${plural(respuesta.asignaciones_cerradas, 'se cerró 1 asignación', `se cerraron ${respuesta.asignaciones_cerradas} asignaciones`)}.`,
       );
     } catch (error) {
       setConfirmandoBaja(null);
-      setAviso(error.message);
+      setAviso({ texto: error.message, tipo: 'error' });
     } finally {
       setProcesandoEstado(false);
     }
@@ -237,7 +247,7 @@ export default function PacienteFicha() {
       setAviso(`${respuesta.mensaje}. Los objetivos archivados no se reactivaron.`);
     } catch (error) {
       setConfirmandoReactivacion(false);
-      setAviso(error.message);
+      setAviso({ texto: error.message, tipo: 'error' });
     } finally {
       setProcesandoEstado(false);
     }
@@ -256,6 +266,13 @@ export default function PacienteFicha() {
     asignaciones.datos?.asignaciones?.some((a) => a.id_terapeuta === idTerapeutaActual),
   );
   const verFamiliaAhora = verFamilia && (esMio || (soloLectura && fueMio));
+  const pestaniasVisibles = [
+    'objetivos',
+    verHistorialDeSesiones && 'sesiones', verProgreso && 'progreso', verAsignaciones && 'asignacion',
+    verIngreso && 'ingreso', verInformes && 'informes', verFamiliaAhora && 'familia',
+  ].filter(Boolean);
+  // Una pestaña de la URL que no corresponde (o que todavía carga) cae en Objetivos.
+  const pestania = pestaniasVisibles.includes(pestaniaUrl) ? pestaniaUrl : 'objetivos';
   const avisarNoEsMio = verAsignaciones && !soloLectura && asignaciones.datos && !esMio;
   // Quien no es el responsable lee la ficha pero no la modifica: el servidor
   // lo rechaza con 403, así que tampoco se le ofrecen los botones.
@@ -271,7 +288,7 @@ export default function PacienteFicha() {
       setAviso(respuesta?.mensaje ?? 'Objetivo archivado.');
     } catch (error) {
       setAArchivar(null);
-      setAviso(error.message);
+      setAviso({ texto: error.message, tipo: 'error' });
     } finally {
       setArchivando(false);
     }
@@ -369,7 +386,7 @@ export default function PacienteFicha() {
         </Alert>
       ) : soloLectura && (
         <Alert severity="info" sx={{ mb: 2.5 }}>
-          <strong>{conPausa ? 'Paciente dado de alta' : 'Paciente dado de baja'}</strong>
+          <strong>{conPausa ? 'Tratamiento finalizado (alta)' : 'Paciente dado de baja'}</strong>
           {paciente.fecha_baja ? ` el ${formatearFecha(paciente.fecha_baja)}` : ''}. Su
           historia clínica se sigue consultando entera —objetivos archivados y todas
           sus sesiones— pero no se puede modificar. Para retomar el tratamiento,
@@ -385,7 +402,7 @@ export default function PacienteFicha() {
       )}
       {avisarNoEsMio && (
         <Alert severity="info" sx={{ mb: 2.5 }}>
-          <strong>Este paciente no tiene asignado a su usuario.</strong>{' '}
+          <strong>Este paciente no está asignado a usted.</strong>{' '}
           {asignaciones.datos.vigentes > 0
             ? 'Puede consultar su historia clínica completa, pero solo el terapeuta responsable puede registrar sus sesiones y evoluciones.'
             : 'Aún no tiene terapeuta responsable. Hasta que el administrador le asigne uno, nadie podrá registrar sus sesiones.'}
@@ -419,7 +436,7 @@ export default function PacienteFicha() {
         <Dato etiqueta="Objetivos activos">
           <GoalMeter valor={cupo.usados} maximo={cupo.maximo} />
         </Dato>
-        <Dato etiqueta="Cuenta">
+        <Dato etiqueta="Portal del paciente">
           <AccountFlag tieneCuenta={paciente.tiene_login} />
         </Dato>
       </Box>
@@ -427,6 +444,7 @@ export default function PacienteFicha() {
       {/* Las dos pestañas de consulta son de la Entrega 2. En modo 1 la ficha
           queda con Objetivos sola, que es lo que había en esa versión. */}
       <Tabs
+        variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile
         value={pestania}
         onChange={(evento, valor) => setPestania(valor)}
         sx={(t) => ({ mb: 2, borderBottom: `1px solid ${t.palette.superficie.borde}` })}
@@ -444,7 +462,9 @@ export default function PacienteFicha() {
             value="sesiones"
             label={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                Sesiones <Chip size="small" label={sesiones.datos?.total ?? 0} />
+                {/* Solo las ya ocurridas: las agendadas a futuro por la semana tipo
+                    hacían crecer el número sin que se cargara nada (Franco). */}
+                Sesiones <Chip size="small" label={(sesiones.datos?.sesiones ?? []).filter((x) => x.fecha <= aIsoLocal(new Date())).length} />
               </Box>
             }
           />
@@ -621,7 +641,13 @@ export default function PacienteFicha() {
                   // Sin handlers, la fila no dibuja sus botones: es el mismo
                   // mecanismo que ya usa ObjetivoArchivado.
                   onEditar={objetivosSoloLectura ? undefined : (o) => setModalObjetivo({ objetivo: o })}
-                  onArchivar={objetivosSoloLectura ? undefined : setAArchivar}
+                  onArchivar={objetivosSoloLectura ? undefined : (o) => (
+                    // Con 3 o menos el servidor lo va a rechazar: se avisa antes de
+                    // pedir una confirmación que no puede prosperar (F5.5).
+                    verMinimo && activos.length <= 3
+                      ? setAviso({ texto: 'El paciente tiene que mantener al menos 3 objetivos activos: cree el reemplazo antes de archivar este.', tipo: 'warning' })
+                      : setAArchivar(o)
+                  )}
                 />
               ))
             )}
@@ -746,20 +772,22 @@ export default function PacienteFicha() {
         onCancelar={() => setConfirmandoBaja(null)}
       >
         {confirmandoBaja?.cargando ? (
-          'Consultando qué va a arrastrar la baja…'
+          'Consultando qué se va a cerrar…'
         ) : (
           <>
-            Se marca como dado de baja con la fecha de hoy. Además, en la misma
-            operación:
+            {conPausa
+              ? 'El tratamiento se da por terminado con la fecha de hoy. Además, en la misma operación:'
+              : 'Se marca como dado de baja con la fecha de hoy. Además, en la misma operación:'}
             <Box component="ul" sx={{ pl: 2.5, mt: 1, mb: 1 }}>
               <li>
-                se archivan sus <strong>{confirmandoBaja?.objetivos_activos ?? 0}</strong>{' '}
-                objetivo(s) activo(s), con sus calificaciones intactas;
+                {plural(confirmandoBaja?.objetivos_activos ?? 0, 'se archiva su', 'se archivan sus')}{' '}
+                <strong>{confirmandoBaja?.objetivos_activos ?? 0}</strong>{' '}
+                {plural(confirmandoBaja?.objetivos_activos ?? 0, 'objetivo activo', 'objetivos activos')}, con sus calificaciones intactas;
               </li>
               <li>
-                se cierran sus{' '}
+                {plural(confirmandoBaja?.asignaciones_vigentes ?? 0, 'se cierra su', 'se cierran sus')}{' '}
                 <strong>{confirmandoBaja?.asignaciones_vigentes ?? 0}</strong>{' '}
-                asignación(es) vigente(s).
+                {plural(confirmandoBaja?.asignaciones_vigentes ?? 0, 'asignación vigente', 'asignaciones vigentes')}.
               </li>
             </Box>
             Las sesiones y las evoluciones no se tocan. Su historia se sigue
@@ -779,7 +807,7 @@ export default function PacienteFicha() {
         onCancelar={() => { setPausando(false); setMotivoPausa(''); }}
         extra={(
           <TextField
-            label="Motivo de la baja"
+            label="Motivo de la pausa"
             value={motivoPausa}
             onChange={(e) => setMotivoPausa(e.target.value)}
             inputProps={{ maxLength: 200 }}
@@ -791,8 +819,9 @@ export default function PacienteFicha() {
           />
         )}
       >
-        El tratamiento se interrumpe con la fecha de hoy y el paciente deja de
-        figurar en los listados. No se archiva ningún objetivo ni se cierra la
+        El tratamiento se interrumpe con la fecha de hoy. El paciente sale del
+        listado principal y se lo encuentra con el filtro «En pausa o con alta» de
+        Pacientes. No se archiva ningún objetivo ni se cierra la
         asignación: al reactivarlo retoma donde quedó. Si el tratamiento terminó,
         utilice «Dar el alta».
       </DialogoConfirmacion>
@@ -879,7 +908,8 @@ export default function PacienteFicha() {
         onClose={() => setAviso('')}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert severity="success" onClose={() => setAviso('')} variant="filled">
+        {/* Un rechazo (p. ej. archivar por debajo de 3) no puede verse como éxito (F5.5). */}
+        <Alert severity={avisoTipo} onClose={() => setAviso('')} variant="filled">
           {aviso}
         </Alert>
       </Snackbar>

@@ -18,6 +18,7 @@ import AppLayout from '../components/layout/AppLayout.jsx';
 import ModalGenerarInforme from '../components/informes/ModalGenerarInforme.jsx';
 import ModalInforme from '../components/informes/ModalInforme.jsx';
 import { usePeticion } from '../hooks/usePeticion.js';
+import { useEstadoEnUrl } from '../hooks/useEstadoEnUrl.js';
 import { listarInformesDePaciente, obtenerControlMensual } from '../services/informesService.js';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -58,7 +59,8 @@ function Celda({ celda, onAbrir, onGenerar }) {
 }
 
 export default function ControlInformes() {
-  const [mes, setMes] = useState(mesDeHoy());
+  // El mes va en la URL (?mes=2026-09): F5 vuelve al mismo mes.
+  const [mes, setMes] = useEstadoEnUrl('mes', mesDeHoy());
   const [generar, setGenerar] = useState(null); // { paciente, tipo, periodo, ia, borradores }
   const [abierto, setAbierto] = useState(null); // { id, puedeEscribir, advertencia }
   const [aviso, setAviso] = useState('');
@@ -113,9 +115,10 @@ export default function ControlInformes() {
           onChange={(e) => setMes(e.target.value)} inputProps={{ max: mesDeHoy() }}
           error={!mesValido} helperText={mesValido ? ' ' : 'Elija un mes que ya haya empezado.'}
         />
-        {datos && (
+        {/* El mes ya se lee en el selector: solo se agrega el aviso de semestre. */}
+        {datos?.cierra_semestre && (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2.75 }}>
-            {datos.mes_etiqueta}{datos.cierra_semestre ? ' · cierre de semestre: corresponde el informe semestral' : ''}
+            Cierre de semestre: corresponde el informe semestral.
           </Typography>
         )}
       </Box>

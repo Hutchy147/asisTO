@@ -8,11 +8,13 @@
 // de la entrega 3 se conserva el comportamiento anterior.
 
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
 
 import ModalCargarEvolucion from '../components/evoluciones/ModalCargarEvolucion.jsx';
@@ -169,8 +171,26 @@ function Leyenda() {
   );
 }
 
-function CalendarioPorDia() {
-  const [lunes, setLunes] = useState(() => inicioDeSemana(new Date()));
+/** "2026-10-19" -> Date local, o null si no es una fecha válida. */
+function desdeIso(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso ?? '')) return null;
+  const [a, m, d] = iso.split('-').map(Number);
+  const fecha = new Date(a, m - 1, d);
+  return Number.isNaN(fecha.getTime()) ? null : fecha;
+}
+
+function CalendarioPorDia({ selectorVista = null }) {
+  // La semana va en la URL (?semana=AAAA-MM-DD): F5 o un enlace la conservan.
+  const [params, setParams] = useSearchParams();
+  const lunes = useMemo(
+    () => inicioDeSemana(desdeIso(params.get('semana')) ?? new Date()),
+    [params],
+  );
+  const setLunes = (fecha) => {
+    const siguiente = new URLSearchParams(params);
+    siguiente.set('semana', aIso(fecha));
+    setParams(siguiente, { replace: true });
+  };
   const [modalSesion, setModalSesion] = useState(null); // null | {fecha, hora}
   const [agendaSemanal, setAgendaSemanal] = useState(false);
   const [idEvolucion, setIdEvolucion] = useState(null);
@@ -241,7 +261,9 @@ function CalendarioPorDia() {
       subtitulo={`${formatearFecha(desde)} al ${formatearFecha(hasta)}${sesiones.datos ? ` · ${sesiones.datos.total} sesiones` : ''}`}
       acciones={
         <>
-          {hayCapacidad('agenda.recurrente') && (
+          {selectorVista}
+          {/* Con la semana tipo a un clic, el modal viejo de agenda semanal sobra. */}
+          {hayCapacidad('agenda.recurrente') && !selectorVista && (
             <Button variant="outlined" onClick={() => setAgendaSemanal(true)} sx={{ mr: 1 }}>
               Agenda semanal
             </Button>
@@ -659,8 +681,34 @@ function CalendarioPorDia() {
 }
 
 
-// Desde la Entrega 3 el calendario es la semana tipo (turnos que se repiten);
-// antes de esa entrega se conserva el calendario por día.
+function SelectorVista({ vista }) {
+  const [params, setParams] = useSearchParams();
+  const cambiar = (_, valor) => {
+    if (!valor || valor === vista) return;
+    const siguiente = new URLSearchParams(params);
+    if (valor === 'fechas') siguiente.set('vista', 'fechas');
+    else { siguiente.delete('vista'); siguiente.delete('semana'); }
+    setParams(siguiente);
+  };
+  return (
+    <ToggleButtonGroup
+      exclusive size="small" value={vista} onChange={cambiar}
+      aria-label="Vista del calendario" sx={{ mr: 1, height: 37 }}
+    >
+      <ToggleButton value="semana" sx={{ px: 1.75, textTransform: 'none', fontWeight: 600 }}>Semana tipo</ToggleButton>
+      <ToggleButton value="fechas" sx={{ px: 1.75, textTransform: 'none', fontWeight: 600 }}>Agenda por fecha</ToggleButton>
+    </ToggleButtonGroup>
+  );
+}
+
+// Desde la Entrega 3 el calendario tiene dos vistas: la semana tipo (turnos que
+// se repiten) y la agenda por fecha, donde se agenda una sesión puntual, se
+// reprograma y se navega entre semanas. Antes de esa entrega solo existe la
+// segunda. La vista elegida va en la URL (?vista=fechas).
 export default function Calendario() {
-  return hayCapacidad('agenda.recurrente') ? <CalendarioSemanal /> : <CalendarioPorDia />;
+  const [params] = useSearchParams();
+  if (!hayCapacidad('agenda.recurrente')) return <CalendarioPorDia />;
+  return params.get('vista') === 'fechas'
+    ? <CalendarioPorDia selectorVista={<SelectorVista vista="fechas" />} />
+    : <CalendarioSemanal selectorVista={<SelectorVista vista="semana" />} />;
 }

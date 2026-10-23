@@ -184,6 +184,8 @@ export default function ModalRegistroDia({
   const marcarObjetivo = (o, marcado) =>
     ejecutar(() => marcarObjetivoDelPlan(idSesion, o.id, marcado)).catch(() => {});
   const borrar = (r) => ejecutar(() => borrarRenglon(r.id)).catch(() => {});
+  // Sin catch: si falla, la fila sigue en edición con el mensaje (T4.1).
+  const editar = (r, texto) => ejecutar(() => editarRenglon(r.id, { texto, destacado: r.destacado }));
   const cerrar = (r, cierre) => ejecutar(() => cerrarRenglon(r.id, cierre)).catch(() => {});
 
   // "Ausente" y su deshacer pasan por el mismo editar de la sesión, con los
@@ -262,7 +264,7 @@ export default function ModalRegistroDia({
 
           <Bloque
             titulo="Objetivos a trabajar"
-            contador={`${lista.objetivos_plan.length} de ${datos.objetivos_activos.length}`}
+            contador={`${lista.objetivos_plan.length} de ${datos.objetivos_activos.length} marcados`}
             nota={puedeEscribir ? 'Los objetivos activos del paciente. Marque los que se trabajarán en esta sesión.' : undefined}
           >
             {datos.objetivos_activos.length === 0 ? (
@@ -310,6 +312,7 @@ export default function ModalRegistroDia({
               onDestacar={destacar}
               onBorrar={borrar}
               onCerrar={cerrar}
+              onEditar={editar}
               alPie={puedeEscribir && (
                 <CampoRenglon placeholder="Otra actividad prevista" onAgregar={agregar(MOMENTO_PLAN)} deshabilitado={ocupado} />
               )}
@@ -328,6 +331,7 @@ export default function ModalRegistroDia({
               etiquetaVacio={esAusencia ? 'Sesión cerrada por ausencia: no hay registro.' : 'Todavía no se registró lo ocurrido en la sesión.'}
               onDestacar={destacar}
               onBorrar={borrar}
+              onEditar={editar}
               alPie={puedeRegistrar && (
                 <CampoRenglon placeholder="Qué pasó en la sesión" onAgregar={agregar(MOMENTO_REGISTRO)} deshabilitado={ocupado} />
               )}
@@ -336,7 +340,7 @@ export default function ModalRegistroDia({
 
           <Bloque
             titulo="Evolución por objetivo"
-            contador={`${evolucionPorObjetivo.size} de ${datos.objetivos_activos.length + [...evolucionPorObjetivo.keys()].filter((id) => !datos.objetivos_activos.some((o) => o.id === id)).length}`}
+            contador={`${evolucionPorObjetivo.size} de ${datos.objetivos_activos.length + [...evolucionPorObjetivo.keys()].filter((id) => !datos.objetivos_activos.some((o) => o.id === id)).length} calificados`}
             nota={puedeCargarEvolucion ? 'Califique cómo evolucionó cada objetivo trabajado. Los que no se trabajaron pueden quedar sin calificar.' : undefined}
           >
             {esAusencia ? (
@@ -388,10 +392,16 @@ export default function ModalRegistroDia({
                     </Typography>
                   </>
                 ) : (
-                  <Button size="small" variant="text" disabled={ocupado}
-                    onClick={() => cambiarAsistencia(ESTADO_SIN_CERRAR, null).catch(() => {})}>
-                    Reabrir el registro
-                  </Button>
+                  <>
+                    <Button size="small" variant="text" disabled={ocupado}
+                      onClick={() => cambiarAsistencia(ESTADO_SIN_CERRAR, null).catch(() => {})}>
+                      Reabrir el registro
+                    </Button>
+                    {/* H11: qué hace reabrir, dicho antes de tocarlo. */}
+                    <Typography variant="caption" color="text.secondary">
+                      Vuelve a «En registro» para corregir; las calificaciones y los renglones se conservan.
+                    </Typography>
+                  </>
                 )}
               </Box>
             )}

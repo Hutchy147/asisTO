@@ -301,6 +301,25 @@ def solicitar_recuperacion(email):
     return MENSAJE_RECUPERACION, None
 
 
+def enlace_de_recuperacion_vigente(token):
+    """
+    True si el enlace todavia sirve (existe, no vencio y no se uso). Lo pide
+    la pantalla al abrirse, para no hacer completar dos contrasenas y recien
+    entonces avisar que el enlace no sirve (F1.3). No dice de quien es.
+    """
+    if not token or not isinstance(token, str) or len(token) > 200:
+        return False
+    vigente = db.session.execute(
+        text(
+            'SELECT 1 FROM usuarios WHERE token_recuperacion = :h AND activo = TRUE '
+            'AND token_expira IS NOT NULL AND token_expira >= NOW()'
+        ),
+        {'h': _hash_token(token)},
+    ).scalar()
+    db.session.rollback()
+    return bool(vigente)
+
+
 def _validar_contrasena_nueva(contrasena):
     if not contrasena or len(contrasena) < LARGO_MINIMO_CONTRASENA:
         raise ErrorAplicacion(

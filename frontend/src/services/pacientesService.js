@@ -154,8 +154,8 @@ export function listarSesionesDePaciente(idPaciente) {
   return get(`/pacientes/${idPaciente}/sesiones`);
 }
 
-// Reservado para cuando el listado acepte filtros de servidor. Hoy el
-// backend no los recibe, asi que se filtra en el cliente.
+// Filtro de servidor: `estado` ('activos' | 'inactivos'). La busqueda por
+// texto se sigue haciendo en el cliente.
 export function listarPacientesConFiltros(filtros = {}) {
   return get(`/pacientes${construirQuery(filtros)}`);
 }

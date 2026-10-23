@@ -76,8 +76,10 @@ export default function TendenciasObjetivos({ idPaciente }) {
       <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap' }}>
         <Typography variant="body2" color="text.secondary" sx={{ flex: 1, minWidth: 260 }}>
           Compara los últimos días elegidos con el mismo lapso anterior. «Nivel» es la palabra de
-          la escala que mejor resume las calificaciones de cada período. Hacen falta al menos
-          cuatro calificaciones en el período para hablar de tendencia.
+          la escala que mejor resume las calificaciones de cada período. «Tendencia» mira cómo
+          se movieron dentro del período actual (el comienzo contra el final): un objetivo puede
+          mantener el mismo nivel y aun así venir bajando en las últimas sesiones. Hacen falta al
+          menos cuatro calificaciones en el período para hablar de tendencia.
         </Typography>
         <Box sx={{ width: 190 }}>
           <CampoTexto id="tendencia-dias" etiqueta="Período" select valor={dias} onChange={(e) => setDias(Number(e?.target?.value ?? e))}>

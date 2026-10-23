@@ -183,7 +183,7 @@ $resultados += Assert-True $modulo "baja_no_toca_sesiones_ni_evoluciones" `
 
 $baja1bis = Llamar-Baja $pac1
 $resultados += Assert-True $modulo "baja_repetida_es_rechazada_con_contadores_nulos" `
-    ($baja1bis.Mensaje -match "ya estaba dado de baja" -and $baja1bis.Objetivos -eq "NULL") `
+    ($baja1bis.Mensaje -match "ya estaba cerrado" -and $baja1bis.Objetivos -eq "NULL") `
     "Rechazada: $($baja1bis.Mensaje)" `
     "Se esperaba rechazo con contadores NULL y llego: contadores=$($baja1bis.Objetivos)/$($baja1bis.Asignaciones) mensaje='$($baja1bis.Mensaje)'"
 
@@ -305,7 +305,7 @@ SELECT IFNULL(@id,'NULL'), @msg;
 # fue el fin de la corrida, con dos modulos sin ejecutar y sin RESUMEN.
 $ultimaSesion = Get-UltimaLineaSql $sesionSobreBaja
 $resultados += Assert-True $modulo "sesion_nueva_sobre_paciente_de_baja_es_rechazada" `
-    ($ultimaSesion -match "dado de baja") `
+    ($ultimaSesion -match "tratamiento activo") `
     "p_registrar_sesion rechaza: $ultimaSesion" `
     "p_registrar_sesion NO rechazo la sesion sobre un paciente de baja: $ultimaSesion"
 
@@ -479,7 +479,7 @@ SELECT CONCAT_WS('|', (SELECT activo FROM pacientes WHERE id = $pac4),
                       (SELECT COUNT(*) FROM sesiones WHERE id_paciente = $pac4));
 "@
 $resultados += Assert-True $modulo "carrera_las_dos_operaciones_quedan_serializadas" `
-    ($finVictima -notmatch "dado de baja" -and $finBaja -match "correctamente" -and $estadoFinal -eq "0|1") `
+    ($finVictima -notmatch "tratamiento activo" -and $finBaja -match "correctamente" -and $estadoFinal -eq "0|1") `
     "La sesion se registro con el paciente activo y la baja se aplico despues: sin estado intermedio (paciente|sesiones = $estadoFinal)" `
     "Las dos operaciones no quedaron serializadas. Victima: '$finVictima' | Baja: '$finBaja' | estado final (activo|sesiones): $estadoFinal"
 
@@ -541,10 +541,10 @@ $salidaB = Receive-Job (Wait-Job $jobBajaB); Remove-Job $jobBajaB
 $finA = Get-UltimaLinea $salidaA
 $finB = Get-UltimaLinea $salidaB
 
-# Una de las dos tiene que haber sido rechazada con "ya estaba dado de baja".
-$unaRechazada = ($finA -match "ya estaba dado de baja") -or ($finB -match "ya estaba dado de baja")
+# Una de las dos tiene que haber sido rechazada con "ya estaba cerrado".
+$unaRechazada = ($finA -match "ya estaba cerrado") -or ($finB -match "ya estaba cerrado")
 $resultados += Assert-True $modulo "carrera_baja_la_segunda_es_rechazada" $unaRechazada `
-    "La segunda baja fue rechazada con 'ya estaba dado de baja'" `
+    "La segunda baja fue rechazada con 'ya estaba cerrado'" `
     "Las dos bajas se dieron por buenas. A: '$finA' | B: '$finB'. La segunda pisa fecha_baja y devuelve contadores en 0 con mensaje de exito, porque la decision se tomo con la lectura previa al START TRANSACTION y no se revalido bajo el FOR UPDATE."
 
 # =======================================================================
@@ -585,7 +585,7 @@ SELECT IFNULL(@id,'NULL'), @msg, @f;
             "Aceptada, como corresponde ($Porque). Respuesta: $ultima" `
             "RECHAZADA una sesion que tenia que entrar ($Porque). Respuesta: $ultima"
     }
-    return Assert-True $modulo $Test (-not $seAcepto -and $ultima -match "hasta el dia de la baja") `
+    return Assert-True $modulo $Test (-not $seAcepto -and $ultima -match "hasta el dia del cierre") `
         "Rechazada con el mensaje correcto ($Porque). Respuesta: $ultima" `
         "ACEPTADA una sesion que no tenia que entrar ($Porque). Respuesta: $ultima"
 }

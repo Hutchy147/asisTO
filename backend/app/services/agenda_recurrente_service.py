@@ -130,7 +130,7 @@ def crear_plantilla(datos):
         raise ErrorAplicacion('El paciente indicado no existe.', campo='id_paciente',
                               http_status=404)
     if not paciente.activo:
-        raise ErrorAplicacion('El paciente esta dado de baja.', campo='id_paciente')
+        raise ErrorAplicacion('El paciente no esta en tratamiento activo.', campo='id_paciente')
     # Regla 8 aplicada a la plantilla: no se planifica a quien no se atiende.
     if paciente.id not in ids_de_pacientes_asignados(terapeuta.id):
         raise ErrorAplicacion(

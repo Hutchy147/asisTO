@@ -5,7 +5,7 @@ from flask import Blueprint, jsonify, request
 
 from app.services.pacientes_service import (
     alta_paciente, baja_paciente, editar_paciente, listar_pacientes,
-    obtener_detalle, reactivar_paciente,
+    obtener_detalle, reactivar_paciente, siguiente_nro_historia,
 )
 from app.services.evoluciones_service import evolucion_de_paciente
 from app.services.tendencias_service import tendencias_de_paciente
@@ -18,8 +18,12 @@ pacientes_bp = Blueprint('pacientes', __name__)
 @pacientes_bp.get('/pacientes')
 @requiere_rol('terapeuta')
 def listar():
-    pacientes = listar_pacientes()
-    return jsonify({'pacientes': pacientes, 'total': len(pacientes)}), 200
+    pacientes = listar_pacientes(request.args.get('estado'))
+    return jsonify({
+        'pacientes': pacientes,
+        'total': len(pacientes),
+        'siguiente_nro_historia': siguiente_nro_historia(),
+    }), 200
 
 
 @pacientes_bp.post('/pacientes')

@@ -136,7 +136,9 @@ export default function SeccionIngreso({ paciente, puedeEscribir, onAviso, onIrA
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
               Iniciado el {new Date(`${datos.ingreso.fecha_inicio}T00:00:00`).toLocaleDateString('es-AR')}
               {datos.ingreso.terapeuta ? ` por ${datos.ingreso.terapeuta}` : ''}.
-              Complete las cuatro etapas y fije los objetivos para generar la historia clínica.
+              {editable
+                ? 'Complete las cuatro etapas y fije los objetivos para generar la historia clínica.'
+                : 'Solo lectura: lo completa el terapeuta responsable del paciente.'}
             </Typography>
           </Box>
 
@@ -161,7 +163,9 @@ export default function SeccionIngreso({ paciente, puedeEscribir, onAviso, onIrA
                   </Typography>
                   {etapa.estado !== 'cerrada' && etapa.obligatorios_faltantes > 0 && (
                     <Typography variant="caption" color="text.secondary">
-                      {etapa.obligatorios_faltantes} obligatorio(s) por completar
+                      {etapa.obligatorios_faltantes === 1
+                        ? '1 campo obligatorio por completar'
+                        : `${etapa.obligatorios_faltantes} campos obligatorios por completar`}
                     </Typography>
                   )}
                   <Chip size="small" color={estado.color} label={estado.etiqueta} />

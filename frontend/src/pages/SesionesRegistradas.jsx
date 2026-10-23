@@ -23,6 +23,7 @@ import AppLayout from '../components/layout/AppLayout.jsx';
 import ModalDetalleSesion from '../components/sesiones/ModalDetalleSesion.jsx';
 import ModalEditarSesion from '../components/sesiones/ModalEditarSesion.jsx';
 import { usePeticion } from '../hooks/usePeticion.js';
+import { useFiltrosEnUrl } from '../hooks/useEstadoEnUrl.js';
 import { listarPacientes } from '../services/pacientesService.js';
 import { ETIQUETA_ESTADO, listarSesionesRegistradas } from '../services/sesionesService.js';
 import { formatearFecha } from '../utils/fechas.js';
@@ -42,7 +43,8 @@ function rangoInicial() {
 }
 
 export default function SesionesRegistradas() {
-  const [filtros, setFiltros] = useState({
+  // Filtros y página en la URL: F5 o Atrás vuelven al mismo listado (H32).
+  const [filtros, setFiltros] = useFiltrosEnUrl({
     ...rangoInicial(), id_paciente: '', terapeuta: 'mias', estado: '', pagina: 1,
   });
   const [idDetalle, setIdDetalle] = useState(null);
@@ -61,7 +63,11 @@ export default function SesionesRegistradas() {
     setFiltros((f) => ({ ...f, [clave]: valor, pagina: 1 }));
   };
 
-  const opcionesPaciente = useMemo(() => pacientes.datos?.pacientes ?? [], [pacientes.datos]);
+  // Con «Mis sesiones» solo se ofrecen los pacientes asignados a quien consulta
+  // (los de otra terapeuta siempre darían cero). Se conserva el ya elegido.
+  const opcionesPaciente = useMemo(() => (pacientes.datos?.pacientes ?? []).filter(
+    (p) => filtros.terapeuta !== 'mias' || p.asignado_a_mi !== false || String(p.id) === String(filtros.id_paciente),
+  ), [pacientes.datos, filtros.terapeuta, filtros.id_paciente]);
   const datos = listado.datos;
   const rangoInvalido = filtros.desde && filtros.hasta && filtros.desde > filtros.hasta;
 
@@ -120,7 +126,7 @@ export default function SesionesRegistradas() {
         <CampoTexto id="filtro-paciente" etiqueta="Paciente" select valor={filtros.id_paciente} onChange={cambiar('id_paciente')}>
           <MenuItem value="">Todos</MenuItem>
           {opcionesPaciente.map((p) => (
-            <MenuItem key={p.id} value={p.id} className="texto-libre">{p.nombre_completo} · {p.nro_historia}</MenuItem>
+            <MenuItem key={p.id} value={String(p.id)} className="texto-libre">{p.nombre_completo} · {p.nro_historia}</MenuItem>
           ))}
         </CampoTexto>
         <CampoTexto id="filtro-terapeuta" etiqueta="Terapeuta" select valor={filtros.terapeuta} onChange={cambiar('terapeuta')}>
@@ -129,9 +135,9 @@ export default function SesionesRegistradas() {
         </CampoTexto>
         <CampoTexto id="filtro-estado" etiqueta="Estado" select valor={filtros.estado} onChange={cambiar('estado')}>
           <MenuItem value="">Todos</MenuItem>
-          <MenuItem value="completa">Completa</MenuItem>
-          <MenuItem value="incompleta">Incompleta</MenuItem>
-          <MenuItem value="ausencia">Ausencia</MenuItem>
+          <MenuItem value="completa">{ETIQUETA_ESTADO.completa}</MenuItem>
+          <MenuItem value="incompleta">{ETIQUETA_ESTADO.incompleta}</MenuItem>
+          <MenuItem value="ausencia">{ETIQUETA_ESTADO.ausencia}</MenuItem>
         </CampoTexto>
       </Box>
 

@@ -499,7 +499,7 @@ hace falta: ninguna depende de `notas`.
 | **Sesión de otro terapeuta** | `403` | `Solo el terapeuta que atendio la sesion puede editarla.` |
 | **Superposición horaria** | `400` | `El terapeuta ya tiene sesiones que se superponen con ese horario` |
 | Hora de fin anterior al inicio | `400` | `La hora de fin debe ser posterior a la hora de inicio` |
-| Fecha posterior a la baja del paciente | `400` | `El paciente esta dado de baja: solo se pueden cargar sesiones hasta el dia de la baja` |
+| Fecha posterior a la baja del paciente | `400` | `El paciente no esta en tratamiento activo: solo se pueden cargar sesiones hasta el dia del cierre` |
 | **A `ausencia` con evoluciones cargadas** | `400` | `No se puede marcar la sesion como ausencia: ya tiene evoluciones cargadas` |
 | **`ausencia` sin `ausencia_de` (trigger)** | `400` | `No se puede marcar la sesion como ausencia sin declarar quien falto` |
 | Sesión inexistente | `404` | `La sesion indicada no existe.` |

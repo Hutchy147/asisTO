@@ -39,7 +39,9 @@ export default function AdminPlantillasObjetivos() {
     }
   }
 
-  const columnas = [
+  // Las plantillas llegan anidadas en su área: la edición tiene que llevarla,
+  // o el formulario abría el Área vacía y obligaba a reescribirla (F6.1).
+  const columnasDe = (area) => [
     {
       clave: 'descripcion', etiqueta: 'Texto sugerido',
       render: (p) => <span className="texto-libre">{p.descripcion}</span>,
@@ -48,7 +50,7 @@ export default function AdminPlantillasObjetivos() {
       clave: 'acciones', etiqueta: '', ancho: 200,
       render: (p) => (
         <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button size="small" color="inherit" onClick={() => setModal({ plantilla: p })}>Editar</Button>
+          <Button size="small" color="inherit" onClick={() => setModal({ plantilla: { ...p, area } })}>Editar</Button>
           {confirmar?.id === p.id ? (
             <Button size="small" color="error" variant="contained" onClick={() => quitar(p)}>Confirmar</Button>
           ) : (
@@ -97,7 +99,7 @@ export default function AdminPlantillasObjetivos() {
               <Chip size="small" label={`${a.plantillas.length} ${a.plantillas.length === 1 ? 'plantilla' : 'plantillas'}`} />
               <Button variant="outlined" onClick={() => setModal({ area: a.area })}>Agregar a esta área</Button>
             </Box>
-            <DataTable columnas={columnas} filas={a.plantillas} />
+            <DataTable columnas={columnasDe(a.area)} filas={a.plantillas} />
           </Box>
         ))}
       </Container>

@@ -6,7 +6,7 @@
 // Publicar guarda primero lo que se escribió: lo que se publica es lo que se
 // ve en pantalla, no la última versión guardada.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
@@ -53,7 +53,15 @@ export default function ModalInforme({ idInforme, puedeEscribir, advertencia = '
   const esBorrador = datos?.estado === 'borrador';
   const editable = Boolean(esBorrador && puedeEscribir);
   const cambiado = Boolean(datos) && texto !== (datos.contenido ?? '');
-  const pendientes = (texto.match(/\[COMPLETAR[^\]]*\]/gi) ?? []).length;
+  // Misma regla que el servidor (LOCATE('[COMPLETAR', UPPER(...))): cualquier
+  // mayúscula y aunque falte el corchete de cierre (F8.4).
+  const pendientes = (texto.match(/\[COMPLETAR/gi) ?? []).length;
+  // Un rechazo se muestra arriba del texto: si se estaba leyendo más abajo,
+  // quedaba fuera de la vista y parecía que no pasaba nada (F8.4).
+  const refError = useRef(null);
+  useEffect(() => {
+    if (error) refError.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [error]);
 
   const ejecutar = async (clave, accion) => {
     setTrabajando(clave);
@@ -130,7 +138,7 @@ export default function ModalInforme({ idInforme, puedeEscribir, advertencia = '
           <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
             {informe.cargando && !datos && <Cargando texto="Cargando el informe..." />}
             {informe.error && <EstadoError error={informe.error} onReintentar={informe.recargar} />}
-            {error && <Aviso severidad="error">{error.message}</Aviso>}
+            {error && <Box ref={refError}><Aviso severidad="error">{error.message}</Aviso></Box>}
             {advertencia && <Aviso severidad="warning">{advertencia}</Aviso>}
             {datos && (
               <>
@@ -233,6 +241,7 @@ export default function ModalInforme({ idInforme, puedeEscribir, advertencia = '
       <DialogoConfirmacion
         abierto={confirmando === 'descartar'} titulo="Descartar el borrador"
         etiquetaConfirmar="Descartar" etiquetaProcesando="Descartando…" procesando={trabajando === 'descartar'}
+        peligro
         onConfirmar={descartar} onCancelar={() => setConfirmando(null)}
       >
         El borrador se elimina y no se puede recuperar. Puede generar uno nuevo cuando lo necesite.

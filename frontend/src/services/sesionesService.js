@@ -210,12 +210,15 @@ export function estadoVisible(sesion, ahora = new Date()) {
   return { estado: ESTADO_INCOMPLETA, etiqueta: 'En registro' };
 }
 
-/** Etiqueta de un estado de sesion. */
-export const ETIQUETA_ESTADO = {
-  [ESTADO_COMPLETA]: 'Completa',
-  [ESTADO_INCOMPLETA]: 'Incompleta',
-  [ESTADO_AUSENCIA]: 'Ausencia',
-};
+/**
+ * Etiqueta de un estado de sesion. Desde la V3 se usa el mismo vocabulario
+ * que el ciclo visible (Realizada / En registro / Ausente) en TODAS las
+ * pantallas —listados, filtros, portal del familiar—: antes la misma sesión
+ * se llamaba «En registro» en una pantalla e «Incompleta» en otra (H12).
+ */
+export const ETIQUETA_ESTADO = hayCapacidad('notas.campo')
+  ? { [ESTADO_COMPLETA]: 'Realizada', [ESTADO_INCOMPLETA]: 'En registro', [ESTADO_AUSENCIA]: 'Ausente' }
+  : { [ESTADO_COMPLETA]: 'Completa', [ESTADO_INCOMPLETA]: 'Incompleta', [ESTADO_AUSENCIA]: 'Ausencia' };
 
 /**
  * Las tres opciones del radio "Estado de la sesion", con su descripcion,

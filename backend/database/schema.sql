@@ -956,7 +956,7 @@ BEGIN
     IF v_paciente_activo = FALSE THEN
       SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT =
-          'El paciente esta dado de baja: no se le pueden crear objetivos';
+          'El paciente no esta en tratamiento activo: no se le pueden crear objetivos';
     END IF;
 
     SELECT COUNT(*) INTO v_activos
@@ -1073,7 +1073,7 @@ BEGIN
     IF v_paciente_activo = FALSE THEN
       SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT =
-          'El paciente esta dado de baja: no se le pueden activar objetivos';
+          'El paciente no esta en tratamiento activo: no se le pueden activar objetivos';
     END IF;
 
     SELECT COUNT(*) INTO v_activos
@@ -1175,7 +1175,7 @@ BEGIN
      AND (v_fecha_baja IS NULL OR NEW.fecha > v_fecha_baja) THEN
     SIGNAL SQLSTATE '45000'
       SET MESSAGE_TEXT =
-        'El paciente esta dado de baja: solo se pueden cargar sesiones hasta el dia de la baja';
+        'El paciente no esta en tratamiento activo: solo se pueden cargar sesiones hasta el dia del cierre';
   END IF;
 
   -- Ver NOTA DE CONCURRENCIA
@@ -1382,7 +1382,7 @@ BEGIN
        AND (v_fecha_baja IS NULL OR NEW.fecha > v_fecha_baja) THEN
       SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT =
-          'El paciente esta dado de baja: solo se pueden cargar sesiones hasta el dia de la baja';
+          'El paciente no esta en tratamiento activo: solo se pueden cargar sesiones hasta el dia del cierre';
     END IF;
   END IF;
 
@@ -1970,7 +1970,7 @@ BEGIN
     IF v_paciente_activo = FALSE THEN
       SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT =
-          'El paciente esta dado de baja: no se le pueden abrir asignaciones';
+          'El paciente no esta en tratamiento activo: no se le pueden abrir asignaciones';
     END IF;
 
     SELECT COUNT(*) INTO v_vigentes
@@ -2018,7 +2018,7 @@ BEGIN
     IF v_paciente_activo = FALSE THEN
       SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT =
-          'El paciente esta dado de baja: no se le pueden abrir asignaciones';
+          'El paciente no esta en tratamiento activo: no se le pueden abrir asignaciones';
     END IF;
 
     -- id <> OLD.id: la propia fila no cuenta como conflicto consigo misma.
@@ -2199,7 +2199,7 @@ BEGIN
 
     SET p_id_paciente = LAST_INSERT_ID();
     COMMIT;
-    SET p_mensaje = 'Paciente dado de alta correctamente';
+    SET p_mensaje = 'Paciente registrado correctamente';
   END IF;
 END$$
 
@@ -2292,7 +2292,7 @@ BEGIN
   IF v_existe = 0 THEN
     SET p_mensaje = 'El paciente indicado no existe';
   ELSEIF v_activo = FALSE THEN
-    SET p_mensaje = 'El paciente esta dado de baja: reactivelo antes de editarlo';
+    SET p_mensaje = 'El paciente no esta en tratamiento activo: reactivelo antes de editarlo';
   ELSEIF v_duplicado > 0 THEN
     SET p_mensaje = CONCAT(
       'Ya existe un paciente con el numero de historia ', p_nro_historia);
@@ -2310,7 +2310,7 @@ BEGIN
     IF v_activo = FALSE THEN
       ROLLBACK;
       SET p_editado = NULL;
-      SET p_mensaje = 'El paciente esta dado de baja: reactivelo antes de editarlo';
+      SET p_mensaje = 'El paciente no esta en tratamiento activo: reactivelo antes de editarlo';
     ELSE
 
     UPDATE pacientes
@@ -2412,7 +2412,7 @@ BEGIN
   IF v_existe = 0 THEN
     SET p_mensaje = 'El paciente indicado no existe';
   ELSEIF v_activo = FALSE THEN
-    SET p_mensaje = 'El paciente ya estaba dado de baja';
+    SET p_mensaje = 'El tratamiento del paciente ya estaba cerrado';
   ELSE
     START TRANSACTION;
 
@@ -2439,7 +2439,7 @@ BEGIN
       ROLLBACK;
       SET p_objetivos_archivados = NULL;
       SET p_asignaciones_cerradas = NULL;
-      SET p_mensaje = 'El paciente ya estaba dado de baja';
+      SET p_mensaje = 'El tratamiento del paciente ya estaba cerrado';
     ELSE
 
     -- Este procedimiento es el CIERRE del tratamiento (el alta del rubro).
@@ -2469,7 +2469,7 @@ BEGIN
     SET p_objetivos_archivados = ROW_COUNT();
 
     COMMIT;
-    SET p_mensaje = 'Paciente dado de baja correctamente';
+    SET p_mensaje = 'Alta del tratamiento registrada correctamente';
     END IF;
   END IF;
 END$$
@@ -2637,11 +2637,11 @@ BEGIN
   IF v_existe = 0 THEN
     SET p_mensaje = 'El paciente indicado no existe';
   ELSEIF CHAR_LENGTH(v_motivo) = 0 THEN
-    SET p_mensaje = 'La baja necesita un motivo';
+    SET p_mensaje = 'La pausa necesita un motivo';
   ELSEIF CHAR_LENGTH(v_motivo) > 200 THEN
-    SET p_mensaje = 'El motivo de la baja no puede superar los 200 caracteres';
+    SET p_mensaje = 'El motivo de la pausa no puede superar los 200 caracteres';
   ELSEIF v_activo = FALSE THEN
-    SET p_mensaje = 'El paciente ya estaba dado de baja';
+    SET p_mensaje = 'El tratamiento del paciente ya estaba cerrado';
   ELSE
     START TRANSACTION;
 
@@ -2653,7 +2653,7 @@ BEGIN
     -- Relectura dentro del lock: ver p_baja_paciente.
     IF v_activo = FALSE THEN
       ROLLBACK;
-      SET p_mensaje = 'El paciente ya estaba dado de baja';
+      SET p_mensaje = 'El tratamiento del paciente ya estaba cerrado';
     ELSE
       UPDATE pacientes
          SET activo = FALSE,
@@ -2797,7 +2797,7 @@ BEGIN
   -- comparar, y ante un estado incoherente se rechaza en vez de adivinar.
   ELSEIF v_activo_pac = FALSE
      AND (v_fecha_baja IS NULL OR p_fecha > v_fecha_baja) THEN
-    SET p_mensaje = 'El paciente esta dado de baja: solo se pueden cargar sesiones hasta el dia de la baja';
+    SET p_mensaje = 'El paciente no esta en tratamiento activo: solo se pueden cargar sesiones hasta el dia del cierre';
   ELSEIF v_hora_fin <= p_hora_inicio THEN
     SET p_mensaje = 'La hora de fin debe ser posterior a la hora de inicio';
   ELSE
@@ -2830,7 +2830,7 @@ BEGIN
        AND (v_fecha_baja IS NULL OR p_fecha > v_fecha_baja) THEN
       ROLLBACK;
       SET p_id_sesion = NULL;
-      SET p_mensaje = 'El paciente esta dado de baja: solo se pueden cargar sesiones hasta el dia de la baja';
+      SET p_mensaje = 'El paciente no esta en tratamiento activo: solo se pueden cargar sesiones hasta el dia del cierre';
     ELSE
 
     -- Ver NOTA DE CONCURRENCIA. Mismo orden que el trigger de sesiones:
@@ -2852,9 +2852,8 @@ BEGIN
 
     IF v_superpuestas > 0 THEN
       ROLLBACK;
-      SET p_mensaje = CONCAT(
-        'El terapeuta ya tiene ', v_superpuestas,
-        ' sesion(es) que se superponen con ese horario');
+      -- Sin la cantidad: "1 sesion(es)" no concordaba y el numero no ayuda.
+      SET p_mensaje = 'El terapeuta ya tiene sesiones que se superponen con ese horario';
     ELSE
       INSERT INTO sesiones (
         id_terapeuta, id_paciente, fecha, hora_inicio, hora_fin, estado,
@@ -3459,7 +3458,7 @@ BEGIN
       SET p_mensaje = 'El terapeuta indicado no existe';
     ELSEIF v_activo = FALSE THEN
       ROLLBACK;
-      SET p_mensaje = 'El paciente esta dado de baja: no se le pueden abrir asignaciones';
+      SET p_mensaje = 'El paciente no esta en tratamiento activo: no se le pueden abrir asignaciones';
     ELSEIF v_desde < v_ingreso THEN
       -- Una asignacion anterior al ingreso del paciente dejaria cargar
       -- sesiones de fechas en que todavia no era paciente del centro.
@@ -3649,7 +3648,7 @@ BEGIN
     SET p_mensaje = 'El familiar indicado no existe';
   ELSEIF v_activo = FALSE THEN
     ROLLBACK;
-    SET p_mensaje = 'El paciente esta dado de baja: no se le pueden vincular familiares';
+    SET p_mensaje = 'El paciente no esta en tratamiento activo: no se le pueden vincular familiares';
   ELSEIF v_habilitado = FALSE THEN
     ROLLBACK;
     SET p_mensaje = 'La cuenta del familiar esta deshabilitada';
@@ -3810,7 +3809,7 @@ BEGIN
     SET p_mensaje = 'El paciente indicado no existe';
   ELSEIF v_activo = FALSE THEN
     ROLLBACK;
-    SET p_mensaje = 'El paciente esta dado de baja: no se le pueden vincular familiares';
+    SET p_mensaje = 'El paciente no esta en tratamiento activo: no se le pueden vincular familiares';
   ELSEIF v_usuario IS NOT NULL THEN
     ROLLBACK;
     SET p_mensaje = 'Ya existe una cuenta con ese correo electronico';
@@ -4008,7 +4007,7 @@ BEGIN
     SET p_mensaje = 'El terapeuta indicado no existe';
   ELSEIF v_activo = FALSE THEN
     ROLLBACK;
-    SET p_mensaje = 'El paciente esta dado de baja: no se le puede iniciar un ingreso';
+    SET p_mensaje = 'El paciente no esta en tratamiento activo: no se le puede iniciar un ingreso';
   ELSEIF v_asignado = 0 THEN
     ROLLBACK;
     SET p_mensaje = 'El terapeuta no tiene asignado a este paciente';
@@ -4278,7 +4277,9 @@ BEGIN
       SET p_mensaje = 'La etapa ya estaba cerrada';
     ELSEIF v_faltan > 0 THEN
       ROLLBACK;
-      SET p_mensaje = CONCAT('Faltan completar ', v_faltan, ' campo(s) obligatorio(s) de esta etapa');
+      SET p_mensaje = IF(v_faltan = 1,
+        'Falta completar 1 campo obligatorio de esta etapa',
+        CONCAT('Faltan completar ', v_faltan, ' campos obligatorios de esta etapa'));
     ELSE
       UPDATE ingreso_etapas
          SET estado = 'cerrada', fecha_cierre = CURRENT_TIMESTAMP
@@ -4493,7 +4494,9 @@ BEGIN
       SET p_mensaje = 'El ingreso ya estaba completado';
     ELSEIF v_abiertas > 0 THEN
       ROLLBACK;
-      SET p_mensaje = CONCAT('Faltan cerrar ', v_abiertas, ' etapa(s) del ingreso');
+      SET p_mensaje = IF(v_abiertas = 1,
+        'Falta cerrar 1 etapa del ingreso',
+        CONCAT('Faltan cerrar ', v_abiertas, ' etapas del ingreso'));
     ELSEIF v_objetivos < 3 THEN
       ROLLBACK;
       SET p_mensaje = 'Faltan fijar los objetivos: el paciente necesita al menos 3 objetivos activos';
@@ -4852,7 +4855,7 @@ BEGIN
   END IF;
 
   IF v_activos < 2 THEN
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Alguno de los pacientes esta dado de baja';
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Alguno de los pacientes no esta en tratamiento activo';
   END IF;
 
   SELECT COUNT(DISTINCT id_paciente) INTO v_asignados
@@ -4996,7 +4999,7 @@ BEGIN
   END IF;
 
   IF v_pac_act = FALSE THEN
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El paciente esta dado de baja';
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El paciente no esta en tratamiento activo';
   END IF;
 
   SELECT COUNT(*) INTO v_asignado

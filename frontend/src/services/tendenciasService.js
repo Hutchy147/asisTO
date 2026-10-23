@@ -29,5 +29,6 @@ export const ETIQUETA_CAMBIO = {
   mejoro: 'Mejoró',
   igual: 'Sin cambios',
   retrocedio: 'Retrocedió',
-  sin_datos: 'Sin datos para comparar',
+  // Mismo texto que la tendencia para el mismo caso de pocos datos (H31).
+  sin_datos: 'Sin datos suficientes',
 };

@@ -210,7 +210,7 @@ def _verificar_escritura(objetivo):
     paciente = obtener_paciente(objetivo.id_paciente, incluir_inactivos=True)
     if not paciente.activo:
         raise ErrorAplicacion(
-            'El paciente está dado de baja: sus objetivos quedan solo para lectura.',
+            'El paciente no está en tratamiento activo: sus objetivos quedan solo para lectura.',
             http_status=409,
         )
 

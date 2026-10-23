@@ -233,6 +233,15 @@ export function pedirRecuperacion(email) {
   });
 }
 
+/** -> { vigente: bool }. Se consulta al abrir la pantalla del enlace. */
+export function verificarEnlaceRecuperacion(token) {
+  return request('/auth/restablecer/verificar', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+    omitirAuth: true,
+  });
+}
+
 export function restablecerContrasena(token, contrasenaNueva) {
   return request('/auth/restablecer', {
     method: 'POST',

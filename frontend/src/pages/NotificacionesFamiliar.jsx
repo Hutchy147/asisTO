@@ -16,6 +16,7 @@ import Typography from '@mui/material/Typography';
 import BarraFamiliar from '../components/familiar/BarraFamiliar.jsx';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { usePeticion } from '../hooks/usePeticion.js';
+import { hayCapacidad } from '../config/entregas.js';
 import {
   guardarPreferencia, listarNotificaciones, marcarNotificacion, marcarTodasLeidas,
   obtenerPreferencias,
@@ -56,7 +57,11 @@ export default function NotificacionesFamiliar() {
   };
 
   const noLeidas = lista.datos?.no_leidas ?? 0;
-  const tipos = preferencias.datos?.preferencias ?? [];
+  // En una entrega sin informes para la familia (modos 4 y 5) el tipo
+  // «Informe generado» no existe todavía: ni su interruptor ni sus avisos (H29).
+  const tipoVisible = (t) => t !== 'informe_generado' || hayCapacidad('familiar.informes');
+  const tipos = (preferencias.datos?.preferencias ?? []).filter((p) => tipoVisible(p.tipo));
+  const avisos = (lista.datos?.notificaciones ?? []).filter((n) => tipoVisible(n.tipo));
 
   return (
     <BarraFamiliar activa="avisos" sinLeer={noLeidas}>
@@ -134,7 +139,7 @@ export default function NotificacionesFamiliar() {
         {lista.cargando && <Cargando texto="Cargando los avisos..." />}
         {lista.error && <EstadoError error={lista.error} onReintentar={lista.recargar} />}
         {lista.datos && !lista.cargando && !lista.error && (
-          lista.datos.notificaciones.length === 0 ? (
+          avisos.length === 0 ? (
             <EstadoVacio
               plano
               titulo="No hay avisos para mostrar"
@@ -142,7 +147,7 @@ export default function NotificacionesFamiliar() {
             />
           ) : (
             <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }}>
-              {lista.datos.notificaciones.map((n) => (
+              {avisos.map((n) => (
                 <Box
                   component="li"
                   key={n.id}

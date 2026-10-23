@@ -67,7 +67,7 @@ class IngresoApi(BaseApi):
         # paciente de baja y paciente inexistente
         r = self.llamar('laura', 'post', '/api/pacientes/4/ingreso')
         self.assertEqual(r.status_code, 400)
-        self.assertIn('dado de baja', r.get_json()['mensaje'])
+        self.assertIn('tratamiento activo', r.get_json()['mensaje'])
         self.assertEqual(self.llamar('laura', 'post', '/api/pacientes/999/ingreso').status_code, 404)
         self.assertEqual(self.llamar('admin', 'post', f'/api/pacientes/{idp}/ingreso').status_code, 403)
 

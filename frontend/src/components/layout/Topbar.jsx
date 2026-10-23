@@ -24,7 +24,8 @@ export default function Topbar({ titulo, subtitulo, acciones }) {
           {titulo}
         </Typography>
         {subtitulo && (
-          <Typography variant="caption" noWrap>
+          // Con poco ancho se corta con «…»: el texto entero queda en el title.
+          <Typography variant="caption" noWrap title={typeof subtitulo === 'string' ? subtitulo : undefined}>
             {subtitulo}
           </Typography>
         )}

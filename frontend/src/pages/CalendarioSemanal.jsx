@@ -75,16 +75,15 @@ function BloqueTurno({ turno, onAbrir, horaInicio }) {
       })}
     >
       <Box component="span" sx={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0,
-        ...(enDupla
+        ...(enDupla && !compacto
           ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal' }
           : { whiteSpace: 'nowrap' }) }}>
         {nombres}
       </Box>
-      {!(enDupla && compacto) && (
+      {/* El horario va siempre, también en la dupla de 45 minutos (H15). */}
       <Box component="span" className="tabular" sx={{ fontSize: 11, color: 'text.secondary', whiteSpace: 'nowrap', flex: 'none' }}>
         {turno.hora_inicio.slice(0, 5)} a {turno.hora_fin.slice(0, 5)}
       </Box>
-      )}
     </Box>
   );
 }
@@ -259,7 +258,7 @@ function DialogoTurno({ turno, pacientes, onCerrar, onVerPaciente, onQuitar, onS
   );
 }
 
-export default function CalendarioSemanal() {
+export default function CalendarioSemanal({ selectorVista = null }) {
   const navigate = useNavigate();
   const agenda = usePeticion(listarAgendaSemanal, []);
   const pacientes = usePeticion(listarPacientes, []);
@@ -292,7 +291,7 @@ export default function CalendarioSemanal() {
     agenda.recargar();
     setAviso(
       r && r.omitidas?.length
-        ? `Turno guardado. ${r.omitidas.length} sesión(es) no pudieron agendarse por superposición con otro profesional o por el estado del paciente.`
+        ? `Turno guardado. ${r.omitidas.length === 1 ? 'Una sesión no pudo agendarse' : `${r.omitidas.length} sesiones no pudieron agendarse`} por superposición con otro profesional o por el estado del paciente.`
         : 'Turno guardado. Las sesiones de las próximas semanas quedaron agendadas.',
     );
   }
@@ -315,7 +314,7 @@ export default function CalendarioSemanal() {
     agenda.recargar();
     setAviso(
       r && r.omitidas?.length
-        ? `Dupla formada. ${r.omitidas.length} sesión(es) no pudieron agendarse por superposición o por el estado del paciente.`
+        ? `Dupla formada. ${r.omitidas.length === 1 ? 'Una sesión no pudo agendarse' : `${r.omitidas.length} sesiones no pudieron agendarse`} por superposición o por el estado del paciente.`
         : 'Dupla formada. Las sesiones de las próximas semanas quedaron agendadas.',
     );
   }
@@ -324,8 +323,20 @@ export default function CalendarioSemanal() {
     <AppLayout
       titulo="Calendario"
       subtitulo={`Semana tipo, de lunes a viernes${agenda.datos ? ` · ${visibles.length} ${visibles.length === 1 ? 'turno' : 'turnos'}` : ''}`}
-      acciones={<Button variant="contained" onClick={() => setNuevo({ dia: 1, hora: '' })}>Nuevo turno</Button>}
+      acciones={(
+        <>
+          {selectorVista}
+          <Button variant="contained" onClick={() => setNuevo({ dia: 1, hora: '' })}>Nuevo turno</Button>
+        </>
+      )}
     >
+      {selectorVista && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          Los turnos de la semana tipo se repiten todas las semanas y agendan solos las próximas
+          sesiones. Para una sesión puntual, para reprogramar o para ver una semana en particular,
+          use «Agenda por fecha».
+        </Typography>
+      )}
       {agenda.cargando && !agenda.datos && <Cargando texto="Cargando la agenda..." />}
       {agenda.error && <EstadoError error={agenda.error} onReintentar={agenda.recargar} />}
 

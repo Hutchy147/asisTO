@@ -30,6 +30,9 @@ def _estado_http(mensaje):
 
 def _campo(mensaje):
     texto = (mensaje or '').lower()
+    # Un duplicado es culpa del texto, no del area (que esta bien elegida).
+    if 'plantilla igual' in texto:
+        return 'descripcion'
     if 'area' in texto:
         return 'area'
     if 'descripcion' in texto:

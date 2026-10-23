@@ -1,6 +1,6 @@
 # API de informes (Entrega 6, HDU 5 y 8)
 
-Informes del tratamiento: **mensual**, **semestral** y **PTI** (plan terapéutico individual). Cada uno se genera como **borrador**, la terapeuta lo revisa y lo edita, y recién al **publicar** queda disponible para la familia. Los publicados no se editan: se **corrigen**, y el historial conserva todas las versiones.
+Informes del tratamiento: **mensual**, **semestral** y **PTI** (plan terapéutico integral). Cada uno se genera como **borrador**, la terapeuta lo revisa y lo edita, y recién al **publicar** queda disponible para la familia. Los publicados no se editan: se **corrigen**, y el historial conserva todas las versiones.
 
 Rol `terapeuta` en todas las rutas. RRHH y el administrador reciben 403: es contenido clínico. **Leer** es abierto entre terapeutas (igual que la ficha clínica); **escribir** exige estar asignado al paciente en el período del informe, y lo hace cumplir la base.
 

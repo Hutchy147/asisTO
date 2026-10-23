@@ -6,7 +6,7 @@ import { construirQuery, del, descargarArchivo, get, post, put } from './api.js'
 export const TIPOS_INFORME = [
   { valor: 'mensual', etiqueta: 'Informe mensual' },
   { valor: 'semestral', etiqueta: 'Informe semestral' },
-  { valor: 'pti', etiqueta: 'PTI (plan terapéutico individual)' },
+  { valor: 'pti', etiqueta: 'PTI (plan terapéutico integral)' },
 ];
 
 export const ETIQUETA_ESTADO_INFORME = {

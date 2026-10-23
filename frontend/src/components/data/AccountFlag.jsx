@@ -14,6 +14,9 @@ export default function AccountFlag({ tieneCuenta }) {
   return (
     <Box
       component="span"
+      title={tieneCuenta
+        ? 'El paciente tiene su propia cuenta para ver su progreso.'
+        : 'El paciente no tiene cuenta propia. Los accesos de la familia se ven en la pestaña Familia.'}
       sx={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -35,7 +38,8 @@ export default function AccountFlag({ tieneCuenta }) {
           boxShadow: tieneCuenta ? 'none' : `inset 0 0 0 1.5px ${t.palette.text.disabled}`,
         })}
       />
-      {tieneCuenta ? 'Con cuenta' : 'Sin cuenta'}
+      {/* Es la cuenta DEL PACIENTE para su portal, no la del familiar (H8). */}
+      {tieneCuenta ? 'Con acceso al portal' : 'Sin acceso al portal'}
     </Box>
   );
 }

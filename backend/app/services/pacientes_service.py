@@ -36,11 +36,23 @@ def _contar_objetivos_activos_por_paciente():
 MINIMO_OBJETIVOS = 3
 
 
-def listar_pacientes():
-    """Pacientes activos, con su cantidad de objetivos activos."""
+ESTADOS_LISTADO = ('activos', 'inactivos')
+
+
+def listar_pacientes(estado='activos'):
+    """
+    Pacientes con su cantidad de objetivos activos.
+
+    `estado='activos'` (por defecto) trae los que estan en tratamiento.
+    `estado='inactivos'` trae los pausados y los que tuvieron el alta: sin
+    esto, un paciente pausado solo se encontraba escribiendo su URL (F5.3).
+    """
+    estado = (estado or 'activos').strip().lower()
+    if estado not in ESTADOS_LISTADO:
+        raise ErrorAplicacion('El estado tiene que ser «activos» o «inactivos».', campo='estado')
     pacientes = (
         Paciente.query
-        .filter(Paciente.activo.is_(True))
+        .filter(Paciente.activo.is_(estado == 'activos'))
         .order_by(Paciente.apellido, Paciente.nombre)
         .all()
     )
@@ -72,6 +84,22 @@ def listar_pacientes():
     return resultado
 
 
+def siguiente_nro_historia():
+    """
+    Sugerencia de N.º de historia: el siguiente al mayor HC-NNNN usado,
+    contando TODOS los pacientes (tambien pausados y con alta). Antes la
+    pantalla mostraba un ejemplo fijo que ya estaba ocupado (F4.4).
+    """
+    numeros = db.session.execute(text(
+        "SELECT nro_historia FROM pacientes WHERE nro_historia REGEXP '^HC-[0-9]+$'"
+    )).scalars().all()
+    if not numeros:
+        return 'HC-0001'
+    mayor = max(int(n[3:]) for n in numeros)
+    ancho = max(4, max(len(n) - 3 for n in numeros))
+    return f'HC-{mayor + 1:0{ancho}d}'
+
+
 def obtener_paciente(id_paciente, incluir_inactivos=False):
     """
     Busca un paciente activo. Lanza ErrorAplicacion 404 si no existe.
@@ -87,7 +115,7 @@ def obtener_paciente(id_paciente, incluir_inactivos=False):
 
     if not paciente.activo and not incluir_inactivos:
         raise ErrorAplicacion(
-            'El paciente indicado esta dado de baja.', http_status=404
+            'El paciente indicado no esta en tratamiento activo.', http_status=404
         )
 
     return paciente
@@ -383,10 +411,10 @@ def baja_paciente(id_paciente, datos=None):
 def _pausar(id_paciente, motivo):
     motivo = (motivo or '').strip() if isinstance(motivo, str) else ''
     if not motivo:
-        raise ErrorAplicacion('La baja necesita un motivo', campo='motivo')
+        raise ErrorAplicacion('La pausa necesita un motivo', campo='motivo')
     if len(motivo) > 200:
         raise ErrorAplicacion(
-            'El motivo de la baja no puede superar los 200 caracteres', campo='motivo'
+            'El motivo de la pausa no puede superar los 200 caracteres', campo='motivo'
         )
 
     db.session.execute(

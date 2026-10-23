@@ -2,7 +2,7 @@
 // Elige la contraseña nueva con el token del enlace. El token es de un solo
 // uso y vence a la hora: si no sirve, el servidor lo dice y se ofrece pedir otro.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -14,7 +14,7 @@ import Typography from '@mui/material/Typography';
 import { Link as RouterLink, Navigate, useParams } from 'react-router-dom';
 
 import { hayCapacidad } from '../config/entregas.js';
-import { restablecerContrasena } from '../services/api.js';
+import { restablecerContrasena, verificarEnlaceRecuperacion } from '../services/api.js';
 
 export default function RestablecerContrasena() {
   const { token } = useParams();
@@ -23,6 +23,17 @@ export default function RestablecerContrasena() {
   const [error, setError] = useState(null); // { mensaje, campo }
   const [enviando, setEnviando] = useState(false);
   const [listo, setListo] = useState(false);
+  // null = consultando; false = el enlace ya no sirve (usado o vencido).
+  const [vigente, setVigente] = useState(null);
+
+  useEffect(() => {
+    let cancelado = false;
+    verificarEnlaceRecuperacion(token)
+      .then((r) => { if (!cancelado) setVigente(Boolean(r?.vigente)); })
+      // Sin respuesta no se bloquea: el servidor vuelve a validar al enviar.
+      .catch(() => { if (!cancelado) setVigente(true); });
+    return () => { cancelado = true; };
+  }, [token]);
 
   if (!hayCapacidad('auth.recuperar')) return <Navigate to="/login" replace />;
 
@@ -50,7 +61,15 @@ export default function RestablecerContrasena() {
           Elegir una contraseña nueva
         </Typography>
 
-        {listo ? (
+        {!listo && vigente === false ? (
+          <Stack spacing={2}>
+            <Alert severity="warning">
+              Este enlace ya no es válido: se usó o venció (dura una hora y sirve una sola vez).
+            </Alert>
+            <Button component={RouterLink} to="/recuperar" variant="contained" size="large">Pedir un enlace nuevo</Button>
+            <Button component={RouterLink} to="/login" variant="text">Volver al inicio de sesión</Button>
+          </Stack>
+        ) : listo ? (
           <Stack spacing={2}>
             <Alert severity="success">Contraseña actualizada. Ya puede ingresar con la nueva.</Alert>
             <Button component={RouterLink} to="/login" variant="contained" size="large">Ir al inicio de sesión</Button>

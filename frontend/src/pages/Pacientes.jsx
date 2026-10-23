@@ -2,6 +2,9 @@
 // Listado de pacientes del centro.
 
 import { useMemo, useState } from 'react';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
+import Chip from '@mui/material/Chip';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import FormControlLabel from '@mui/material/FormControlLabel';
@@ -24,12 +27,19 @@ import { hayCapacidad } from '../config/entregas.js';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { listarTerapeutas } from '../services/asignacionesService.js';
-import { listarPacientes } from '../services/pacientesService.js';
-import { textoEdad } from '../utils/fechas.js';
+import { listarPacientesConFiltros } from '../services/pacientesService.js';
+import { useEstadoEnUrl } from '../hooks/useEstadoEnUrl.js';
+import { formatearFecha, textoEdad } from '../utils/fechas.js';
 
 export default function Pacientes() {
   const navigate = useNavigate();
-  const { datos, cargando, error, recargar } = usePeticion(listarPacientes, []);
+  // En tratamiento (por defecto) o en pausa / con alta (F5.3). Va en la URL.
+  const [estado, setEstado] = useEstadoEnUrl('estado', 'activos');
+  const verInactivos = hayCapacidad('pacientes.pausa') && estado === 'inactivos';
+  const { datos, cargando, error, recargar } = usePeticion(
+    () => listarPacientesConFiltros(verInactivos ? { estado: 'inactivos' } : {}),
+    [verInactivos],
+  );
   const terapeutas = usePeticion(listarTerapeutas, []);
   const { perfil } = useAuth();
   const [busqueda, setBusqueda] = useState('');
@@ -44,7 +54,7 @@ export default function Pacientes() {
   const alCrear = (respuesta) => {
     setBusqueda('');
     recargar();
-    setAviso(respuesta?.mensaje ?? 'Paciente dado de alta correctamente');
+    setAviso(respuesta?.mensaje ?? 'Paciente registrado correctamente');
   };
 
   const pacientes = useMemo(
@@ -56,13 +66,13 @@ export default function Pacientes() {
   const filtrados = useMemo(() => {
     const texto = busqueda.trim().toLowerCase();
     return pacientes.filter((p) => {
-      if (conAsignaciones && soloMios && !p.asignado_a_mi) return false;
+      if (conAsignaciones && soloMios && !verInactivos && !p.asignado_a_mi) return false;
       if (!texto) return true;
       return `${p.nombre_completo} ${p.nro_historia}`.toLowerCase().includes(texto);
     });
-  }, [pacientes, busqueda, soloMios, conAsignaciones]);
+  }, [pacientes, busqueda, soloMios, conAsignaciones, verInactivos]);
 
-  const hayFiltro = Boolean(busqueda.trim()) || (conAsignaciones && soloMios);
+  const hayFiltro = Boolean(busqueda.trim()) || (conAsignaciones && soloMios && !verInactivos);
 
   const columnas = [
     {
@@ -101,16 +111,28 @@ export default function Pacientes() {
             : <Box component="span" sx={{ color: 'warning.main' }}>Sin asignar</Box>),
         }]
       : []),
-    {
-      clave: 'objetivos_activos',
-      etiqueta: 'Objetivos activos',
-      ancho: 158,
-      render: (p) => <GoalMeter valor={p.objetivos_activos} />,
-    },
+    verInactivos
+      ? {
+          clave: 'estado',
+          etiqueta: 'Estado',
+          ancho: 200,
+          render: (p) => (
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Chip size="small" label={p.tipo_cierre === 'pausa' ? 'En pausa' : 'Alta'} color={p.tipo_cierre === 'pausa' ? 'warning' : 'default'} />
+              {p.fecha_baja && <Box component="span" className="tabular" sx={{ fontSize: 13, color: 'text.secondary' }}>desde {formatearFecha(p.fecha_baja)}</Box>}
+            </Box>
+          ),
+        }
+      : {
+          clave: 'objetivos_activos',
+          etiqueta: 'Objetivos activos',
+          ancho: 158,
+          render: (p) => <GoalMeter valor={p.objetivos_activos} />,
+        },
     {
       clave: 'tiene_login',
-      etiqueta: 'Cuenta',
-      ancho: 128,
+      etiqueta: 'Portal del paciente',
+      ancho: 190,
       render: (p) => <AccountFlag tieneCuenta={p.tiene_login} />,
     },
   ];
@@ -120,13 +142,15 @@ export default function Pacientes() {
     ? 'Cargando...'
     : hayFiltro
       ? `${filtrados.length} de ${total} pacientes`
-      : `${total} ${total === 1 ? 'paciente activo' : 'pacientes activos'}`;
+      : verInactivos
+        ? `${total} ${total === 1 ? 'paciente en pausa o con alta' : 'pacientes en pausa o con alta'}`
+        : `${total} ${total === 1 ? 'paciente activo' : 'pacientes activos'}`;
 
   return (
     <AppLayout
       titulo="Pacientes"
       subtitulo={subtitulo}
-      contadores={{ pacientes: total || undefined }}
+      contadores={{ pacientes: verInactivos ? undefined : (total || undefined) }}
       acciones={
         <Button variant="contained" onClick={() => setModalAbierto(true)}>
           Agregar paciente
@@ -138,8 +162,18 @@ export default function Pacientes() {
 
       {datos && !cargando && !error && (
         <>
+          {hayCapacidad('pacientes.pausa') && (
+            <ToggleButtonGroup
+              exclusive size="small" value={verInactivos ? 'inactivos' : 'activos'}
+              onChange={(_, v) => { if (v) { setEstado(v); setBusqueda(''); } }}
+              aria-label="Qué pacientes mostrar" sx={{ mb: 2 }}
+            >
+              <ToggleButton value="activos" sx={{ textTransform: 'none', fontWeight: 600, px: 1.75 }}>En tratamiento</ToggleButton>
+              <ToggleButton value="inactivos" sx={{ textTransform: 'none', fontWeight: 600, px: 1.75 }}>En pausa o con alta</ToggleButton>
+            </ToggleButtonGroup>
+          )}
           {total > 0 && (
-            <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
+            <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
               <TextField
                 size="small"
                 placeholder="Buscar por nombre o historia"
@@ -157,7 +191,7 @@ export default function Pacientes() {
                   ),
                 }}
               />
-              {conAsignaciones && (
+              {conAsignaciones && !verInactivos && (
                 <FormControlLabel
                   control={<Switch checked={soloMios} onChange={(e) => setSoloMios(e.target.checked)} />}
                   label="Mis pacientes"
@@ -166,10 +200,15 @@ export default function Pacientes() {
             </Box>
           )}
 
-          {total === 0 ? (
+          {total === 0 && verInactivos ? (
+            <EstadoVacio
+              titulo="No hay pacientes en pausa ni con alta"
+              descripcion="Los pacientes cuyo tratamiento se pausa o termina aparecen aquí, para consultarlos o reactivarlos."
+            />
+          ) : total === 0 ? (
             <EstadoVacio
               titulo="Todavía no hay pacientes cargados"
-              descripcion="Cuando des de alta al primer paciente del centro va a aparecer acá, con su edad, su N° de historia y sus objetivos activos."
+              descripcion="Cuando se registre el primer paciente del centro aparecerá aquí, con su edad, su N° de historia y sus objetivos activos."
               acciones={
                 <Button variant="contained" onClick={() => setModalAbierto(true)}>
                   Agregar paciente
@@ -205,6 +244,7 @@ export default function Pacientes() {
         onCreado={alCrear}
         terapeutas={terapeutas.datos?.terapeutas ?? []}
         idTerapeutaActual={perfil?.id ?? null}
+        sugerenciaHistoria={datos?.siguiente_nro_historia ?? ''}
       />
 
       <Snackbar

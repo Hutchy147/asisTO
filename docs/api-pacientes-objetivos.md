@@ -161,7 +161,7 @@ Alta de paciente. Internamente llama al procedimiento almacenado
 
 ```json
 {
-  "mensaje": "Paciente dado de alta correctamente",
+  "mensaje": "Paciente registrado correctamente",
   "paciente": {
     "activo": true,
     "apellido": "Peralta",
@@ -227,7 +227,7 @@ para eso está el endpoint de objetivos).
 | Caso | Status | `mensaje` |
 |---|---|---|
 | No existe | `404` | `El paciente indicado no existe.` |
-| Dado de baja | `404` | `El paciente indicado esta dado de baja.` |
+| Dado de baja | `404` | `El paciente indicado no esta en tratamiento activo.` |
 
 Son dos mensajes distintos a propósito: "no existe" puede ser un id mal
 tipeado, "dado de baja" es un registro real que sigue en la base.

@@ -20,6 +20,7 @@ import DataTable from '../components/data/DataTable.jsx';
 import { Aviso, Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { hayCapacidad } from '../config/entregas.js';
 import { usePeticion } from '../hooks/usePeticion.js';
+import { useEstadoEnUrl } from '../hooks/useEstadoEnUrl.js';
 import { contarNoLeidas } from '../services/notificacionesService.js';
 import {
   descargarPdfInformeVinculado, listarInformesVinculados, listarPacientesVinculados,
@@ -107,7 +108,8 @@ export default function InformesFamiliar() {
     () => (hayCapacidad('notificaciones') ? contarNoLeidas() : Promise.resolve({ no_leidas: 0 })),
     [],
   );
-  const [elegido, setElegido] = useState(null);
+  const [elegidoUrl, setElegido] = useEstadoEnUrl('paciente', '');
+  const elegido = Number(elegidoUrl) || null;
   const lista = pacientes.datos?.pacientes ?? [];
   const paciente = lista.find((p) => p.id === elegido) ?? lista[0] ?? null;
 
@@ -129,6 +131,7 @@ export default function InformesFamiliar() {
         <>
           {lista.length > 1 && (
             <Tabs
+              variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile
               value={paciente.id} onChange={(e, v) => setElegido(v)}
               sx={(t) => ({ mb: 2, borderBottom: `1px solid ${t.palette.superficie.borde}` })}
             >

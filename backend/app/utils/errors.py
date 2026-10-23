@@ -159,12 +159,12 @@ CAMPO_POR_FRAGMENTO = (
 
     # --- Pacientes ---
     ('necesita un motivo', 'motivo'),
-    ('motivo de la baja no puede superar', 'motivo'),
+    ('motivo de la pausa no puede superar', 'motivo'),
     ('tiene que mantener al menos 3 objetivos', 'id_objetivo'),
     ('numero de historia', 'nro_historia'),
     ('ya existe un paciente con ese numero', 'nro_historia'),
     ('el paciente indicado no existe', 'id_paciente'),
-    ('esta dado de baja', 'id_paciente'),
+    ('no esta en tratamiento activo', 'id_paciente'),
     ('falta indicar el paciente', 'id_paciente'),
 
     # --- Sesiones ---

@@ -5,7 +5,8 @@
 from flask import Blueprint, g, jsonify, request
 
 from app.services.auth_service import (
-    autenticar, obtener_perfil, restablecer_contrasena, solicitar_recuperacion,
+    autenticar, enlace_de_recuperacion_vigente, obtener_perfil,
+    restablecer_contrasena, solicitar_recuperacion,
 )
 from app.utils.security import requiere_rol
 
@@ -68,6 +69,13 @@ def recuperar():
         # Solo con RECUPERACION_MOSTRAR_TOKEN (desarrollo, sin servidor de mail).
         cuerpo['token_desarrollo'] = token
     return jsonify(cuerpo), 200
+
+
+@auth_bp.post('/auth/restablecer/verificar')
+def verificar_enlace():
+    """Si el enlace de recuperacion todavia sirve. POST: el token no va en la URL."""
+    datos = request.get_json(silent=True) or {}
+    return jsonify({'vigente': enlace_de_recuperacion_vigente(datos.get('token'))}), 200
 
 
 @auth_bp.post('/auth/restablecer')

@@ -9,6 +9,9 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
 import Snackbar from '@mui/material/Snackbar';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
@@ -19,6 +22,8 @@ import ModalAsignar from '../components/asignaciones/ModalAsignar.jsx';
 import DataTable from '../components/data/DataTable.jsx';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import DialogoConfirmacion from '../components/modal/DialogoConfirmacion.jsx';
+import SeccionFamiliares from '../components/familiares/SeccionFamiliares.jsx';
+import { hayCapacidad } from '../config/entregas.js';
 import { usePeticion } from '../hooks/usePeticion.js';
 import {
   cerrarAsignacion, listarPacientesAdmin, listarTerapeutas,
@@ -36,6 +41,7 @@ export default function AdminAsignaciones() {
   const terapeutas = usePeticion(listarTerapeutas, []);
   const [busqueda, setBusqueda] = useState('');
   const [sinAsignar, setSinAsignar] = useState(false);
+  const [familia, setFamilia] = useState(null);
   const [aAsignar, setAAsignar] = useState(null);
   const [aQuitar, setAQuitar] = useState(null); // { paciente, asignacion }
   const [procesando, setProcesando] = useState(false);
@@ -110,11 +116,17 @@ export default function AdminAsignaciones() {
       ),
     },
     {
-      clave: 'acciones', etiqueta: '', ancho: 130, alinear: 'right',
+      clave: 'acciones', etiqueta: '', ancho: 220, alinear: 'right',
       render: (p) => (
-        p.activo ? (
-          <Button size="small" variant="outlined" onClick={() => setAAsignar(p)}>Asignar</Button>
-        ) : null
+        <Stack direction="row" spacing={1} justifyContent="flex-end">
+          {/* H16: con el paciente de baja nadie más puede quitar el acceso de la familia. */}
+          {hayCapacidad('familiar.vincular') && (
+            <Button size="small" variant="text" color="inherit" onClick={() => setFamilia(p)}>Familia</Button>
+          )}
+          {p.activo && (
+            <Button size="small" variant="outlined" onClick={() => setAAsignar(p)}>Asignar</Button>
+          )}
+        </Stack>
       ),
     },
   ];
@@ -189,6 +201,25 @@ export default function AdminAsignaciones() {
         registradas se conservan. Si no queda otro terapeuta asignado, nadie podrá registrar
         sesiones nuevas hasta que se asigne uno.
       </DialogoConfirmacion>
+
+      <Dialog open={Boolean(familia)} onClose={() => setFamilia(null)} maxWidth="md" fullWidth>
+        <Box sx={{ px: 3, pt: 2.5 }}>
+          <Typography variant="h5" className="texto-libre">Familia de {familia?.nombre_completo}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {familia?.activo
+              ? 'Quiénes tienen acceso al portal con la evolución de este paciente.'
+              : 'El paciente no está en tratamiento: solo se pueden quitar accesos.'}
+          </Typography>
+        </Box>
+        <DialogContent sx={{ px: 1 }}>
+          {familia && (
+            <SeccionFamiliares paciente={familia} soloQuitar={!familia.activo} onAviso={setAviso} />
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button variant="outlined" onClick={() => setFamilia(null)}>Cerrar</Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={Boolean(aviso)} autoHideDuration={5000} onClose={() => setAviso('')}

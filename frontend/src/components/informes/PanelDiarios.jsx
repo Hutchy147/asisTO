@@ -9,8 +9,9 @@ import Typography from '@mui/material/Typography';
 
 import { Cargando, EstadoError, EstadoVacio } from '../estado/index.js';
 import { formatearFecha } from '../../utils/fechas.js';
+import { ETIQUETA_ESTADO } from '../../services/sesionesService.js';
 
-const ESTADO = { completa: 'Completa', incompleta: 'Incompleta', ausencia: 'Ausencia', programada: 'Programada' };
+const ESTADO = { ...ETIQUETA_ESTADO, programada: 'Agendada' };
 
 function Lista({ titulo, filas }) {
   if (!filas || filas.length === 0) return null;

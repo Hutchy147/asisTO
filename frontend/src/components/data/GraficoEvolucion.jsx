@@ -193,7 +193,7 @@ export default function GraficoEvolucion({ serie, titulo }) {
   // acá haría que un lector de pantalla lo anuncie dos veces.
   const resumen = calificados.length === 0
     ? 'Sin calificaciones en el período.'
-    : `${calificados.length} calificación(es) en el período, de "${
+    : `${calificados.length} ${calificados.length === 1 ? 'calificación' : 'calificaciones'} en el período, de "${
       etiquetaDeValor(calificados[0].valor)}" a "${
       etiquetaDeValor(calificados[calificados.length - 1].valor)}".`;
 
@@ -382,8 +382,9 @@ export default function GraficoEvolucion({ serie, titulo }) {
 
       {calificados.length === 0 && (
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-          Hubo {puntos.length} sesión(es) en el período y este objetivo no se
-          calificó en ninguna.
+          {puntos.length === 1
+            ? 'Hubo una sesión en el período y este objetivo no se calificó.'
+            : `Hubo ${puntos.length} sesiones en el período y este objetivo no se calificó en ninguna.`}
         </Typography>
       )}
     </Box>

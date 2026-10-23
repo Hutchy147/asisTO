@@ -28,7 +28,7 @@ const OBLIGATORIOS = ['nombre', 'apellido', 'fecha_nacimiento', 'nro_historia'];
 // silencio si el mensaje de un trigger cambiaba.
 
 export default function ModalAltaPaciente({
-  abierto, onCerrar, onCreado,
+  abierto, onCerrar, onCreado, sugerenciaHistoria = '',
 }) {
   // HDU 11: el paciente queda asignado a quien lo da de alta; el cambio de
   // responsable es potestad del administrador.
@@ -109,8 +109,10 @@ export default function ModalAltaPaciente({
         etiqueta="N° de historia"
         tabular
         obligatorio
-        placeholder="HC-0017"
-        ayuda="Único en el centro."
+        placeholder={sugerenciaHistoria || 'HC-0001'}
+        ayuda={sugerenciaHistoria
+          ? `Único en el centro. El siguiente número libre es ${sugerenciaHistoria}.`
+          : 'Único en el centro.'}
         valor={valores.nro_historia}
         onChange={setCampo('nro_historia')}
         error={errorDe('nro_historia')}
