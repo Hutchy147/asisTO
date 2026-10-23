@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import Chip from '@mui/material/Chip';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
@@ -35,11 +36,16 @@ function LectorInforme({ idPaciente, idInforme, onCerrar }) {
     [idPaciente, idInforme],
   );
   const [error, setError] = useState('');
+  const [descargado, setDescargado] = useState('');
   const datos = informe.datos;
 
   const descargar = async () => {
     setError('');
-    try { await descargarPdfInformeVinculado(idPaciente, idInforme); } catch (fallo) { setError(fallo.message); }
+    try {
+      const nombre = await descargarPdfInformeVinculado(idPaciente, idInforme);
+      // Confirmación visible: en el celular la descarga no siempre se nota.
+      setDescargado(`Se descargó «${nombre}». Lo encuentra en la carpeta de descargas del teléfono o la computadora.`);
+    } catch (fallo) { setError(fallo.message); }
   };
 
   return (
@@ -57,10 +63,11 @@ function LectorInforme({ idPaciente, idInforme, onCerrar }) {
         {informe.cargando && !datos && <Cargando texto="Cargando el informe..." />}
         {informe.error && <EstadoError error={informe.error} onReintentar={informe.recargar} />}
         {error && <Aviso severidad="error">{error}</Aviso>}
+        {descargado && <Aviso severidad="success">{descargado}</Aviso>}
         {datos && <TextoInforme contenido={datos.contenido} />}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
-        <Button color="inherit" onClick={descargar} disabled={!datos}>Descargar PDF</Button>
+        <Button color="inherit" onClick={descargar} disabled={!datos}>Descargar PDF (para guardar o imprimir)</Button>
         <Button variant="outlined" onClick={onCerrar}>Cerrar</Button>
       </DialogActions>
     </Dialog>
@@ -71,16 +78,24 @@ function InformesDe({ paciente }) {
   const lista = usePeticion(() => listarInformesVinculados(paciente.id), [paciente.id]);
   const [abierto, setAbierto] = useState(null);
 
+  // El más reciente se marca: con dos o más no se sabía cuál era el nuevo.
+  const masReciente = (lista.datos?.informes ?? []).reduce(
+    (a, i) => (!a || (i.fecha_publicacion ?? '') > (a.fecha_publicacion ?? '') ? i : a), null,
+  );
+  // Sin columna «Versión»: a una familia no le dice nada.
   const columnas = [
     { clave: 'tipo', etiqueta: 'Informe', render: (i) => (
       <Box>
-        <Typography variant="body1">{i.tipo_etiqueta}</Typography>
-        <Typography variant="body2" color="text.secondary">{i.periodo_etiqueta}</Typography>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Typography variant="body1">{i.tipo_etiqueta}</Typography>
+          {masReciente?.id === i.id && <Chip size="small" color="primary" label="Más reciente" />}
+        </Box>
+        <Typography variant="body2" color="text.secondary">
+          {i.periodo_etiqueta} · publicado el {formatearFecha(i.fecha_publicacion)}
+        </Typography>
       </Box>
     ) },
-    { clave: 'version', etiqueta: 'Versión', ancho: 100, render: (i) => <span className="tabular">{i.version}</span> },
-    { clave: 'fecha', etiqueta: 'Publicado', ancho: 140, render: (i) => <span className="tabular">{formatearFecha(i.fecha_publicacion)}</span> },
-    { clave: 'leer', etiqueta: '', ancho: 100, render: (i) => <Button size="small" onClick={() => setAbierto(i.id)}>Leer</Button> },
+    { clave: 'leer', etiqueta: '', ancho: 90, render: (i) => <Button size="small" variant="outlined" onClick={() => setAbierto(i.id)}>Leer</Button> },
   ];
 
   return (

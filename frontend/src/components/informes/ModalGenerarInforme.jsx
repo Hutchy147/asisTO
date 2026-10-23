@@ -98,10 +98,14 @@ export default function ModalGenerarInforme({
             El plan terapéutico integral (PTI) se arma con la información del ingreso del paciente.
           </Typography>
         )}
-        <FormControlLabel
-          control={<Switch checked={iaDisponible && usarIa} disabled={!iaDisponible} onChange={(e) => setUsarIa(e.target.checked)} />}
-          label={iaDisponible ? 'Redactar con inteligencia artificial' : 'Redacción con inteligencia artificial no configurada'}
-        />
+        {/* Sin IA configurada no se ofrece nada: un interruptor apagado que decía
+            «no configurada» asustaba a quien no sabía qué era (usabilidad). */}
+        {iaDisponible && (
+          <FormControlLabel
+            control={<Switch checked={usarIa} onChange={(e) => setUsarIa(e.target.checked)} />}
+            label="Redactar con inteligencia artificial"
+          />
+        )}
         <Typography variant="body2" color="text.secondary">
           {iaDisponible && usarIa
             ? 'Se envía a un proveedor externo el resumen del período, sin el nombre del paciente. Siempre queda como borrador para que usted lo revise.'

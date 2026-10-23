@@ -33,9 +33,11 @@ with sync_playwright() as p:
     login(page, 'laura.fernandez@asisto.local')
     page.goto(BASE + '/pacientes'); page.wait_for_timeout(1500)
     check(page.get_by_text('Responsable', exact=True).count() > 0, 'listado: columna Responsable')
+    # «Mis pacientes» viene encendido: primero los propios, despues todos
+    mios = page.locator('tbody tr').count()
+    page.get_by_label('Mis pacientes').uncheck(); page.wait_for_timeout(500)
     total = page.locator('tbody tr').count()
     page.get_by_label('Mis pacientes').check(); page.wait_for_timeout(500)
-    mios = page.locator('tbody tr').count()
     check(0 < mios < total, f'filtro Mis pacientes: {mios} de {total}')
     page.screenshot(path=f'{SALIDA}/pacientes.png')
 

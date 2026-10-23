@@ -36,7 +36,9 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
+import Alert from '@mui/material/Alert';
 import Grid from '@mui/material/Grid';
+import Snackbar from '@mui/material/Snackbar';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
@@ -91,6 +93,54 @@ function ventanaInicial() {
   return { desde: iso(desde), hasta: iso(hasta) };
 }
 
+/** Atajos de período: liquidar sueldos se hace por mes (usabilidad, RRHH). */
+function periodoRapido(clave) {
+  const hoy = new Date();
+  if (clave === 'este_mes') return { desde: iso(new Date(hoy.getFullYear(), hoy.getMonth(), 1)), hasta: iso(hoy) };
+  if (clave === 'mes_anterior') {
+    return {
+      desde: iso(new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1)),
+      hasta: iso(new Date(hoy.getFullYear(), hoy.getMonth(), 0)),
+    };
+  }
+  return ventanaInicial();
+}
+
+/**
+ * Resumen por terapeuta del período: lo que RRHH necesita para liquidar, sin
+ * filtrar de a una y anotar a mano (usabilidad). Se calcula sobre TODAS las
+ * sesiones del reporte, no sobre las 100 que se dibujan.
+ */
+function resumenPorTerapeuta(sesiones) {
+  const mapa = new Map();
+  sesiones.forEach((s) => {
+    const fila = mapa.get(s.id_terapeuta) ?? {
+      id_terapeuta: s.id_terapeuta, terapeuta: s.terapeuta, total: 0, completa: 0, incompleta: 0,
+      falto_paciente: 0, falto_terapeuta: 0, sin_declarar: 0,
+    };
+    fila.total += 1;
+    if (s.estado === ESTADO_AUSENCIA) {
+      const quien = s.ausencia_de ?? 'sin_declarar';
+      if (quien === 'paciente') fila.falto_paciente += 1;
+      else if (quien === 'terapeuta') fila.falto_terapeuta += 1;
+      else fila.sin_declarar += 1;
+    } else if (s.estado === 'completa') fila.completa += 1;
+    else fila.incompleta += 1;
+    mapa.set(s.id_terapeuta, fila);
+  });
+  return [...mapa.values()].sort((a, b) => a.terapeuta.localeCompare(b.terapeuta));
+}
+
+const COLUMNAS_RESUMEN = [
+  { clave: 'terapeuta', etiqueta: 'Terapeuta' },
+  { clave: 'total', etiqueta: 'Sesiones' },
+  { clave: 'completa', etiqueta: 'Realizadas' },
+  { clave: 'incompleta', etiqueta: 'Sin cerrar' },
+  { clave: 'falto_paciente', etiqueta: 'Faltó el paciente' },
+  { clave: 'falto_terapeuta', etiqueta: 'Faltó el terapeuta' },
+  { clave: 'sin_declarar', etiqueta: 'Ausencia sin declarar' },
+];
+
 export default function PanelRrhh() {
   const { usuario, perfil, logout } = useAuth();
   const navigate = useNavigate();
@@ -104,6 +154,8 @@ export default function PanelRrhh() {
 
   // La sesión cuyas observaciones se están mirando. null = modal cerrado.
   const [sesionObservada, setSesionObservada] = useState(null);
+  // Nombre del último archivo descargado: se confirma en pantalla.
+  const [descarga, setDescarga] = useState('');
 
   // Conteo de observaciones corregido a mano, por sesión, después de guardar.
   //
@@ -195,7 +247,16 @@ export default function PanelRrhh() {
     // para que el navegador no se pegue dibujando, y un archivo no dibuja
     // nada. Exportar lo que se ve seria exportar un recorte de pantalla.
     const contenido = armarCsv(sesiones, columnasCsv);
-    descargarCsv(`asistencias_${aplicado.desde}_${aplicado.hasta}.csv`, contenido);
+    const nombre = `asistencias_${aplicado.desde}_${aplicado.hasta}.csv`;
+    descargarCsv(nombre, contenido);
+    setDescarga(nombre);
+  };
+
+  const porTerapeuta = resumenPorTerapeuta(sesiones);
+  const exportarResumen = () => {
+    const nombre = `resumen_por_terapeuta_${aplicado.desde}_${aplicado.hasta}.csv`;
+    descargarCsv(nombre, armarCsv(porTerapeuta, COLUMNAS_RESUMEN));
+    setDescarga(nombre);
   };
 
   const columnas = [
@@ -217,7 +278,7 @@ export default function PanelRrhh() {
       // El id viaja en la respuesta y se muestra como META, chico y debajo
       // del nombre: identifica a dos homonimos sin ocupar la pantalla. El
       // nombre es para leer; el id, para distinguir.
-      render: (s) => <PersonCell nombre={s.terapeuta} meta={`id ${s.id_terapeuta}`} />,
+      render: (s) => <PersonCell nombre={s.terapeuta} />,
     },
     {
       clave: 'paciente',
@@ -326,7 +387,7 @@ export default function PanelRrhh() {
           />
         </Stack>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Consulta de asistencias{perfil?.nro_legajo ? ` · legajo ${perfil.nro_legajo}` : ''}
+          Consulta de las sesiones de cada terapeuta y de las ausencias, para liquidaciones y control.
         </Typography>
 
         {/* --- Período y filtro --- */}
@@ -355,15 +416,28 @@ export default function PanelRrhh() {
           />
           <TextField
             select label="Terapeuta" size="small" sx={{ minWidth: 220 }}
+            // displayEmpty: si no, «Todos» se veía como una opción en blanco.
+            SelectProps={{ displayEmpty: true }} InputLabelProps={{ shrink: true }}
             value={borrador.idTerapeuta}
             onChange={(e) => setBorrador({ ...borrador, idTerapeuta: e.target.value })}
           >
-            <MenuItem value="">Todos</MenuItem>
+            <MenuItem value="">Todos los terapeutas</MenuItem>
             {terapeutas.map((t) => (
               <MenuItem key={t.id} value={t.id}>{t.nombre}</MenuItem>
             ))}
           </TextField>
           <Button type="submit" variant="contained">Ver período</Button>
+          <Stack direction="row" spacing={1} sx={{ flexBasis: '100%' }}>
+            <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>Atajos:</Typography>
+            {[['este_mes', 'Este mes'], ['mes_anterior', 'Mes anterior'], ['90', 'Últimos 90 días']].map(([clave, etiqueta]) => (
+              <Button
+                key={clave} size="small" variant="text"
+                onClick={() => { const p = { ...borrador, ...periodoRapido(clave) }; setBorrador(p); setAplicado(p); }}
+              >
+                {etiqueta}
+              </Button>
+            ))}
+          </Stack>
 
           {/* El boton DICE CUANTAS va a exportar, y son todas las del
               periodo, no las 100 que dibuja la tabla. Sin el numero, quien
@@ -380,8 +454,8 @@ export default function PanelRrhh() {
             disabled={reporte.cargando || sesiones.length === 0}
           >
             {sesiones.length > 0
-              ? `Exportar ${sesiones.length} ${sesiones.length === 1 ? 'sesión' : 'sesiones'}`
-              : 'Exportar'}
+              ? `Exportar a Excel (${sesiones.length} ${sesiones.length === 1 ? 'sesión' : 'sesiones'})`
+              : 'Exportar a Excel'}
           </Button>
         </Box>
 
@@ -396,10 +470,10 @@ export default function PanelRrhh() {
                 <StatTile etiqueta="Sesiones del período" valor={resumen.total_sesiones} nota="Todas las cargadas" />
               </Grid>
               <Grid item xs={12} sm={3}>
-                <StatTile etiqueta="Completas" valor={resumen.por_estado?.completa ?? 0} nota="Recuento, no tasa" />
+                <StatTile etiqueta="Realizadas" valor={resumen.por_estado?.completa ?? 0} nota="Se dieron y están registradas" />
               </Grid>
               <Grid item xs={12} sm={3}>
-                <StatTile etiqueta="Incompletas" valor={resumen.por_estado?.incompleta ?? 0} nota="Recuento, no tasa" />
+                <StatTile etiqueta="Sin cerrar" valor={resumen.por_estado?.incompleta ?? 0} nota="Se dieron; la terapeuta no terminó de registrarlas" />
               </Grid>
               <Grid item xs={12} sm={3}>
                 <StatTile etiqueta="Ausencias" valor={resumen.por_estado?.ausencia ?? 0} nota="Desglose abajo" />
@@ -425,13 +499,34 @@ export default function PanelRrhh() {
               ))}
             </Grid>
 
-            {resumen.periodo_anterior_a_ausencia_declarable && (
+            {/* Solo si de verdad hay ausencias sin declarar: el aviso a secas
+                contradecía el contador en 0 (usabilidad, RRHH). */}
+            {resumen.periodo_anterior_a_ausencia_declarable && (resumen.ausencias?.sin_declarar ?? 0) > 0 && (
               <Aviso severidad="info" titulo="Parte del período es anterior al registro de quién faltó">
                 Hasta el {formatearFecha(resumen.ausencia_declarable_desde)} el sistema no
                 pedía declarar quién faltaba, así que esas ausencias quedan en
                 <strong> sin declarar</strong>. No se reparten entre paciente y terapeuta:
                 ese dato no existe y no se puede reponer.
               </Aviso>
+            )}
+
+            {/* --- Resumen por terapeuta --- */}
+            {porTerapeuta.length > 0 && (
+              <>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 3, mb: 1.5, flexWrap: 'wrap' }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, flex: 1 }}>Resumen por terapeuta</Typography>
+                  <Button variant="outlined" size="small" onClick={exportarResumen}>Exportar el resumen a Excel</Button>
+                </Box>
+                <DataTable
+                  columnas={COLUMNAS_RESUMEN.map((c) => ({ clave: c.clave, etiqueta: c.etiqueta, render: (f) => f[c.clave] }))}
+                  filas={porTerapeuta}
+                  claveFila={(f) => f.id_terapeuta}
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                  «Sin cerrar»: la sesión se dio pero la terapeuta todavía no terminó de cargarla.
+                  «Superpuestas» (en el listado): sesiones de la misma terapeuta que se pisan en el horario; conviene revisarlas.
+                </Typography>
+              </>
             )}
 
             {/* --- Listado --- */}
@@ -463,6 +558,13 @@ export default function PanelRrhh() {
             )}
           </>
         )}
+
+        <Snackbar open={Boolean(descarga)} autoHideDuration={6000} onClose={() => setDescarga('')}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+          <Alert severity="success" variant="filled" onClose={() => setDescarga('')}>
+            Se descargó «{descarga}» en la carpeta de descargas. Se abre con Excel.
+          </Alert>
+        </Snackbar>
 
         <ModalObservacionesRrhh
           abierto={Boolean(sesionObservada)}

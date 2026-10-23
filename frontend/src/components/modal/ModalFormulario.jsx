@@ -99,6 +99,9 @@ export default function ModalFormulario({
   // objetivos activos, una sesión de otro terapeuta). Ofrecer "Guardar"
   // sería ofrecer algo imposible.
   soloCerrar = false,
+  // Con soloCerrar: una acción principal al pie, a la izquierda de Cerrar (el
+  // registro del día pone ahí «Terminar la sesión»).
+  accionPie = null,
   // Contenido que NO se va con el scroll del formulario. Si viene y la
   // pantalla da el ancho, el modal se abre a dos paneles. Si no viene, o la
   // pantalla es angosta, se apila abajo de `children` como hasta ahora.
@@ -310,9 +313,12 @@ export default function ModalFormulario({
         })}
       >
         {soloCerrar ? (
-          <Button variant="outlined" onClick={onPedirCierre}>
-            Cerrar
-          </Button>
+          <>
+            {accionPie}
+            <Button variant="outlined" onClick={onPedirCierre}>
+              Cerrar
+            </Button>
+          </>
         ) : confirmandoDescarte ? (
           <>
             <Typography

@@ -14,6 +14,9 @@ fallas = []
 def sql(q):
     return subprocess.run(['mysql', 'asisto', '-N', '-e', q], check=True, capture_output=True, text=True).stdout.strip()
 
+# El seed arma los mensuales con el mes anterior a la carga.
+MES_SEED = sql("SELECT DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m')")
+
 def check(c, m):
     print(('OK   ' if c else 'FALLA'), m)
     if not c: fallas.append(m)
@@ -56,7 +59,7 @@ with sync_playwright() as p:
     shot(pg, '02_informe_publicado')
     with pg.expect_download() as d:
         pg.get_by_role('button', name='Descargar PDF').click()
-    check(d.value.suggested_filename.startswith('informe-mensual-2026-09-') and d.value.suggested_filename.endswith('.pdf'), f'descarga el PDF ({d.value.suggested_filename})')
+    check(d.value.suggested_filename.startswith(f'informe-mensual-{MES_SEED}-') and d.value.suggested_filename.endswith('.pdf'), f'descarga el PDF ({d.value.suggested_filename})')
     path = d.value.path()
     check(open(path, 'rb').read(5) == b'%PDF-', 'el archivo descargado es un PDF')
 
@@ -65,13 +68,13 @@ with sync_playwright() as p:
     pg.get_by_role('button', name='Crear corrección').click(); pg.wait_for_timeout(2000)
     check(pg.locator('textarea[aria-label="Contenido del informe"]').count() == 1, 'la corrección abre un borrador editable')
     check(pg.get_by_text('Versión 2').count() >= 1, 'es la versión 2')
-    check(sql("SELECT estado FROM informes WHERE id_paciente=1 AND tipo='mensual' AND periodo='2026-09' AND version=1") == 'final', 'la versión 1 sigue publicada hasta publicar la 2')
+    check(sql(f"SELECT estado FROM informes WHERE id_paciente=1 AND tipo='mensual' AND periodo='{MES_SEED}' AND version=1") == 'final', 'la versión 1 sigue publicada hasta publicar la 2')
     area = pg.locator('textarea[aria-label="Contenido del informe"]')
     area.fill(area.input_value() + '\n\nTexto agregado por la prueba.')
     pg.get_by_role('button', name='Guardar', exact=True).click(); pg.wait_for_timeout(1200)
     check('Texto agregado por la prueba' in sql("SELECT contenido FROM informes WHERE id_paciente=1 AND version=2 AND tipo='mensual'"), 'Guardar persiste el texto editado')
     # diarios al costado
-    pg.get_by_role('button', name='Ver diarios del período').click(); pg.wait_for_timeout(1800)
+    pg.get_by_role('button', name='Ver las sesiones del período').click(); pg.wait_for_timeout(1800)
     check(pg.get_by_text('Diarios del período').count() >= 1 and pg.get_by_text('Objetivos evaluados').count() >= 1, 'el panel muestra los diarios del período')
     shot(pg, '03_borrador_con_diarios')
     # marca pendiente bloquea publicar
@@ -87,14 +90,14 @@ with sync_playwright() as p:
     pg.goto(B + '/pacientes/7'); pg.wait_for_timeout(2000)
     pg.get_by_role('tab', name='Informes').click(); pg.wait_for_timeout(1200)
     pg.get_by_role('button', name='Generar informe').click(); pg.wait_for_timeout(800)
-    pg.fill('#informe-mes', '2026-09'); pg.wait_for_timeout(300)
+    pg.fill('#informe-mes', MES_SEED); pg.wait_for_timeout(300)
     check(pg.get_by_text('Ya existe un borrador de este período').count() == 1, 'avisa que generar reemplaza el borrador existente')
     shot(pg, '05_generar_informe')
     pg.get_by_role('button', name='Cancelar').click(); pg.wait_for_timeout(400)
 
     # --- control mensual ---
     pg.goto(B + '/informes'); pg.wait_for_timeout(2000)
-    pg.fill('#control-mes', '2026-09'); pg.wait_for_timeout(1500)
+    pg.fill('#control-mes', MES_SEED); pg.wait_for_timeout(1500)
     check(pg.get_by_text('Mensuales publicados').count() == 1, 'el control muestra el resumen')
     check(pg.get_by_role('row').filter(has_text='Tomás Aguirre').get_by_text('Publicado').count() >= 1, 'Tomas figura con el mensual publicado')
     check(pg.get_by_role('row').filter(has_text='Lucía Molina').get_by_text('Borrador').count() >= 1, 'Lucia figura en borrador')
@@ -132,7 +135,7 @@ with sync_playwright() as p:
     check(pg.get_by_role('dialog').get_by_text('Equipo terapéutico').count() == 0 and pg.locator('textarea').count() == 0, 'el lector no ofrece edicion')
     shot(pg, '08_lector_familiar')
     with pg.expect_download() as d2:
-        pg.get_by_role('button', name='Descargar PDF').click()
+        pg.get_by_role('button', name='Descargar PDF (para guardar o imprimir)').click()
     check(d2.value.suggested_filename.endswith('.pdf'), 'la familia descarga el PDF')
     br.close()
 

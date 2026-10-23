@@ -156,15 +156,16 @@ export default function Panel() {
           render: (s) => {
             const r = s.renglones ?? { plan: 0, registro: 0, arrastre: 0 };
             const partes = [
-              r.plan > 0 && `plan ${r.plan}`,
-              r.registro > 0 && `registro ${r.registro}`,
+              // Palabras y no claves internas («registro 2» no se entendía).
+              r.plan > 0 && `Plan: ${r.plan}`,
+              r.registro > 0 && `Anotado: ${r.registro}`,
             ].filter(Boolean);
             return (
               <Box sx={{ fontSize: 12, color: 'text.secondary', whiteSpace: 'nowrap' }}>
                 {partes.length ? partes.join(' · ') : (r.arrastre > 0 ? '' : '—')}
                 {r.arrastre > 0 && (
                   <Box component="span" sx={{ ml: partes.length ? 0.75 : 0, fontWeight: 600, color: 'text.primary' }}>
-                    {partes.length ? '· ' : ''}arrastra {r.arrastre}
+                    {partes.length ? '· ' : ''}Quedó de antes: {r.arrastre}
                   </Box>
                 )}
               </Box>

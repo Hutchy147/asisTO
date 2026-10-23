@@ -75,8 +75,8 @@ export default function AuditoriaAccesos() {
       render: (a) => <Chip size="small" color={RESULTADOS[a.resultado]?.color} label={RESULTADOS[a.resultado]?.etiqueta ?? a.resultado} />,
     },
     {
-      clave: 'cuenta', etiqueta: 'Cuenta', ancho: 150,
-      render: (a) => (a.id_usuario ? 'Registrada' : <Box component="span" sx={{ color: 'text.secondary' }}>Sin cuenta</Box>),
+      clave: 'cuenta', etiqueta: '¿Existe la cuenta?', ancho: 170,
+      render: (a) => (a.id_usuario ? 'Usuario del sistema' : <Box component="span" sx={{ color: 'text.secondary' }}>Email sin cuenta</Box>),
     },
     { clave: 'ip', etiqueta: 'IP', ancho: 140, render: (a) => a.ip ?? '—' },
   ];

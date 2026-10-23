@@ -9,6 +9,7 @@ import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import MenuItem from '@mui/material/MenuItem';
+import Snackbar from '@mui/material/Snackbar';
 import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
@@ -36,10 +37,21 @@ export default function NotificacionesFamiliar() {
   const lista = usePeticion(() => listarNotificaciones({ tipo, leida }), [tipo, leida]);
   const preferencias = usePeticion(() => obtenerPreferencias(), []);
 
+  const [guardado, setGuardado] = useState('');
+
   const accion = async (funcion) => {
     setError('');
     try {
       await funcion();
+      // El contador de la barra se actualiza en el acto (antes quedaba el
+      // número viejo hasta recargar la página).
+      if (funcion === marcarTodasLeidas && lista.datos) {
+        lista.setDatos({
+          ...lista.datos,
+          no_leidas: 0,
+          notificaciones: lista.datos.notificaciones.map((n) => ({ ...n, leida: true })),
+        });
+      }
       lista.recargar();
     } catch (fallo) {
       setError(fallo.message);
@@ -51,6 +63,10 @@ export default function NotificacionesFamiliar() {
     try {
       const respuesta = await guardarPreferencia(item.tipo, habilitada);
       preferencias.setDatos(respuesta);
+      // Confirmación visible: sin ella no se sabía si el cambio había quedado.
+      setGuardado(habilitada
+        ? `Listo: va a recibir los avisos de «${item.etiqueta}».`
+        : `Listo: ya no va a recibir los avisos de «${item.etiqueta}».`);
     } catch (fallo) {
       setError(fallo.message);
     }
@@ -67,44 +83,10 @@ export default function NotificacionesFamiliar() {
     <BarraFamiliar activa="avisos" sinLeer={noLeidas}>
       <Typography variant="h4">Avisos</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Novedades del tratamiento. Puede elegir qué tipos de aviso desea recibir; los avisos
-        anteriores se conservan en el historial.
+        Novedades del tratamiento. Más abajo puede elegir qué tipos de aviso desea recibir.
       </Typography>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-
-      <Box
-        sx={(t) => ({
-          backgroundColor: t.palette.superficie.tarjeta,
-          border: `1px solid ${t.palette.superficie.borde}`,
-          borderRadius: `${t.formas.md}px`,
-          mb: 3,
-        })}
-      >
-        <Box sx={(t) => ({ px: 2.25, py: 1.75, borderBottom: `1px solid ${t.palette.superficie.borde}` })}>
-          <Typography variant="h5">Qué avisos recibir</Typography>
-        </Box>
-        {preferencias.cargando && <Cargando texto="Cargando sus preferencias..." />}
-        {preferencias.error && <EstadoError error={preferencias.error} onReintentar={preferencias.recargar} />}
-        <Box sx={{ p: 2.25, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          {tipos.map((item) => (
-            <Box key={item.tipo} sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <FormControlLabel
-                sx={{ m: 0, flex: 'none' }}
-                control={
-                  <Switch
-                    checked={item.habilitada}
-                    onChange={(e) => cambiarPreferencia(item, e.target.checked)}
-                    inputProps={{ 'aria-label': item.etiqueta }}
-                  />
-                }
-                label={<Typography sx={{ fontWeight: 600, minWidth: 220 }}>{item.etiqueta}</Typography>}
-              />
-              <Typography variant="body2" color="text.secondary">{item.descripcion}</Typography>
-            </Box>
-          ))}
-        </Box>
-      </Box>
 
       <Box
         sx={(t) => ({
@@ -160,7 +142,7 @@ export default function NotificacionesFamiliar() {
                 >
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 0.5, flexWrap: 'wrap' }}>
-                      <Chip size="small" label={n.tipo_etiqueta} />
+                      <Chip size="small" label={n.tipo_etiqueta} sx={{ maxWidth: '100%', '& .MuiChip-label': { whiteSpace: 'normal' }, height: 'auto', minHeight: 24 }} />
                       <Typography variant="caption" color="text.secondary" className="tabular">{fechaHora(n.fecha)}</Typography>
                       {!n.leida && <Chip size="small" color="primary" label="Nuevo" />}
                     </Box>
@@ -175,6 +157,47 @@ export default function NotificacionesFamiliar() {
           )
         )}
       </Box>
+
+      {/* Primero los avisos; la configuración, debajo (en el celular tapaba todo). */}
+      <Box
+        sx={(t) => ({
+          backgroundColor: t.palette.superficie.tarjeta,
+          border: `1px solid ${t.palette.superficie.borde}`,
+          borderRadius: `${t.formas.md}px`,
+          mt: 3,
+        })}
+      >
+        <Box sx={(t) => ({ px: 2.25, py: 1.75, borderBottom: `1px solid ${t.palette.superficie.borde}` })}>
+          <Typography variant="h5">Qué avisos recibir</Typography>
+        </Box>
+        {preferencias.cargando && <Cargando texto="Cargando sus preferencias..." />}
+        {preferencias.error && <EstadoError error={preferencias.error} onReintentar={preferencias.recargar} />}
+        <Box sx={{ p: 2.25, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          {tipos.map((item) => (
+            <Box key={item.tipo} sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 2 }, flexWrap: 'wrap' }}>
+              <FormControlLabel
+                sx={{ m: 0, flex: 'none' }}
+                control={
+                  <Switch
+                    checked={item.habilitada}
+                    onChange={(e) => cambiarPreferencia(item, e.target.checked)}
+                    inputProps={{ 'aria-label': item.etiqueta }}
+                  />
+                }
+                label={<Typography sx={{ fontWeight: 600, minWidth: { sm: 220 } }}>{item.etiqueta}</Typography>}
+              />
+              <Typography variant="body2" color="text.secondary" sx={{ flex: '1 1 240px' }}>{item.descripcion}</Typography>
+            </Box>
+          ))}
+        </Box>
+      </Box>
+
+      <Snackbar
+        open={Boolean(guardado)} autoHideDuration={4000} onClose={() => setGuardado('')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="success" variant="filled" onClose={() => setGuardado('')}>{guardado}</Alert>
+      </Snackbar>
     </BarraFamiliar>
   );
 }

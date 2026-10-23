@@ -7,7 +7,7 @@
 // por accidente. Las calificaciones se muestran con la escala en palabras,
 // nunca como número ni promedio.
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
@@ -17,16 +17,14 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
 import BarraFamiliar from '../components/familiar/BarraFamiliar.jsx';
-import DataTable from '../components/data/DataTable.jsx';
 import GraficoEvolucion from '../components/data/GraficoEvolucion.jsx';
-import SesionEstadoChip from '../components/data/SesionEstadoChip.jsx';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { hayCapacidad } from '../config/entregas.js';
 import { usePeticion } from '../hooks/usePeticion.js';
-import { useEstadoEnUrl } from '../hooks/useEstadoEnUrl.js';
+import { useEstadoEnUrl, useFiltrosEnUrl } from '../hooks/useEstadoEnUrl.js';
 import { contarNoLeidas } from '../services/notificacionesService.js';
 import { obtenerEvolucionVinculada, listarPacientesVinculados } from '../services/portalFamiliarService.js';
-import { etiquetaDeValor } from '../services/evolucionesService.js';
+import { etiquetaDeValor, resumenEnPalabras } from '../services/evolucionesService.js';
 import { aIsoLocal, formatearFecha, textoEdad } from '../utils/fechas.js';
 
 const ESTADOS_PACIENTE = {
@@ -56,48 +54,80 @@ function Tarjeta({ titulo, descripcion, children }) {
   );
 }
 
+/** Estado de la sesión dicho para la familia: fue o no fue. */
+function EstadoParaFamilia({ estado }) {
+  const falto = estado === 'ausencia';
+  return (
+    <Chip
+      size="small"
+      label={falto ? 'No asistió' : 'Asistió'}
+      color={falto ? 'error' : 'success'}
+      variant={falto ? 'filled' : 'outlined'}
+    />
+  );
+}
+
+const TONO_RESUMEN = { bien: 'success.main', igual: 'text.primary', atencion: 'warning.dark', pocos: 'text.secondary' };
+
+function ListaDeSesiones({ sesiones }) {
+  // Tarjetas apiladas: en el celular una tabla obligaba a desplazar de costado
+  // para ver la calificación.
+  return (
+    <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }}>
+      {sesiones.map((s) => (
+        <Box
+          component="li" key={s.id_sesion}
+          sx={(t) => ({ px: 2.25, py: 1.5, borderBottom: `1px solid ${t.palette.superficie.borde}` })}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: s.valores.length ? 0.75 : 0 }}>
+            <Typography variant="body2" className="tabular" sx={{ fontWeight: 600 }}>
+              {formatearFecha(s.fecha)}{s.hora_inicio ? ` · ${String(s.hora_inicio).slice(0, 5)}` : ''}
+            </Typography>
+            <EstadoParaFamilia estado={s.estado_sesion} />
+            {s.estado_sesion !== 'ausencia' && s.valores.length === 0 && (
+              <Typography variant="body2" color="text.secondary">Sin objetivos calificados en esta sesión.</Typography>
+            )}
+          </Box>
+          {s.valores.map((v) => (
+            <Box key={v.id_objetivo} sx={{ display: 'flex', gap: 1, alignItems: 'baseline', flexWrap: 'wrap', py: 0.25 }}>
+              <Typography variant="body2" className="texto-libre" sx={{ flex: '1 1 220px' }}>{v.objetivo}</Typography>
+              <Chip size="small" label={etiquetaDeValor(v.valor)} />
+            </Box>
+          ))}
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
 function EvolucionDe({ paciente }) {
-  const [desde, setDesde] = useState('');
-  const [hasta, setHasta] = useState('');
-  const [filtro, setFiltro] = useState({ desde: '', hasta: '' });
+  // El período va en la URL: no se pierde al cambiar de hijo, al pasar a
+  // Informes y volver, ni con F5 (pruebas de usabilidad).
+  const [filtro, setFiltro] = useFiltrosEnUrl({ desde: '', hasta: '' });
+  const [desde, setDesde] = useState(filtro.desde);
+  const [hasta, setHasta] = useState(filtro.hasta);
   const [pestania, setPestania] = useEstadoEnUrl('vista', 'objetivos');
   const rangoInvalido = Boolean(desde && hasta && desde > hasta);
+  const sinFechas = !desde && !hasta;
 
   const evolucion = usePeticion(
     () => obtenerEvolucionVinculada(paciente.id, filtro),
     [paciente.id, filtro.desde, filtro.hasta],
   );
 
-  const aplicar = () => { if (!rangoInvalido) setFiltro({ desde, hasta }); };
+  const aplicar = () => { if (!rangoInvalido && !sinFechas) setFiltro({ desde, hasta }); };
   const limpiar = () => { setDesde(''); setHasta(''); setFiltro({ desde: '', hasta: '' }); };
 
-  const columnasSesiones = useMemo(() => [
-    { clave: 'fecha', etiqueta: 'Fecha', ancho: 120, render: (s) => <span className="tabular">{formatearFecha(s.fecha)}</span> },
-    { clave: 'estado', etiqueta: 'Sesión', ancho: 130, render: (s) => <SesionEstadoChip estado={s.estado_sesion} /> },
-    {
-      clave: 'valores', etiqueta: 'Objetivos trabajados',
-      render: (s) => (s.valores.length === 0
-        ? <Typography variant="body2" color="text.secondary">{s.estado_sesion === 'ausencia' ? 'Sin sesión' : 'Sin calificaciones'}</Typography>
-        : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, py: 0.5 }}>
-            {s.valores.map((v) => (
-              <Box key={v.id_objetivo} sx={{ display: 'flex', gap: 1, alignItems: 'baseline' }}>
-                <span className="texto-libre">{v.objetivo}</span>
-                <Chip size="small" label={etiquetaDeValor(v.valor)} />
-              </Box>
-            ))}
-          </Box>
-        )),
-    },
-  ], []);
-
   const datos = evolucion.datos;
+  // Desde cuándo hay sesiones cargadas: el tratamiento puede haber empezado
+  // antes de que el centro usara el sistema.
+  const primeraSesion = datos?.sesiones?.length ? datos.sesiones[datos.sesiones.length - 1].fecha : null;
 
   return (
     <>
       <Box
         sx={(t) => ({
-          display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-end', p: 2, mb: 2,
+          display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start', p: 2, mb: 2,
           backgroundColor: t.palette.superficie.tarjeta,
           border: `1px solid ${t.palette.superficie.borde}`,
           borderRadius: `${t.formas.md}px`,
@@ -106,22 +136,27 @@ function EvolucionDe({ paciente }) {
         <TextField
           id="filtro-desde" label="Desde" type="date" size="small" value={desde} inputProps={{ max: aIsoLocal(new Date()) }}
           onChange={(e) => setDesde(e.target.value)} InputLabelProps={{ shrink: true }}
-          error={rangoInvalido}
+          error={rangoInvalido} sx={{ flex: '1 1 150px' }}
           // Mismo hueco de ayuda que "Hasta": si no, quedan desalineados.
           helperText=" "
         />
         <TextField
           id="filtro-hasta" label="Hasta" type="date" size="small" value={hasta} inputProps={{ max: aIsoLocal(new Date()) }}
           onChange={(e) => setHasta(e.target.value)} InputLabelProps={{ shrink: true }}
-          error={rangoInvalido}
+          error={rangoInvalido} sx={{ flex: '1 1 150px' }}
           helperText={rangoInvalido ? 'La fecha final no puede ser anterior a la inicial.' : ' '}
         />
-        <Box sx={{ display: 'flex', gap: 1, mb: 2.75 }}>
-          <Button variant="contained" onClick={aplicar} disabled={rangoInvalido}>Filtrar</Button>
-          <Button color="inherit" onClick={limpiar} disabled={!filtro.desde && !filtro.hasta && !desde && !hasta}>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Button variant="contained" onClick={aplicar} disabled={rangoInvalido || sinFechas}>Filtrar</Button>
+          <Button color="inherit" onClick={limpiar} disabled={!filtro.desde && !filtro.hasta && sinFechas}>
             Todo el tratamiento
           </Button>
         </Box>
+        {sinFechas && (
+          <Typography variant="caption" color="text.secondary" sx={{ flexBasis: '100%', mt: -1 }}>
+            Elija una fecha de inicio, de fin o ambas para ver solo ese período.
+          </Typography>
+        )}
       </Box>
 
       {evolucion.cargando && <Cargando texto="Cargando la evolución..." />}
@@ -139,10 +174,10 @@ function EvolucionDe({ paciente }) {
 
           {pestania === 'objetivos' && (
             <Tarjeta
-              titulo="Evolución por objetivo"
+              titulo="Cómo viene cada objetivo"
               descripcion={
                 datos.periodo.completo
-                  ? 'Todo el tratamiento hasta hoy. Cada objetivo tiene su propio gráfico.'
+                  ? `Todo lo registrado${primeraSesion ? ` desde el ${formatearFecha(primeraSesion)}` : ''} hasta hoy. Cada objetivo es algo que se está trabajando en la terapia.`
                   : `Del ${formatearFecha(datos.periodo.desde)} al ${formatearFecha(datos.periodo.hasta)}.`
               }
             >
@@ -155,24 +190,32 @@ function EvolucionDe({ paciente }) {
               ) : (
                 <Box sx={{ p: 2.25, display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <Typography variant="body2" color="text.secondary">
-                    La línea une las calificaciones en orden. En cada sesión se trabajan algunos
-                    objetivos y no todos, por eso hay tramos punteados.
+                    En cada sesión la terapeuta califica cómo le fue en algunos objetivos, de «No logrado» a
+                    «Logrado». Los altibajos de una sesión a otra son normales: importa hacia dónde va.
                   </Typography>
-                  {datos.objetivos.map((serie) => (
-                    <GraficoEvolucion
-                      key={serie.id}
-                      serie={serie}
-                      titulo={
-                        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mb: 0.5 }}>
-                          <Typography variant="body1" className="texto-libre" sx={{ flex: 1 }}>{serie.descripcion}</Typography>
-                          {serie.resumen.ultimo !== null && (
-                            <Chip size="small" color="primary" label={`Última calificación: ${etiquetaDeValor(serie.resumen.ultimo)}`} />
-                          )}
-                          {!serie.activo && <Chip size="small" label="Archivado" />}
-                        </Box>
-                      }
-                    />
-                  ))}
+                  {datos.objetivos.map((serie) => {
+                    const resumen = resumenEnPalabras(serie.puntos);
+                    return (
+                      <GraficoEvolucion
+                        key={serie.id}
+                        serie={serie}
+                        titulo={
+                          <Box sx={{ mb: 0.5 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flexWrap: 'wrap' }}>
+                              <Typography variant="body1" className="texto-libre" sx={{ flex: '1 1 220px' }}>{serie.descripcion}</Typography>
+                              {serie.resumen.ultimo !== null && (
+                                <Chip size="small" color="primary" label={`Última sesión: ${etiquetaDeValor(serie.resumen.ultimo)}`} />
+                              )}
+                              {!serie.activo && <Chip size="small" label="Ya no se trabaja" />}
+                            </Box>
+                            <Typography variant="body2" sx={{ color: TONO_RESUMEN[resumen.tono], fontWeight: 600, mt: 0.25 }}>
+                              {resumen.texto}
+                            </Typography>
+                          </Box>
+                        }
+                      />
+                    );
+                  })}
                 </Box>
               )}
             </Tarjeta>
@@ -183,7 +226,7 @@ function EvolucionDe({ paciente }) {
               {datos.sesiones.length === 0 ? (
                 <EstadoVacio plano titulo="No hay sesiones en este período" descripcion="Pruebe con otro rango de fechas." />
               ) : (
-                <DataTable columnas={columnasSesiones} filas={datos.sesiones} claveFila={(s) => s.id_sesion} />
+                <ListaDeSesiones sesiones={datos.sesiones} />
               )}
             </Tarjeta>
           )}
@@ -239,6 +282,7 @@ export default function PortalFamiliar() {
               {lista.map((p) => <Tab key={p.id} value={p.id} label={p.nombre_completo} />)}
             </Tabs>
           )}
+          {/* key: al cambiar de hijo se rearma, pero el período sigue en la URL. */}
           <EvolucionDe key={paciente.id} paciente={paciente} />
         </>
       )}

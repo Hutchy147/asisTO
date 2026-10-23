@@ -216,6 +216,21 @@ export default function ModalRegistroDia({
       subtitulo={subtitulo}
       soloCerrar
       onPedirCierre={onCerrar}
+      // La acción de terminar va al pie, siempre a la vista: antes aparecía en
+      // el medio recién después de calificar y parecía que no había cómo guardar.
+      accionPie={datos && lista && puedeRegistrar && !esAusencia && sesion.estado === ESTADO_SIN_CERRAR && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1, flexWrap: 'wrap' }}>
+          <Typography variant="caption" color="text.secondary" sx={{ flex: 1, minWidth: 180 }}>
+            {evolucionPorObjetivo.size > 0
+              ? 'Todo lo escrito ya quedó guardado. Al terminar, la sesión figura «Realizada».'
+              : 'Todo se guarda al momento. Para terminar, califique al menos un objetivo.'}
+          </Typography>
+          <Button variant="contained" disabled={ocupado || evolucionPorObjetivo.size === 0}
+            onClick={() => cambiarAsistencia('completa', null).catch(() => {})}>
+            Terminar la sesión
+          </Button>
+        </Box>
+      )}
     >
       {(detalle.cargando || renglones.cargando) && !datos && <Cargando texto="Abriendo la sesión..." minHeight={140} />}
       {detalle.error && <EstadoError error={detalle.error} onReintentar={detalle.recargar} />}
@@ -372,7 +387,14 @@ export default function ModalRegistroDia({
                     habilitada={puedeCargarEvolucion}
                     ocupado={ocupado}
                     onGuardar={(valor, observaciones) => ejecutar(
-                      () => registrarEvolucion({ id_sesion: sesion.id, id_objetivo: o.id, valor, observaciones }),
+                      async () => {
+                        await registrarEvolucion({ id_sesion: sesion.id, id_objetivo: o.id, valor, observaciones });
+                        // Calificar un objetivo es haberlo trabajado: se tilda solo en
+                        // «Objetivos a trabajar» (antes quedaba «0 de 3 marcados»).
+                        if (!lista.objetivos_plan.includes(o.id)) {
+                          await marcarObjetivoDelPlan(sesion.id, o.id, true).catch(() => {});
+                        }
+                      },
                       { recargarSesion: true },
                     )}
                   />
@@ -383,12 +405,8 @@ export default function ModalRegistroDia({
               <Box sx={{ pt: 1.25, display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
                 {sesion.estado === ESTADO_SIN_CERRAR ? (
                   <>
-                    <Button size="small" variant="contained" disabled={ocupado}
-                      onClick={() => cambiarAsistencia('completa', null).catch(() => {})}>
-                      Marcar la sesión como realizada
-                    </Button>
                     <Typography variant="caption" color="text.secondary">
-                      Mientras no se marque, la sesión figura «En registro».
+                      Mientras no se termine (botón «Terminar la sesión», al pie), la sesión figura «En registro».
                     </Typography>
                   </>
                 ) : (
@@ -408,7 +426,7 @@ export default function ModalRegistroDia({
           </Bloque>
 
           {sesion.notas && (
-            <Bloque titulo="Notas anteriores" nota="Texto libre cargado antes de que existieran los renglones.">
+            <Bloque titulo="Notas escritas antes" nota="Cargadas con el formato anterior del sistema, en un solo texto.">
               <Typography variant="body2" className="texto-libre" sx={{ whiteSpace: 'pre-wrap' }}>{sesion.notas}</Typography>
             </Bloque>
           )}
@@ -440,7 +458,8 @@ export default function ModalRegistroDia({
                     onClick={() => cambiarAsistencia(ESTADO_SIN_CERRAR, null).catch(() => {})}>
                     Deshacer ausencia
                   </Button>
-                ) : (
+                ) : sesion.estado !== 'completa' && (
+                  // Con la sesión ya realizada no se ofrece: era fácil tocarlo sin querer.
                   <Button variant="outlined" disabled={ocupado || futura} onClick={() => setMarcandoAusencia(true)}>
                     Marcar ausente
                   </Button>

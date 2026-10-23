@@ -31,6 +31,28 @@ export function etiquetaDeValor(valor) {
 }
 
 /**
+ * Resumen EN PALABRAS SIMPLES de cómo viene un objetivo, para la familia y el
+ * paciente (pruebas de usabilidad: un padre veía «Logrado» y luego «Inicial»
+ * y concluía que su hija empeoraba). Compara el promedio de las primeras
+ * calificaciones del período con el de las últimas; con menos de 3 no opina.
+ * -> { texto, tono: 'bien' | 'igual' | 'atencion' | 'pocos' }
+ */
+export function resumenEnPalabras(puntos) {
+  const valores = (puntos ?? []).map((p) => p.valor).filter((v) => v !== null && v !== undefined).map(Number);
+  if (valores.length < 3) {
+    return { texto: 'Todavía hay pocas calificaciones para saber hacia dónde va.', tono: 'pocos' };
+  }
+  const tramo = Math.max(1, Math.floor(valores.length / 3));
+  const promedio = (lista) => lista.reduce((a, b) => a + b, 0) / lista.length;
+  const diferencia = promedio(valores.slice(-tramo)) - promedio(valores.slice(0, tramo));
+  if (diferencia >= 0.5) return { texto: 'Viene mejorando.', tono: 'bien' };
+  if (diferencia <= -0.5) {
+    return { texto: 'En las últimas sesiones le costó más. Es habitual que haya altibajos; el equipo lo sigue trabajando.', tono: 'atencion' };
+  }
+  return { texto: 'Se mantiene estable.', tono: 'igual' };
+}
+
+/**
  * Registra una evolucion.
  *
  * Errores esperables, todos con el mensaje ya redactado por el servidor —

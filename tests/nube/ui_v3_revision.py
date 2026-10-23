@@ -46,7 +46,7 @@ with sync_playwright() as p:
     pg.get_by_role('button', name='Guardar evolución').click(); pg.wait_for_timeout(1500)
     check(pg.get_by_role('button', name='Guardar evolución').count() == 0, 'la evolucion se guarda en la misma pantalla')
     check(pg.get_by_text('En registro').count() >= 1, 'estado: con evolucion y sin cerrar = "En registro"')
-    pg.get_by_role('button', name='Marcar la sesión como realizada').click(); pg.wait_for_timeout(1500)
+    pg.get_by_role('button', name='Terminar la sesión').click(); pg.wait_for_timeout(1500)
     check(pg.get_by_text('Realizada').count() >= 1, 'estado: cerrada = "Realizada"')
     check(sql("SELECT estado FROM sesiones WHERE id_paciente=1 AND hora_inicio='00:10:00'") == 'completa', 'la base queda en completa')
     pg.screenshot(path='/tmp/claude-0/ui/doc/16_registro_cerrado.png')

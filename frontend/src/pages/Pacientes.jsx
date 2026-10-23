@@ -43,7 +43,11 @@ export default function Pacientes() {
   const terapeutas = usePeticion(listarTerapeutas, []);
   const { perfil } = useAuth();
   const [busqueda, setBusqueda] = useState('');
-  const [soloMios, setSoloMios] = useState(false);
+  // «Mis pacientes» encendido por omisión: con el listado completo una
+  // terapeuta nueva creía que todos eran suyos (usabilidad). Va en la URL.
+  const [todosUrl, setTodosUrl] = useEstadoEnUrl('todos', '');
+  const soloMios = todosUrl !== '1';
+  const setSoloMios = (valor) => setTodosUrl(valor ? '' : '1');
   const conAsignaciones = hayCapacidad('asignaciones.gestionar');
   const [modalAbierto, setModalAbierto] = useState(false);
   const [aviso, setAviso] = useState('');

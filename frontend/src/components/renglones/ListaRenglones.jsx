@@ -18,8 +18,8 @@ function Marca({ activa, onClick, deshabilitada }) {
       component="button"
       type="button"
       aria-pressed={activa}
-      aria-label={activa ? 'Quitar destacado' : 'Destacar renglón'}
-      title={activa ? 'Quitar destacado' : 'Destacar'}
+      aria-label={activa ? 'Quitar destacado' : 'Destacar esta nota'}
+      title={activa ? 'Quitar destacado' : 'Destacar: se arrastra a la próxima sesión y se ve en el informe'}
       disabled={deshabilitada}
       onClick={onClick}
       sx={(t) => ({
@@ -65,7 +65,7 @@ export default function ListaRenglones({
 
   async function guardarEdicion(r) {
     const limpio = (editando?.texto ?? '').trim();
-    if (!limpio) { setEditando((e) => ({ ...e, error: 'El renglón no puede quedar vacío.' })); return; }
+    if (!limpio) { setEditando((e) => ({ ...e, error: 'La nota no puede quedar vacía.' })); return; }
     if (limpio === r.texto) { setEditando(null); return; }
     setGuardando(true);
     try {
@@ -112,7 +112,7 @@ export default function ListaRenglones({
                         if (e.key === 'Enter') { e.preventDefault(); guardarEdicion(r); }
                         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setEditando(null); }
                       }}
-                      inputProps={{ maxLength: MAXIMO_CARACTERES_RENGLON, 'aria-label': `Editar el renglón ${r.texto}` }}
+                      inputProps={{ maxLength: MAXIMO_CARACTERES_RENGLON, 'aria-label': `Editar la nota ${r.texto}` }}
                       error={Boolean(editando.error)}
                       helperText={editando.error || 'Enter guarda; Escape cancela.'}
                     />
@@ -146,7 +146,7 @@ export default function ListaRenglones({
                 </Box>
                 )}
                 {editable && onEditar && !resuelto && editando?.id !== r.id && (
-                  <BotonChico deshabilitado={ocupado} onClick={() => setEditando({ id: r.id, texto: r.texto, error: '' })} etiqueta={`Editar el renglón ${r.texto}`}>
+                  <BotonChico deshabilitado={ocupado} onClick={() => setEditando({ id: r.id, texto: r.texto, error: '' })} etiqueta={`Editar la nota ${r.texto}`}>
                     Editar
                   </BotonChico>
                 )}
@@ -167,7 +167,7 @@ export default function ListaRenglones({
                   )
                 )}
                 {editable && onBorrar && editando?.id !== r.id && (
-                  <BotonChico deshabilitado={ocupado} onClick={() => onBorrar(r)} etiqueta={`Borrar el renglón ${r.texto}`}>
+                  <BotonChico deshabilitado={ocupado} onClick={() => onBorrar(r)} etiqueta={`Borrar la nota ${r.texto}`}>
                     Borrar
                   </BotonChico>
                 )}
@@ -201,7 +201,7 @@ export function CampoRenglon({ placeholder, onAgregar, deshabilitado = false }) 
       setTexto('');
       setDestacado(false);
     } catch (fallo) {
-      setError(fallo.message || 'No se pudo guardar el renglón.');
+      setError(fallo.message || 'No se pudo guardar la nota.');
     } finally {
       setEnviando(false);
     }

@@ -44,7 +44,7 @@ with sync_playwright() as p:
 
     # sesiones
     page.get_by_role('tab').filter(has_text='Sesiones').click(); page.wait_for_timeout(600)
-    check(page.locator('tbody tr').count() > 0, 'listado de sesiones con valores por objetivo')
+    check(page.get_by_text('Asistió').count() > 0, 'listado de sesiones con valores por objetivo')
     page.screenshot(path=f'{SALIDA}/portal_sesiones.png', full_page=True)
 
     # filtro por fecha: un rango sin sesiones deja el listado vacio, y "Todo el tratamiento" vuelve

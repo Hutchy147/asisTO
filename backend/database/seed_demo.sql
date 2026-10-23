@@ -247,6 +247,7 @@ BEGIN
   DECLARE v_n_obj      INT;
   DECLARE v_off        INT;
   DECLARE v_id_obj     INT;
+  DECLARE v_adulto     BOOLEAN DEFAULT FALSE;
 
   -- La agenda termina HOY y arranca siete semanas antes.
   --
@@ -271,17 +272,27 @@ BEGIN
   -- con 3 porque mas abajo recibe un cuarto en formato real.
   WHILE v_pac <= 15 DO
     SET v_cant = 3 + ((v_pac + 1) MOD 2);
+    SELECT fecha_nacimiento < '2006-01-01' INTO v_adulto FROM pacientes WHERE id = v_pac;
     SET v_num = 1;
     WHILE v_num <= v_cant DO
       INSERT INTO objetivos_terapeuticos (id_paciente, descripcion, activo, fecha_creacion)
       VALUES (
         v_pac,
-        CASE v_num
-          WHEN 1 THEN CONVERT(0x4D656A6F726172206C612070726563697369C3B36E20656E206163746976696461646573206465206D6F74726963696461642066696E61 USING utf8mb4)
-          WHEN 2 THEN CONVERT(0x546F6C6572617220657374C3AD6D756C6F732073656E736F7269616C6573206E7565766F732073696E2072656368617A6F USING utf8mb4)
-          WHEN 3 THEN CONVERT(0x536F7374656E6572206C61206174656E6369C3B36E20656E20746172656173206465206469657A206D696E75746F73 USING utf8mb4)
-          ELSE        CONVERT(0x5265616C697A6172206163746976696461646573206465206C6120766964612064696172696120646520666F726D6120617574C3B36E6F6D61 USING utf8mb4)
-        END,
+        -- Adultos (los pacientes con cuenta propia) con objetivos de adulto: antes
+        -- un traumatismo de mano tenia "tolerar estimulos sensoriales" (usabilidad).
+        IF(v_adulto,
+          CASE v_num
+            WHEN 1 THEN CONVERT(0x526563757065726172206C6120667565727A61206465207072656E7369C3B36E206465206C61206D616E6F206166656374616461 USING utf8mb4)
+            WHEN 2 THEN 'Realizar las tareas de la vida diaria sin dolor ni ayuda'
+            WHEN 3 THEN 'Retomar las tareas laborales con las adaptaciones necesarias'
+            ELSE        CONVERT(0x4D656A6F726172206C61206465737472657A61206D616E75616C20706172612065736372696269722079207573617220656C2074656CC3A9666F6E6F USING utf8mb4)
+          END,
+          CASE v_num
+            WHEN 1 THEN CONVERT(0x4D656A6F726172206C612070726563697369C3B36E20656E206163746976696461646573206465206D6F74726963696461642066696E61 USING utf8mb4)
+            WHEN 2 THEN CONVERT(0x546F6C6572617220657374C3AD6D756C6F732073656E736F7269616C6573206E7565766F732073696E2072656368617A6F USING utf8mb4)
+            WHEN 3 THEN CONVERT(0x536F7374656E6572206C61206174656E6369C3B36E20656E20746172656173206465206469657A206D696E75746F73 USING utf8mb4)
+            ELSE        CONVERT(0x5265616C697A6172206163746976696461646573206465206C6120766964612064696172696120646520666F726D6120617574C3B36E6F6D61 USING utf8mb4)
+          END),
         TRUE,
         TIMESTAMP(DATE_SUB(v_dia, INTERVAL 30 DAY), SEC_TO_TIME(v_num * 900))
       );
@@ -802,6 +813,60 @@ INSERT INTO informes
 -- Un borrador recien generado todavia no fue editado: su contenido es el original.
 UPDATE informes SET contenido = contenido_original WHERE contenido IS NULL;
 
+-- Los informes MENSUALES del seed se reescriben con los datos reales del mes
+-- anterior a la carga (usabilidad: el fijo decia "17 sesiones sin ausencias" y
+-- otros objetivos, y la familia veia lo contrario en la evolucion).
+SET @inf_desde = DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01');
+SET @inf_hasta = LAST_DAY(@inf_desde);
+SET @inf_mes = ELT(MONTH(@inf_desde), 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+                   'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre');
+
+DROP TEMPORARY TABLE IF EXISTS tmp_informe_objetivos;
+CREATE TEMPORARY TABLE tmp_informe_objetivos AS
+SELECT x.id_paciente, GROUP_CONCAT(x.linea ORDER BY x.id_objetivo SEPARATOR '\n') AS lineas
+  FROM (
+    SELECT s.id_paciente, o.id AS id_objetivo,
+           CONCAT('- ', TRIM(TRAILING '.' FROM o.descripcion), ': ',
+                  ELT(ROUND(AVG(e.valor)), 'No logrado', 'Inicial', 'En proceso', 'Avanzado', 'Logrado'),
+                  ' (calificado en ', COUNT(*), IF(COUNT(*) = 1, CONVERT(0x2073657369C3B36E292E USING utf8mb4), ' sesiones).')) AS linea
+      FROM evoluciones e
+      JOIN sesiones s ON s.id = e.id_sesion
+      JOIN objetivos_terapeuticos o ON o.id = e.id_objetivo
+     WHERE s.fecha BETWEEN @inf_desde AND @inf_hasta AND e.valor IS NOT NULL
+     GROUP BY s.id_paciente, o.id
+  ) x
+ GROUP BY x.id_paciente;
+
+UPDATE informes i
+  JOIN pacientes p ON p.id = i.id_paciente
+  LEFT JOIN tmp_informe_objetivos t ON t.id_paciente = i.id_paciente
+   SET i.periodo = DATE_FORMAT(@inf_desde, '%Y-%m'),
+       i.fecha_desde = @inf_desde,
+       i.fecha_hasta = @inf_hasta,
+       i.fecha_generacion = TIMESTAMP(DATE_ADD(@inf_hasta, INTERVAL 1 DAY), '08:30:00'),
+       i.fecha_publicacion = IF(i.estado = 'final', TIMESTAMP(DATE_ADD(@inf_hasta, INTERVAL 1 DAY), '09:00:00'), NULL),
+       i.contenido = CONCAT(
+         '## Datos del paciente\n', p.nombre, ' ', p.apellido, '.\n\n',
+         CONVERT(0x232320506572C3AD6F646F0A USING utf8mb4), CONCAT(UPPER(LEFT(@inf_mes, 1)), SUBSTRING(@inf_mes, 2)), ' de ', YEAR(@inf_desde), '.\n\n',
+         '## Asistencia\n',
+         (SELECT CONCAT('Se registraron ', SUM(s.estado = 'completa'), ' sesiones realizadas y ',
+                        SUM(s.estado = 'ausencia'), IF(SUM(s.estado = 'ausencia') = 1, ' ausencia.', ' ausencias.'))
+            FROM sesiones s WHERE s.id_paciente = i.id_paciente AND s.fecha BETWEEN @inf_desde AND @inf_hasta),
+         '\n\n## Objetivos trabajados\n',
+         CONVERT(0x456C206E6976656C2064652063616461206F626A657469766F20726573756D6520746F646173207375732063616C696669636163696F6E65732064656C20706572C3AD6F646F3B206E6F206573206C6120C3BA6C74696D612063616C69666963616369C3B36E2E0A0A USING utf8mb4),
+         COALESCE(t.lineas, CONVERT(0x4E6F206875626F2063616C696669636163696F6E657320656E20656C20706572C3AD6F646F2E USING utf8mb4)),
+         CONVERT(0x0A0A2323204369657272652079207072C3B378696D6F73207061736F730A USING utf8mb4),
+         IF(i.estado = 'final',
+            CONVERT(0x4275656E20636F6D70726F6D69736F20656E206C617320736573696F6E65732E20536520636F6E74696EC3BA6120636F6E20656C20706C616E20766967656E74652079207365207265766973616E206C6F73206F626A657469766F7320656C206D6573207072C3B378696D6F2E USING utf8mb4),
+            CONVERT(0x5B434F4D504C455441523A206369657272652064656C20706572C3AD6F646F2079207072C3B378696D6F73207061736F735D USING utf8mb4))),
+       i.contenido_original = i.contenido
+ WHERE i.tipo = 'mensual';
+-- (contenido_original = contenido: MySQL asigna de izquierda a derecha y ya
+-- toma el valor nuevo.)
+
+DROP TEMPORARY TABLE tmp_informe_objetivos;
+
+
 -- Aviso de informe: solo los publicados y para quien lo tiene encendido.
 INSERT INTO notificaciones (id_familiar, id_paciente, tipo, mensaje, leida, fecha)
 SELECT fp.id_familiar, i.id_paciente, 'informe_generado',
@@ -838,6 +903,16 @@ INSERT INTO auditoria_accesos (id_usuario, email, resultado, ip, fecha) VALUES
   (NULL, 'noexiste@asisto.local',        'fallido',   '201.190.44.10', '2026-06-05 09:14:00'),
   (4,    'silvia.quiroga@asisto.local',  'exitoso',   '192.168.1.15',  '2026-06-05 09:15:00'),
   (13,   'andrea.suarez@asisto.local',   'bloqueado', '190.15.22.100', '2026-06-08 21:03:00');
+
+-- Intentos recientes, relativos a la carga: la auditoria de "esta semana" no
+-- quedaba vacia en la demostracion.
+INSERT INTO auditoria_accesos (id_usuario, email, resultado, ip, fecha) VALUES
+  (2,    'diego.moyano@asisto.local',    'fallido',      '192.168.1.31', DATE_SUB(NOW(), INTERVAL 2 DAY)),
+  (2,    'diego.moyano@asisto.local',    'exitoso',      '192.168.1.31', DATE_SUB(NOW(), INTERVAL 2 DAY) + INTERVAL 1 MINUTE),
+  (NULL, 'laura.fernandes@asisto.local', 'fallido',      '186.12.40.7',  DATE_SUB(NOW(), INTERVAL 1 DAY)),
+  (7,    'rosa.aguilar@asisto.local',    'recuperacion', '181.47.3.92',  DATE_SUB(NOW(), INTERVAL 1 DAY) + INTERVAL 3 HOUR),
+  (7,    'rosa.aguilar@asisto.local',    'restablecida', '181.47.3.92',  DATE_SUB(NOW(), INTERVAL 1 DAY) + INTERVAL 3 HOUR + INTERVAL 5 MINUTE);
+
 
 
 -- =====================================================================

@@ -44,28 +44,28 @@ export default function TendenciasObjetivos({ idPaciente }) {
       ),
     },
     {
-      clave: 'tendencia', etiqueta: 'Tendencia en el período', ancho: 210,
-      render: (o) => (
-        <Chip
-          size="small" variant={o.tendencia === 'sin_datos' ? 'outlined' : 'filled'}
-          color={COLOR_TENDENCIA[o.tendencia]} label={ETIQUETA_TENDENCIA[o.tendencia]}
-        />
-      ),
-    },
-    {
-      clave: 'anterior', etiqueta: 'Período anterior', ancho: 150,
+      clave: 'anterior', etiqueta: 'Nivel del período anterior', ancho: 150,
       render: (o) => etiquetaDeValor(o.nivel_anterior) ?? '—',
     },
     {
-      clave: 'actual', etiqueta: 'Período actual', ancho: 150,
+      clave: 'actual', etiqueta: 'Nivel de este período', ancho: 150,
       render: (o) => etiquetaDeValor(o.nivel_actual) ?? '—',
     },
     {
-      clave: 'cambio', etiqueta: 'Comparación', ancho: 200,
+      clave: 'cambio', etiqueta: 'Frente al período anterior', ancho: 190,
       render: (o) => (
         <Chip
           size="small" variant={o.cambio === 'sin_datos' ? 'outlined' : 'filled'}
           color={COLOR_CAMBIO[o.cambio]} label={ETIQUETA_CAMBIO[o.cambio]}
+        />
+      ),
+    },
+    {
+      clave: 'tendencia', etiqueta: 'Dentro del período (primeras vs. últimas sesiones)', ancho: 230,
+      render: (o) => (
+        <Chip
+          size="small" variant={o.tendencia === 'sin_datos' ? 'outlined' : 'filled'}
+          color={COLOR_TENDENCIA[o.tendencia]} label={ETIQUETA_TENDENCIA[o.tendencia]}
         />
       ),
     },
@@ -75,11 +75,9 @@ export default function TendenciasObjetivos({ idPaciente }) {
     <Box data-testid="tendencias" sx={{ p: 2.25, display: 'flex', flexDirection: 'column', gap: 2 }}>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap' }}>
         <Typography variant="body2" color="text.secondary" sx={{ flex: 1, minWidth: 260 }}>
-          Compara los últimos días elegidos con el mismo lapso anterior. «Nivel» es la palabra de
-          la escala que mejor resume las calificaciones de cada período. «Tendencia» mira cómo
-          se movieron dentro del período actual (el comienzo contra el final): un objetivo puede
-          mantener el mismo nivel y aun así venir bajando en las últimas sesiones. Hacen falta al
-          menos cuatro calificaciones en el período para hablar de tendencia.
+          El nivel resume todas las calificaciones de cada período (no es la última). La última
+          columna mira solo este período: si las últimas sesiones fueron mejores o peores que las
+          primeras. Por eso un objetivo puede quedar en el mismo nivel y aun así venir bajando.
         </Typography>
         <Box sx={{ width: 190 }}>
           <CampoTexto id="tendencia-dias" etiqueta="Período" select valor={dias} onChange={(e) => setDias(Number(e?.target?.value ?? e))}>

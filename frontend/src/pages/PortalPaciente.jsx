@@ -22,7 +22,9 @@ import GraficoEvolucion from '../components/data/GraficoEvolucion.jsx';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { usePeticion } from '../hooks/usePeticion.js';
-import { etiquetaDeValor } from '../services/evolucionesService.js';
+import { etiquetaDeValor, resumenEnPalabras } from '../services/evolucionesService.js';
+
+const TONO_RESUMEN = { bien: 'success.main', igual: 'text.primary', atencion: 'warning.dark', pocos: 'text.secondary' };
 import { obtenerMiProgreso } from '../services/portalPacienteService.js';
 import { aIsoLocal, formatearFecha } from '../utils/fechas.js';
 
@@ -52,6 +54,9 @@ export default function PortalPaciente() {
             <Chip size="small" color="primary" label={`Última calificación: ${etiquetaDeValor(serie.resumen.ultimo)}`} />
           )}
           {!serie.activo && <Chip size="small" label="Archivado" />}
+          <Typography variant="body2" sx={{ flexBasis: '100%', fontWeight: 600, color: TONO_RESUMEN[resumenEnPalabras(serie.puntos).tono] }}>
+            {resumenEnPalabras(serie.puntos).texto}
+          </Typography>
         </Box>
       }
     />
@@ -126,8 +131,8 @@ export default function PortalPaciente() {
                     : `Mis objetivos · del ${formatearFecha(datos.periodo.desde)} al ${formatearFecha(datos.periodo.hasta)}`}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  La línea une las calificaciones en orden. En cada sesión se trabajan algunos objetivos
-                  y no todos, por eso hay tramos punteados.
+                  En cada sesión se califica cómo le fue en algunos objetivos, de «No logrado» a «Logrado».
+                  Los altibajos de una sesión a otra son normales: importa hacia dónde va.
                 </Typography>
                 {activos.map(bloque)}
                 {archivados.length > 0 && (

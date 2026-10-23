@@ -116,7 +116,11 @@ export default function ModalInforme({ idInforme, puedeEscribir, advertencia = '
     }
   };
 
-  const pdf = () => ejecutar('pdf', () => descargarPdfInforme(idInforme));
+  const pdf = async () => {
+    const nombre = await ejecutar('pdf', () => descargarPdfInforme(idInforme));
+    // Confirmación visible de la descarga (pruebas de usabilidad).
+    if (nombre) onCambio?.(`Se descargó «${nombre}» en la carpeta de descargas.`);
+  };
 
   return (
     <>
@@ -158,7 +162,7 @@ export default function ModalInforme({ idInforme, puedeEscribir, advertencia = '
                 )}
                 {editable && pendientes > 0 && (
                   <Aviso severidad="warning">
-                    Quedan {pendientes} {pendientes === 1 ? 'marca' : 'marcas'} [COMPLETAR…] por resolver. Mientras existan, el informe no se puede publicar.
+                    {pendientes === 1 ? 'Queda 1 marca' : `Quedan ${pendientes} marcas`} [COMPLETAR…] por resolver. Mientras existan, el informe no se puede publicar.
                   </Aviso>
                 )}
                 {editable && /##\s*Observaciones de las sesiones/i.test(texto) && (
@@ -197,7 +201,7 @@ export default function ModalInforme({ idInforme, puedeEscribir, advertencia = '
 
         <DialogActions sx={{ px: 3, pb: 2.5, pt: 1.5, gap: 1, flexWrap: 'wrap' }}>
           <Button color="inherit" onClick={() => setVerDiarios((v) => !v)} disabled={!datos}>
-            {verDiarios ? 'Ocultar diarios' : 'Ver diarios del período'}
+            {verDiarios ? 'Ocultar las sesiones del período' : 'Ver las sesiones del período'}
           </Button>
           <Button color="inherit" onClick={pdf} disabled={!datos || Boolean(trabajando)}
             startIcon={trabajando === 'pdf' ? <CircularProgress size={16} color="inherit" /> : null}>

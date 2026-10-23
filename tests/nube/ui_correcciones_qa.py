@@ -67,8 +67,8 @@ try:
         # --- registro del día: editar un renglón (T4.1) ---
         pg.goto(B + '/panel'); pg.wait_for_timeout(1800)
         pg.locator('tr', has_text='06:20').first.click(); pg.wait_for_timeout(1500)
-        pg.get_by_role('button', name='Editar el renglón pinza con broches').click(); pg.wait_for_timeout(500)
-        campo = pg.get_by_role('textbox', name='Editar el renglón pinza con broches')
+        pg.get_by_role('button', name='Editar la nota pinza con broches').click(); pg.wait_for_timeout(500)
+        campo = pg.get_by_role('textbox', name='Editar la nota pinza con broches')
         campo.fill('pinza con broches y pinzas de ropa'); campo.press('Enter'); pg.wait_for_timeout(1500)
         check(sql(f"SELECT texto FROM sesion_renglones WHERE id_sesion={id_sesion}") == 'pinza con broches y pinzas de ropa',
               'el renglón se edita en el lugar')
