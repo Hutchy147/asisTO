@@ -18,7 +18,8 @@ from app.models import Evolucion, ObjetivoTerapeutico, Sesion
 from app.models.evolucion import VALOR_MAXIMO, VALOR_MINIMO
 from app.services.pacientes_service import obtener_paciente
 from app.services.sesiones_service import (
-    obtener_sesion, resolver_rango, terapeuta_actual,
+    MAXIMO_DIAS_RANGO, obtener_sesion, resolver_rango, resolver_rango_pasado,
+    terapeuta_actual,
 )
 from app.utils.db import reintentar_en_deadlock
 from app.utils.errors import ErrorAplicacion
@@ -80,6 +81,9 @@ def _resolver_periodo(desde, hasta, paciente):
 
         return fecha_desde, fecha_hasta, True
 
+    if not desde or not hasta:
+        # Con una sola punta: hasta hoy, o desde el ingreso del paciente.
+        return (*resolver_rango_pasado(desde, hasta, MAXIMO_DIAS_RANGO, inicio=paciente.fecha_alta), False)
     return (*resolver_rango(desde, hasta), False)
 
 

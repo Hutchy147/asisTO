@@ -222,6 +222,15 @@ def establecer_activo(id_usuario, activo):
         db.session.commit()
 
 
+def desbloquear(id_usuario):
+    """Pone en cero los intentos fallidos y levanta el bloqueo de la cuenta."""
+    with obtener_app().app_context():
+        usuario = db.session.get(Usuario, id_usuario)
+        usuario.intentos_fallidos = 0
+        usuario.bloqueado_hasta = None
+        db.session.commit()
+
+
 def establecer_rol(id_usuario, rol):
     with obtener_app().app_context():
         usuario = db.session.get(Usuario, id_usuario)

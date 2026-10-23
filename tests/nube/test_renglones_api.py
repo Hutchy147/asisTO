@@ -104,7 +104,7 @@ class RenglonesApi(BaseApi):
         self.assertEqual(self.llamar('laura', 'put', '/api/renglones/99999', json={'texto': 'x'}).status_code, 404)
 
     def test_editar_marcar_cerrar_reabrir_y_borrar(self):
-        id_s = self._sesion(dia_habil_pasado(7), '06:15')
+        id_s = self._sesion(dia_habil_pasado(7), '07:05')  # (6) y (7) caen el mismo dia si hoy es viernes
         id_r = self._renglon(id_s, 'plan').get_json()['renglon']['id']
         r = self.llamar('laura', 'put', f'/api/renglones/{id_r}', json={'texto': 'pinza fina', 'destacado': True})
         self.assertEqual(r.get_json()['renglon']['texto'], 'pinza fina')
@@ -196,7 +196,7 @@ class RenglonesApi(BaseApi):
 
     # --- la base, sin la API ----------------------------------------------
     def test_la_base_rechaza_lo_que_la_api_no_deja_pasar(self):
-        id_s = self._sesion(dia_habil_pasado(8), '06:15')
+        id_s = self._sesion(dia_habil_pasado(8), '07:55')
         with self.app.app_context():
             from sqlalchemy import text
             for sql in ("INSERT INTO sesion_renglones (id_sesion, momento, texto, cierre) VALUES (%d, 'registro', 'x', 'hecho')" % id_s,

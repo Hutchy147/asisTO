@@ -24,6 +24,7 @@ from app.models.observacion_rrhh import MAXIMO_CARACTERES_TEXTO
 from app.models.sesion import ESTADO_AUSENCIA, ORIGENES_AUSENCIA
 from app.utils.db import reintentar_en_deadlock
 from app.utils.errors import ErrorAplicacion
+from app.utils.fechas import mensaje_fecha_invalida
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,7 @@ def _fecha(valor, etiqueta):
         return dt.date.fromisoformat(valor)
     except (TypeError, ValueError):
         raise ErrorAplicacion(
-            f'La fecha {etiqueta} tiene que venir como AAAA-MM-DD.'
+            mensaje_fecha_invalida(valor, etiqueta, f'La fecha {etiqueta} tiene que venir como AAAA-MM-DD.')
         )
 
 

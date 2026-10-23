@@ -99,6 +99,9 @@ class AgendaRecurrenteApi(BaseApi):
     def test_quitar_desactiva_y_no_borra_sesiones(self):
         id_t = self._turno(hora_inicio='04:00').get_json()['turno']['id']
         self.llamar('laura', 'post', '/api/agenda-recurrente/generar', json={'semanas': 1})
+        # Las sesiones generadas a las 04:00 pisarian a las de test_consulta_sesiones_api
+        # cuando la semana que viene cae dentro de su rango de fechas.
+        self.addCleanup(self.sql, "DELETE FROM sesiones WHERE hora_inicio='04:00:00' AND id_paciente=1 AND fecha >= CURRENT_DATE")
         antes = self.sql("SELECT COUNT(*) FROM sesiones WHERE hora_inicio='04:00:00'")[0][0]
         self.assertEqual(self.llamar('diego', 'delete', f'/api/agenda-recurrente/{id_t}').status_code, 403)
         self.assertEqual(self.llamar('laura', 'delete', f'/api/agenda-recurrente/{id_t}').status_code, 200)

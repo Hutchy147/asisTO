@@ -206,7 +206,8 @@ def autenticar(email, contrasena):
     # pagar el costo de bcrypt, reabriendo el mismo canal por otra rama.
     if not usuario.activo:
         logger.info('Login rechazado: usuario %s esta inactivo', id_usuario)
-        _auditar(id_usuario, email, 'fallido')
+        # Para quien intenta es el mismo rechazo; en la auditoria se distingue.
+        _auditar(id_usuario, email, 'inactiva')
         raise ErrorAplicacion(MENSAJE_CREDENCIALES, http_status=401)
 
     _registrar_acierto(id_usuario)
@@ -283,6 +284,7 @@ def solicitar_recuperacion(email):
     )
     id_usuario = db.session.execute(text('SELECT @p_id')).scalar()
     db.session.commit()
+    _auditar(id_usuario, email, 'recuperacion')
 
     if id_usuario is None:
         logger.info('Recuperacion pedida para un email sin cuenta activa')
@@ -326,6 +328,12 @@ def restablecer_contrasena(token, contrasena_nueva):
         )
     _validar_contrasena_nueva(contrasena_nueva)
 
+    # Para la auditoria: de quien es el enlace (si es valido).
+    dueno = db.session.execute(
+        text('SELECT id, email FROM usuarios WHERE token_recuperacion = :h'),
+        {'h': _hash_token(token)},
+    ).first()
+
     db.session.execute(
         text(
             'CALL p_restablecer_contrasena(:token, :hash, @p_ok, @p_mensaje)'
@@ -337,4 +345,6 @@ def restablecer_contrasena(token, contrasena_nueva):
 
     if not ok:
         raise ErrorAplicacion(mensaje or 'No se pudo restablecer la contrasena.', campo='token')
+    if dueno is not None:
+        _auditar(dueno[0], dueno[1], 'restablecida')
     return mensaje

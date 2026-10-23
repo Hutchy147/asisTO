@@ -22,6 +22,7 @@ from app.models import Familiar, FamiliarPaciente, Informe, Paciente
 from app.services import informes_pdf
 from app.services.evoluciones_service import evolucion_de_paciente
 from app.services.informes_generador import ETIQUETA_TIPO, etiqueta_periodo
+from app.services.sesiones_service import MAXIMO_DIAS_RANGO, resolver_rango_pasado
 from app.utils.errors import ErrorAplicacion
 
 
@@ -90,6 +91,14 @@ def evolucion_vinculada(id_paciente, desde=None, hasta=None):
     return evolucion_reducida(id_paciente, desde, hasta)
 
 
+def _hora_posterior(hora_inicio, ahora):
+    """True si la hora (HH:MM[:SS]) todavia no llego hoy."""
+    try:
+        return dt.time.fromisoformat(str(hora_inicio)) > ahora.time()
+    except ValueError:
+        return False
+
+
 def evolucion_reducida(id_paciente, desde=None, hasta=None):
     """
     Evolucion reducida: objetivos con el valor de cada sesion ocurrida, mas
@@ -99,7 +108,12 @@ def evolucion_reducida(id_paciente, desde=None, hasta=None):
     vinculo antes) y el portal del paciente (que valida que sea SU ficha).
     Una sola version de la regla de que se recorta.
     """
-    hoy = dt.date.today()
+    ahora = dt.datetime.now()
+    hoy = ahora.date()
+    if desde and hasta:
+        # Con las dos puntas se valida igual que el resto; lo que no se acepta
+        # es un periodo que todavia no empezo (se veria "del 01/12 al 22/10").
+        resolver_rango_pasado(desde, hasta, MAXIMO_DIAS_RANGO)
     completa = evolucion_de_paciente(id_paciente, desde, hasta)
     paciente = Paciente.query.get(id_paciente)
 
@@ -109,7 +123,9 @@ def evolucion_reducida(id_paciente, desde=None, hasta=None):
     for objetivo in completa['objetivos']:
         puntos = []
         for punto in objetivo['puntos']:
-            if dt.date.fromisoformat(punto['fecha']) > hoy:
+            # Solo lo ya ocurrido: la sesion de hoy entra cuando llega su hora.
+            fecha_punto = dt.date.fromisoformat(punto['fecha'])
+            if fecha_punto > hoy or (fecha_punto == hoy and _hora_posterior(punto['hora_inicio'], ahora)):
                 continue
             puntos.append({
                 'id_sesion': punto['id_sesion'],

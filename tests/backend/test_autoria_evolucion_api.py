@@ -41,7 +41,7 @@ class TestAutoriaEvolucionAPI(unittest.TestCase):
         cuerpo = resp.get_json()
         self.assertEqual(
             cuerpo['mensaje'],
-            'Solo el terapeuta que atendio la sesion puede cargarle evolucion.',
+            'Solo el terapeuta que atendió la sesión puede cargarle evolución.',
         )
         # El 403 no debe filtrar de quien SI es la sesion (no dice "es de Laura")
         self.assertNotIn('laura', cuerpo['mensaje'].lower())

@@ -33,9 +33,8 @@ class Usuario(db.Model):
     rol = db.Column(db.Enum(*ROLES, name='rol'), nullable=False)
 
     # --- Campos de seguridad: Entrega 3 ---
-    # Existen en el schema y se mapean para no migrar la tabla despues,
-    # pero la logica de bloqueo por intentos fallidos y la recuperacion de
-    # contrasena NO estan implementadas todavia. No usar estos campos.
+    # Los escriben los procedimientos de bloqueo y recuperacion
+    # (p_registrar_login_fallido, p_solicitar_recuperacion, ...), no el ORM.
     intentos_fallidos = db.Column(db.SmallInteger, nullable=False, default=0)
     bloqueado_hasta = db.Column(db.DateTime, nullable=True)
     token_recuperacion = db.Column(db.String(255), nullable=True)

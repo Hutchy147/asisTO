@@ -27,6 +27,7 @@ EMAILS = {
     'familiar': 'marta.ledesma@asisto.local',
     'paciente': 'camila.rios@asisto.local',
     'admin': 'admin@asisto.local',
+    'jorge': 'jorge.bustos@asisto.local',      # familiar del paciente 2
 }
 
 

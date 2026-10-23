@@ -4,7 +4,7 @@
 
 from app import db
 
-RESULTADOS_ACCESO = ('exitoso', 'fallido', 'bloqueado')
+RESULTADOS_ACCESO = ('exitoso', 'fallido', 'bloqueado', 'recuperacion', 'restablecida', 'inactiva')
 
 
 class AuditoriaAcceso(db.Model):

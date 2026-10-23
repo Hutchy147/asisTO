@@ -14,6 +14,7 @@ from app.models import Asignacion, Paciente, Terapeuta, Usuario
 from app.services.pacientes_service import obtener_paciente
 from app.utils.db import reintentar_en_deadlock
 from app.utils.errors import ErrorAplicacion
+from app.utils.fechas import mensaje_fecha_invalida
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ def _parsear_fecha_opcional(valor, campo, etiqueta):
         return dt.date.fromisoformat(str(valor).strip())
     except ValueError:
         raise ErrorAplicacion(
-            f'La fecha "{etiqueta}" tiene que estar en formato AAAA-MM-DD.',
+            mensaje_fecha_invalida(valor, etiqueta, f'La fecha "{etiqueta}" tiene que estar en formato AAAA-MM-DD.'),
             campo=campo,
         )
 

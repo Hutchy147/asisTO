@@ -168,10 +168,33 @@ def _serializar(n, nombres):
     }
 
 
+def _ids_vinculados(id_familiar):
+    # Import local: portal_familiar_service importa este modulo.
+    from app.services.portal_familiar_service import ids_de_pacientes_vinculados
+    return ids_de_pacientes_vinculados(id_familiar)
+
+
+def _avisos_visibles(familiar):
+    """
+    Avisos del familiar sobre pacientes que HOY tiene vinculados. Al quitar el
+    acceso a un paciente, sus avisos viejos dejan de mostrarse: traen nombre,
+    fechas y horarios del paciente.
+    """
+    vinculados = _ids_vinculados(familiar.id)
+    return Notificacion.query.filter(
+        Notificacion.id_familiar == familiar.id,
+        Notificacion.id_paciente.in_(vinculados or {0}),
+    )
+
+
 def contar_no_leidas():
     familiar = _familiar_actual()
-    cantidad = Notificacion.query.filter_by(id_familiar=familiar.id, leida=False).count()
+    cantidad = _avisos_visibles(familiar).filter(Notificacion.leida.is_(False)).count()
     return {'no_leidas': cantidad}
+
+
+_LEIDA_SI = ('1', 'true')
+_LEIDA_NO = ('0', 'false')
 
 
 def listar(tipo=None, leida=None, id_paciente=None, limite=50, desplazamiento=0):
@@ -179,21 +202,31 @@ def listar(tipo=None, leida=None, id_paciente=None, limite=50, desplazamiento=0)
     if tipo and tipo not in TIPOS:
         raise ErrorAplicacion('El tipo de aviso indicado no es válido.', campo='tipo')
     try:
-        limite = max(1, min(int(limite), 100))
-        desplazamiento = max(0, int(desplazamiento))
+        limite = int(limite)
+        desplazamiento = int(desplazamiento)
     except (TypeError, ValueError):
         raise ErrorAplicacion('La paginación indicada no es válida.')
+    if not 1 <= limite <= 100:
+        raise ErrorAplicacion('El límite tiene que estar entre 1 y 100.', campo='limite')
+    if desplazamiento < 0:
+        raise ErrorAplicacion('El desplazamiento no puede ser negativo.', campo='desplazamiento')
+    if leida is not None and str(leida).strip().lower() not in _LEIDA_SI + _LEIDA_NO + ('',):
+        raise ErrorAplicacion('El filtro "leida" tiene que ser 1 (leídos) o 0 (sin leer).', campo='leida')
     if id_paciente:
         try:
             id_paciente = int(id_paciente)
         except (TypeError, ValueError):
             raise ErrorAplicacion('El paciente indicado no es válido.', campo='id_paciente')
+        if id_paciente not in _ids_vinculados(familiar.id):
+            raise ErrorAplicacion(
+                'El paciente indicado no está vinculado a su cuenta.', http_status=403,
+            )
 
-    consulta = Notificacion.query.filter_by(id_familiar=familiar.id)
+    consulta = _avisos_visibles(familiar)
     if tipo:
         consulta = consulta.filter_by(tipo=tipo)
-    if leida in ('0', '1', 0, 1, True, False, 'true', 'false'):
-        consulta = consulta.filter_by(leida=leida in ('1', 1, True, 'true'))
+    if leida is not None and str(leida).strip().lower() in _LEIDA_SI + _LEIDA_NO:
+        consulta = consulta.filter_by(leida=str(leida).strip().lower() in _LEIDA_SI)
     if id_paciente:
         consulta = consulta.filter_by(id_paciente=id_paciente)
 
@@ -216,7 +249,7 @@ def listar(tipo=None, leida=None, id_paciente=None, limite=50, desplazamiento=0)
 
 def marcar(id_notificacion, leida=True):
     familiar = _familiar_actual()
-    n = Notificacion.query.filter_by(id=id_notificacion, id_familiar=familiar.id).first()
+    n = _avisos_visibles(familiar).filter(Notificacion.id == id_notificacion).first()
     if n is None:
         raise ErrorAplicacion('El aviso indicado no existe.', http_status=404)
     n.leida = bool(leida)

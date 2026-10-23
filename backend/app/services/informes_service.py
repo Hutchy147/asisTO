@@ -414,8 +414,12 @@ def control_mensual(mes=None):
             resumen['publicados'] += 1
         else:
             resumen['borradores'] += 1
-        if semestral is None:
-            semestral = {'estado': 'pendiente' if cierra_semestre else 'no_corresponde'}
+        if not cierra_semestre:
+            # El semestral se controla en junio y diciembre. En otro mes no
+            # corresponde aunque ya exista (ej. un S1 publicado visto desde mayo).
+            semestral = {'estado': 'no_corresponde'}
+        elif semestral is None:
+            semestral = {'estado': 'pendiente'}
         if pti is None:
             pti = {'estado': 'pendiente' if p.id in con_ingreso else 'no_corresponde'}
         filas_control.append({

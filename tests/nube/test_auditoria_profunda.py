@@ -25,7 +25,8 @@ class AuditoriaProfunda(BaseApi):
         for quien, ruta in casos:
             r = self.llamar(quien, 'get', ruta)
             self.assertEqual(r.status_code, 400, f'{ruta}: {r.get_data(as_text=True)}')
-            self.assertIn('fuera del rango', r.get_json()['mensaje'])
+            # El historial rechaza antes un "desde" posterior a hoy (H22).
+            self.assertTrue(any(t in r.get_json()['mensaje'] for t in ('fuera del rango', 'posterior a hoy')), ruta)
         # control positivo: una fecha normal sigue andando
         self.assertEqual(self.llamar('laura', 'get', '/api/sesiones?desde=2026-01-05&hasta=2026-01-09').status_code, 200)
 

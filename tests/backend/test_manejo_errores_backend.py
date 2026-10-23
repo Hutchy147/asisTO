@@ -59,9 +59,10 @@ class TestManejoErroresHTTP(unittest.TestCase):
         """
         resp = self.cliente.post('/api/auth/login', json={'email': 12345, 'contrasena': 'x'})
 
-        self.assertEqual(resp.status_code, 500)
+        # Desde la V6 un dato con tipo equivocado es error de quien llama: 400.
+        self.assertEqual(resp.status_code, 400)
         cuerpo = resp.get_json()
-        self.assertEqual(cuerpo.get('codigo'), 'error_interno')
+        self.assertEqual(cuerpo.get('codigo'), 'error_aplicacion')
 
         texto_completo = str(cuerpo)
         for fuga in ('AttributeError', 'Traceback', "'int' object", '.py", line', 'strip'):
@@ -69,8 +70,9 @@ class TestManejoErroresHTTP(unittest.TestCase):
 
     def test_error_no_controlado_con_email_lista_tampoco_filtra(self):
         resp = self.cliente.post('/api/auth/login', json={'email': ['a', 'b'], 'contrasena': 'x'})
-        self.assertEqual(resp.status_code, 500)
-        self.assertEqual(resp.get_json().get('codigo'), 'error_interno')
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.get_json().get('codigo'), 'error_aplicacion')
+        self.assertNotIn('Traceback', resp.get_data(as_text=True))
 
     def test_json_malformado_no_rompe_con_500(self):
         """Content-Type json pero cuerpo invalido: get_json(silent=True) -> None, manejado limpio."""

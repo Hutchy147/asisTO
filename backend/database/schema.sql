@@ -831,7 +831,10 @@ CREATE TABLE auditoria_accesos (
   id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
   id_usuario  INT UNSIGNED NULL DEFAULT NULL,
   email       VARCHAR(180) NOT NULL,
-  resultado   ENUM('exitoso','fallido','bloqueado') NOT NULL,
+  -- recuperacion: se pidio un enlace; restablecida: se cambio la contrasena
+  -- con el enlace; inactiva: la clave era correcta pero la cuenta esta
+  -- deshabilitada (para el usuario es el mismo rechazo que un fallo).
+  resultado   ENUM('exitoso','fallido','bloqueado','recuperacion','restablecida','inactiva') NOT NULL,
   ip          VARCHAR(45)  NULL DEFAULT NULL,
   fecha       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -2161,7 +2164,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_id_paciente = NULL;
-    SET p_mensaje = 'No se pudo dar de alta el paciente por un error interno';
+    SET p_mensaje = 'No se pudo dar de alta el paciente por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_id_paciente = NULL;
@@ -2269,7 +2272,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_editado = NULL;
-    SET p_mensaje = 'No se pudo editar el paciente por un error interno';
+    SET p_mensaje = 'No se pudo editar el paciente por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_editado = NULL;
@@ -2396,7 +2399,7 @@ BEGIN
     ROLLBACK;
     SET p_objetivos_archivados = NULL;
     SET p_asignaciones_cerradas = NULL;
-    SET p_mensaje = 'No se pudo dar de baja el paciente por un error interno';
+    SET p_mensaje = 'No se pudo dar de baja el paciente por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_objetivos_archivados = NULL;
@@ -2529,7 +2532,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_reactivado = NULL;
-    SET p_mensaje = 'No se pudo reactivar el paciente por un error interno';
+    SET p_mensaje = 'No se pudo reactivar el paciente por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_reactivado = NULL;
@@ -2622,7 +2625,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_pausado = NULL;
-    SET p_mensaje = 'No se pudo pausar el tratamiento por un error interno';
+    SET p_mensaje = 'No se pudo pausar el tratamiento por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_pausado = NULL;
@@ -2744,7 +2747,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_id_sesion = NULL;
-    SET p_mensaje = 'No se pudo registrar la sesion por un error interno';
+    SET p_mensaje = 'No se pudo registrar la sesion por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_id_sesion = NULL;
@@ -2957,7 +2960,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_editado = NULL;
-    SET p_mensaje = 'No se pudo editar la sesion por un error interno';
+    SET p_mensaje = 'No se pudo editar la sesion por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_editado = NULL;
@@ -3087,7 +3090,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_id_evolucion = NULL;
-    SET p_mensaje = 'No se pudo registrar la evolucion por un error interno';
+    SET p_mensaje = 'No se pudo registrar la evolucion por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_id_evolucion = NULL;
@@ -3172,7 +3175,7 @@ BEGIN
   -- Ver CRITERIO GENERAL DE ERRORES: mensaje fijo, nunca texto de MySQL
   DECLARE EXIT HANDLER FOR SQLEXCEPTION
   BEGIN
-    SET p_mensaje = 'No se pudo consultar la evolucion por un error interno';
+    SET p_mensaje = 'No se pudo consultar la evolucion por un problema inesperado. Intente nuevamente.';
   END;
 
   SELECT COUNT(*) INTO v_existe FROM pacientes WHERE id = p_id_paciente;
@@ -3317,7 +3320,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_id_observacion = NULL;
-    SET p_mensaje = 'No se pudo registrar la observacion por un error interno';
+    SET p_mensaje = 'No se pudo registrar la observacion por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_id_observacion = NULL;
@@ -3425,7 +3428,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_id_asignacion = NULL;
-    SET p_mensaje = 'No se pudo abrir la asignacion por un error interno';
+    SET p_mensaje = 'No se pudo abrir la asignacion por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_id_asignacion = NULL;
@@ -3517,7 +3520,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_cerrada = FALSE;
-    SET p_mensaje = 'No se pudo cerrar la asignacion por un error interno';
+    SET p_mensaje = 'No se pudo cerrar la asignacion por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_cerrada = FALSE;
@@ -3612,7 +3615,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_ok = FALSE;
-    SET p_mensaje = 'No se pudo vincular al familiar por un error interno';
+    SET p_mensaje = 'No se pudo vincular al familiar por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_ok = FALSE;
@@ -3699,7 +3702,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_ok = FALSE;
-    SET p_mensaje = 'No se pudo desvincular al familiar por un error interno';
+    SET p_mensaje = 'No se pudo desvincular al familiar por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_ok = FALSE;
@@ -3785,7 +3788,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_id_familiar = NULL;
-    SET p_mensaje = 'No se pudo crear al familiar por un error interno';
+    SET p_mensaje = 'No se pudo crear al familiar por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_id_familiar = NULL;
@@ -3882,7 +3885,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_enviadas = 0;
-    SET p_mensaje = 'No se pudo enviar el aviso por un error interno';
+    SET p_mensaje = 'No se pudo enviar el aviso por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_enviadas = 0;
@@ -3968,7 +3971,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_id_ingreso = NULL;
-    SET p_mensaje = 'No se pudo iniciar el ingreso por un error interno';
+    SET p_mensaje = 'No se pudo iniciar el ingreso por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_id_ingreso = NULL;
@@ -4072,7 +4075,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_ok = FALSE;
-    SET p_mensaje = 'No se pudo guardar la etapa por un error interno';
+    SET p_mensaje = 'No se pudo guardar la etapa por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_ok = FALSE;
@@ -4214,7 +4217,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_ok = FALSE;
-    SET p_mensaje = 'No se pudo cerrar la etapa por un error interno';
+    SET p_mensaje = 'No se pudo cerrar la etapa por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_ok = FALSE;
@@ -4329,7 +4332,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_ok = FALSE;
-    SET p_mensaje = 'No se pudo reabrir la etapa por un error interno';
+    SET p_mensaje = 'No se pudo reabrir la etapa por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_ok = FALSE;
@@ -4438,7 +4441,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_ok = FALSE;
-    SET p_mensaje = 'No se pudo completar el ingreso por un error interno';
+    SET p_mensaje = 'No se pudo completar el ingreso por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_ok = FALSE;
@@ -4590,7 +4593,7 @@ BEGIN
     SET p_id_dupla = NULL;
     SET p_id_sesion_1 = NULL;
     SET p_id_sesion_2 = NULL;
-    SET p_mensaje = 'No se pudo registrar la dupla por un error interno';
+    SET p_mensaje = 'No se pudo registrar la dupla por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_id_dupla = NULL;
@@ -4704,7 +4707,7 @@ BEGIN
     ROLLBACK;
     SET p_id_dupla = NULL;
     SET p_id_sesion_nueva = NULL;
-    SET p_mensaje = 'No se pudo armar la dupla por un error interno';
+    SET p_mensaje = 'No se pudo armar la dupla por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_id_dupla = NULL;
@@ -4809,7 +4812,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_id_dupla = NULL;
-    SET p_mensaje = 'No se pudo crear el turno en dupla por un error interno';
+    SET p_mensaje = 'No se pudo crear el turno en dupla por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_id_dupla = NULL;
@@ -4939,7 +4942,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_id_dupla = NULL;
-    SET p_mensaje = 'No se pudo armar la dupla por un error interno';
+    SET p_mensaje = 'No se pudo armar la dupla por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_id_dupla = NULL;
@@ -5066,7 +5069,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_id_plantilla = NULL;
-    SET p_mensaje = 'No se pudo crear la plantilla por un error interno';
+    SET p_mensaje = 'No se pudo crear la plantilla por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_id_plantilla = NULL;
@@ -5144,7 +5147,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_ok = FALSE;
-    SET p_mensaje = 'No se pudo guardar la plantilla por un error interno';
+    SET p_mensaje = 'No se pudo guardar la plantilla por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_ok = FALSE;
@@ -5222,7 +5225,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_ok = FALSE;
-    SET p_mensaje = 'No se pudo quitar la plantilla por un error interno';
+    SET p_mensaje = 'No se pudo quitar la plantilla por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_ok = FALSE;
@@ -5278,7 +5281,7 @@ BEGIN
 
   DECLARE EXIT HANDLER FOR SQLEXCEPTION
   BEGIN
-    SET p_mensaje = 'No se pudo consultar la tendencia por un error interno';
+    SET p_mensaje = 'No se pudo consultar la tendencia por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_mensaje = NULL;
@@ -5414,7 +5417,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_id_informe = NULL;
-    SET p_mensaje = 'No se pudo guardar el informe por un error interno';
+    SET p_mensaje = 'No se pudo guardar el informe por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_id_informe = NULL;
@@ -5555,7 +5558,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_ok = FALSE;
-    SET p_mensaje = 'No se pudo guardar el informe por un error interno';
+    SET p_mensaje = 'No se pudo guardar el informe por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_ok = FALSE;
@@ -5661,7 +5664,7 @@ BEGIN
     ROLLBACK;
     SET p_ok = FALSE;
     SET p_id_paciente = NULL;
-    SET p_mensaje = 'No se pudo publicar el informe por un error interno';
+    SET p_mensaje = 'No se pudo publicar el informe por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_ok = FALSE;
@@ -5772,7 +5775,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_id_nuevo = NULL;
-    SET p_mensaje = 'No se pudo preparar la correccion por un error interno';
+    SET p_mensaje = 'No se pudo preparar la correccion por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_id_nuevo = NULL;
@@ -5880,7 +5883,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_ok = FALSE;
-    SET p_mensaje = 'No se pudo descartar el borrador por un error interno';
+    SET p_mensaje = 'No se pudo descartar el borrador por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_ok = FALSE;
@@ -5954,7 +5957,7 @@ BEGIN
   -- Ver CRITERIO GENERAL DE ERRORES: mensaje fijo, nunca texto de MySQL
   DECLARE EXIT HANDLER FOR SQLEXCEPTION
   BEGIN
-    SET p_mensaje = 'No se pudo generar el reporte por un error interno';
+    SET p_mensaje = 'No se pudo generar el reporte por un problema inesperado. Intente nuevamente.';
   END;
 
   -- =====================================================================
@@ -6223,7 +6226,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_restablecida = FALSE;
-    SET p_mensaje = 'No se pudo restablecer la contrasena por un error interno';
+    SET p_mensaje = 'No se pudo restablecer la contrasena por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_restablecida = FALSE;
@@ -6264,11 +6267,11 @@ END$$
 CREATE PROCEDURE p_registrar_acceso (
   IN p_id_usuario  INT UNSIGNED,
   IN p_email       VARCHAR(180),
-  IN p_resultado   VARCHAR(10),
+  IN p_resultado   VARCHAR(20),
   IN p_ip          VARCHAR(45)
 )
 BEGIN
-  IF p_resultado IN ('exitoso', 'fallido', 'bloqueado') THEN
+  IF p_resultado IN ('exitoso', 'fallido', 'bloqueado', 'recuperacion', 'restablecida', 'inactiva') THEN
     INSERT INTO auditoria_accesos (id_usuario, email, resultado, ip)
     VALUES (p_id_usuario, p_email, p_resultado, p_ip);
   END IF;
@@ -6320,7 +6323,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_id_renglon = NULL;
-    SET p_mensaje = 'No se pudo guardar el renglon por un error interno';
+    SET p_mensaje = 'No se pudo guardar el renglon por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_id_renglon = NULL;
@@ -6402,7 +6405,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_editado = FALSE;
-    SET p_mensaje = 'No se pudo editar el renglon por un error interno';
+    SET p_mensaje = 'No se pudo editar el renglon por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_editado = FALSE;
@@ -6473,7 +6476,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_cerrado = FALSE;
-    SET p_mensaje = 'No se pudo cerrar el renglon por un error interno';
+    SET p_mensaje = 'No se pudo cerrar el renglon por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_cerrado = FALSE;
@@ -6541,7 +6544,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_borrado = FALSE;
-    SET p_mensaje = 'No se pudo borrar el renglon por un error interno';
+    SET p_mensaje = 'No se pudo borrar el renglon por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_borrado = FALSE;
@@ -6607,7 +6610,7 @@ BEGIN
   BEGIN
     ROLLBACK;
     SET p_ok = FALSE;
-    SET p_mensaje = 'No se pudo actualizar el plan por un error interno';
+    SET p_mensaje = 'No se pudo actualizar el plan por un problema inesperado. Intente nuevamente.';
   END;
 
   SET p_ok = FALSE;

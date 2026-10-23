@@ -53,9 +53,9 @@ class NotificacionesApi(BaseApi):
         self.assertEqual(n['tipo'], 'nueva_sesion')
         self.assertIn('Se registró la sesión del', n['mensaje'])
         self.assertFalse(n['leida'])
-        # el aviso es del paciente vinculado: otro familiar no lo recibe
-        self.assertNotIn('Se registró la sesión', ' '.join(
-            x['mensaje'] for x in self._lista('familiar', '?id_paciente=2')['notificaciones']))
+        # el aviso es del paciente vinculado: filtrar por uno no vinculado es 403 (H26)
+        self.assertEqual(self.llamar('familiar', 'get', '/api/familiar/notificaciones?id_paciente=2').status_code, 403)
+        self.assertNotIn(1, {x['id_paciente'] for x in self._lista('jorge')['notificaciones']})
 
     def test_ausencia_no_dice_quien_falto(self):
         r = self.llamar('laura', 'post', '/api/sesiones',

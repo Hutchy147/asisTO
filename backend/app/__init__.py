@@ -135,7 +135,7 @@ def registrar_manejadores_de_error(app):
         app.logger.exception('Error no controlado: %s', error)
         db.session.rollback()
         return jsonify({
-            'mensaje': 'Ocurrio un error inesperado. Intente nuevamente.',
+            'mensaje': 'Ocurrió un error inesperado. Intente nuevamente.',
             'codigo': 'error_interno',
         }), 500
 

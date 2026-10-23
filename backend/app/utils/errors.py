@@ -236,6 +236,16 @@ def traducir_error_db(error, contexto=''):
     """
     numero = obtener_errno(error)
 
+    # Un SIGNAL de un trigger o procedimiento es una regla de negocio que
+    # rechazo el pedido (ej. "ya tiene 4 objetivos activos"): no es una falla
+    # del servidor. Va como WARNING y sin traza para no tapar los errores reales.
+    if numero == ERRNO_SIGNAL_TRIGGER and obtener_texto_signal(error):
+        logger.warning(
+            'Regla de negocio rechazo la operacion%s: %s',
+            f' en {contexto}' if contexto else '', obtener_texto_signal(error),
+        )
+        return obtener_texto_signal(error)
+
     # El crudo va al log del servidor, nunca a la respuesta
     logger.error(
         'Error de base de datos%s (errno=%s): %s',

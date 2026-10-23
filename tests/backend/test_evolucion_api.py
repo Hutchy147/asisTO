@@ -64,6 +64,8 @@ class TestEvolucionAPI(unittest.TestCase):
                 ' WHERE p.nro_historia LIKE :m',
                 'DELETE o FROM objetivos_terapeuticos o JOIN pacientes p ON p.id = o.id_paciente '
                 ' WHERE p.nro_historia LIKE :m',
+                'DELETE a FROM asignaciones a JOIN pacientes p ON p.id = a.id_paciente '
+                ' WHERE p.nro_historia LIKE :m',
                 'DELETE FROM pacientes WHERE nro_historia LIKE :m',
             ):
                 db.session.execute(text(sentencia), {'m': MARCA_HISTORIA + '%'})
@@ -88,6 +90,12 @@ class TestEvolucionAPI(unittest.TestCase):
                 {'hc': MARCA_HISTORIA, 'alta': cls.alta})
             cls.id_paciente = db.session.execute(
                 text('SELECT LAST_INSERT_ID()')).scalar()
+            # Regla 8: solo el terapeuta asignado en la fecha registra sesiones.
+            db.session.execute(text(
+                'INSERT INTO asignaciones (id_terapeuta, id_paciente, fecha_desde) '
+                'SELECT t.id, :p, :d FROM terapeutas t JOIN usuarios u ON u.id = t.id_usuario '
+                'WHERE u.email = :e'),
+                {'p': cls.id_paciente, 'd': cls.alta, 'e': e.EMAILS_SEED['terapeuta']})
             db.session.execute(text(
                 'INSERT INTO objetivos_terapeuticos (id_paciente,descripcion,activo) '
                 "VALUES (:p,'GRAF API objetivo unico',TRUE)"),
@@ -156,7 +164,7 @@ class TestEvolucionAPI(unittest.TestCase):
             resp.status_code, 400,
             'Con fechas explicitas el rango excesivo es un error del llamador, no '
             f'una serie recortada en silencio. Llego: {resp.get_json()}')
-        self.assertIn('maximo es', resp.get_json().get('mensaje', ''))
+        self.assertIn('máximo es', resp.get_json().get('mensaje', ''))
 
     def test_con_fechas_explicitas_en_el_limite_funciona(self):
         # 366 dias exactos: el borde tiene que entrar. Con `dias > MAXIMO` el
@@ -338,6 +346,8 @@ class TestNingunaEvolucionAceptadaQuedaInvisible(unittest.TestCase):
                 ' WHERE p.nro_historia LIKE :m',
                 'DELETE o FROM objetivos_terapeuticos o JOIN pacientes p ON p.id = o.id_paciente '
                 ' WHERE p.nro_historia LIKE :m',
+                'DELETE a FROM asignaciones a JOIN pacientes p ON p.id = a.id_paciente '
+                ' WHERE p.nro_historia LIKE :m',
                 'DELETE FROM pacientes WHERE nro_historia LIKE :m',
             ):
                 db.session.execute(text(sentencia), {'m': MARCA_INVISIBLE + '%'})
@@ -356,6 +366,11 @@ class TestNingunaEvolucionAceptadaQuedaInvisible(unittest.TestCase):
                 "VALUES (NULL,'Invisible',:ap,'2007-02-14',:hc,TRUE,:alta)"),
                 {'ap': sufijo, 'hc': f'{MARCA_INVISIBLE}-{sufijo}', 'alta': alta})
             id_paciente = db.session.execute(text('SELECT LAST_INSERT_ID()')).scalar()
+            db.session.execute(text(
+                'INSERT INTO asignaciones (id_terapeuta, id_paciente, fecha_desde) '
+                'SELECT t.id, :p, :d FROM terapeutas t JOIN usuarios u ON u.id = t.id_usuario '
+                'WHERE u.email = :e'),
+                {'p': id_paciente, 'd': alta, 'e': e.EMAILS_SEED['terapeuta']})
             db.session.commit()
         return id_paciente
 

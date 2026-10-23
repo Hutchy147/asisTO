@@ -12,6 +12,7 @@ from app.models import Evolucion, ObjetivoTerapeutico, Sesion, Terapeuta, Usuari
 from app.models.sesion import ESTADO_AUSENCIA, ESTADOS, ESTADOS_CON_EVOLUCION, ORIGENES_AUSENCIA
 from app.utils.db import reintentar_en_deadlock
 from app.utils.errors import ErrorAplicacion
+from app.utils.fechas import mensaje_fecha_invalida
 from app.utils.textos import acentuar
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,8 @@ def _validar_dia_habil(fecha_iso):
         dia = dt.date.fromisoformat(fecha_iso)
     except (TypeError, ValueError):
         raise ErrorAplicacion(
-            'La fecha tiene que tener el formato AAAA-MM-DD.', campo='fecha'
+            mensaje_fecha_invalida(fecha_iso, None, 'La fecha tiene que tener el formato AAAA-MM-DD.'),
+            campo='fecha',
         )
     if dia.weekday() >= DIAS_HABILES:
         raise ErrorAplicacion(
@@ -85,7 +87,8 @@ def _parsear_fecha(valor, etiqueta):
         return dt.date.fromisoformat(valor.strip())
     except (ValueError, AttributeError):
         raise ErrorAplicacion(
-            f'La fecha "{etiqueta}" tiene que estar en formato AAAA-MM-DD.'
+            mensaje_fecha_invalida(valor, etiqueta, f'La fecha "{etiqueta}" tiene que estar en formato AAAA-MM-DD.'),
+            campo=etiqueta,
         )
 
 
@@ -121,6 +124,49 @@ def resolver_rango(desde, hasta):
             f'{MAXIMO_DIAS_RANGO}. Acote las fechas.'
         )
 
+    return fecha_desde, fecha_hasta
+
+
+def resolver_rango_pasado(desde, hasta, dias_por_defecto, inicio=None):
+    """
+    Rango para consultar lo YA ocurrido (historial, evolucion, portales).
+
+    A diferencia de `resolver_rango` (agenda, mira hacia adelante):
+    - con solo "desde", el rango llega hasta hoy;
+    - con solo "hasta", empieza en `inicio` (p. ej. el ingreso del paciente)
+      o `dias_por_defecto` dias antes;
+    - "hasta" posterior a hoy se recorta a hoy;
+    - "desde" posterior a hoy es un error: no hay nada ocurrido que mostrar
+      y un periodo invertido en pantalla ("del 01/12 al 22/10") confunde.
+    """
+    hoy = dt.date.today()
+    fecha_desde = _parsear_fecha(desde, 'desde')
+    fecha_hasta = _parsear_fecha(hasta, 'hasta')
+
+    if fecha_desde is not None and fecha_desde > hoy:
+        raise ErrorAplicacion(
+            'La fecha "desde" es posterior a hoy: todavia no hay sesiones '
+            'ocurridas en ese periodo.',
+            campo='desde',
+        )
+    if fecha_hasta is None or fecha_hasta > hoy:
+        fecha_hasta = hoy
+    if fecha_desde is None:
+        fecha_desde = inicio or fecha_hasta - dt.timedelta(days=dias_por_defecto - 1)
+        # Sin "desde" explicito el tope no es un error: se toma lo mas reciente.
+        fecha_desde = max(fecha_desde, fecha_hasta - dt.timedelta(days=MAXIMO_DIAS_RANGO - 1))
+        fecha_desde = min(fecha_desde, fecha_hasta)
+
+    if fecha_desde > fecha_hasta:
+        raise ErrorAplicacion(
+            'El rango de fechas esta invertido: "desde" es posterior a "hasta".'
+        )
+    dias = (fecha_hasta - fecha_desde).days + 1
+    if dias > MAXIMO_DIAS_RANGO:
+        raise ErrorAplicacion(
+            f'El rango pedido es de {dias} dias y el maximo es '
+            f'{MAXIMO_DIAS_RANGO}. Acote las fechas.'
+        )
     return fecha_desde, fecha_hasta
 
 
@@ -852,8 +898,8 @@ def listar_registradas(filtros):
         fecha_hasta = hoy
         fecha_desde = hoy - dt.timedelta(days=DIAS_REGISTRADAS_POR_DEFECTO - 1)
     else:
-        fecha_desde, fecha_hasta = resolver_rango(filtros.get('desde'), filtros.get('hasta'))
-    fecha_hasta = min(fecha_hasta, hoy)
+        fecha_desde, fecha_hasta = resolver_rango_pasado(
+            filtros.get('desde'), filtros.get('hasta'), DIAS_REGISTRADAS_POR_DEFECTO)
 
     alcance = (filtros.get('terapeuta') or 'mias').strip().lower()
     if alcance not in ('mias', 'todas'):

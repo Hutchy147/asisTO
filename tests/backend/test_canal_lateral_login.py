@@ -19,6 +19,7 @@ tambien: si alguno difiere, este test lo va a mostrar como FAIL con el
 detalle de que headers/campos cambiaron.
 """
 
+import uuid
 import statistics
 import time
 import unittest
@@ -44,6 +45,9 @@ class TestCanalLateralLogin(unittest.TestCase):
 
     def setUp(self):
         self.cliente = e.cliente()
+        # Las mediciones de tiempo acumulan fallos sobre la misma cuenta: sin
+        # esto, la quinta respuesta ya es el 429 del bloqueo.
+        e.desbloquear(self.id_usuario)
 
     def tearDown(self):
         e.establecer_activo(self.id_usuario, self.activo_original)
@@ -57,7 +61,9 @@ class TestCanalLateralLogin(unittest.TestCase):
         e.establecer_activo(self.id_usuario, True)
 
         resp_email_inexistente = self.cliente.post(
-            '/api/auth/login', json={'email': 'no-existe-nadie@asisto.local', 'contrasena': 'lo que sea'}
+            # Email distinto en cada corrida: los fallos de un email sin cuenta
+            # tambien bloquean a los 5 (y el 429 dejaria de ser comparable).
+            '/api/auth/login', json={'email': f'no-existe-{uuid.uuid4().hex[:8]}@asisto.local', 'contrasena': 'lo que sea'}
         )
         resp_contrasena_mala = self.cliente.post(
             '/api/auth/login', json={'email': self.email, 'contrasena': 'contrasena-incorrecta'}
@@ -86,7 +92,7 @@ class TestCanalLateralLogin(unittest.TestCase):
         mismo Content-Length (ya que el JSON es identico, deberia serlo).
         """
         resp_a = self.cliente.post(
-            '/api/auth/login', json={'email': 'no-existe-nadie@asisto.local', 'contrasena': 'x'}
+            '/api/auth/login', json={'email': f'no-existe-{uuid.uuid4().hex[:8]}@asisto.local', 'contrasena': 'x'}
         )
         resp_b = self.cliente.post(
             '/api/auth/login', json={'email': self.email, 'contrasena': 'contrasena-incorrecta'}

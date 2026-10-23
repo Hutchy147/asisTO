@@ -10,6 +10,7 @@ from app import db
 from app.models import AuditoriaAcceso
 from app.models.auditoria_acceso import RESULTADOS_ACCESO
 from app.utils.errors import ErrorAplicacion
+from app.utils.fechas import mensaje_fecha_invalida
 
 LIMITE_POR_DEFECTO = 100
 LIMITE_MAXIMO = 500
@@ -21,7 +22,8 @@ def _fecha(valor, campo):
         return dt.date.fromisoformat(valor)
     except (TypeError, ValueError):
         raise ErrorAplicacion(
-            'La fecha tiene que tener el formato AAAA-MM-DD.', campo=campo
+            mensaje_fecha_invalida(valor, campo, 'La fecha tiene que tener el formato AAAA-MM-DD.'),
+            campo=campo,
         )
 
 
