@@ -76,3 +76,56 @@ Verificación: suite de API 177 OK (5 pruebas nuevas en `test_auditoria_profunda
 sondeo de 500 → 0; pruebas de pantalla `ui_portal_familiar`, `ui_portal_paciente`,
 `ui_notificaciones`, `ui_seguridad`, `ui_auditoria` e `ui_informes` en verde;
 recorrido de los 6 roles sin errores de consola en los modos 6 y 3.
+
+## 4. Tercera pasada (23/10/2026): pendientes, QA completo y seguridad
+
+Se tomaron los informes finales de Leandro (H1–H40), Tomás (T1.5, T4.1, T7.2,
+T7.4, ORTO-01) y Franco (F1–F11) y los pendientes de la sección 2, se
+verificó cada uno contra el código actual y se corrigió lo que seguía abierto.
+
+### Corregido
+| Hallazgo | Qué pasaba | Corrección |
+|---|---|---|
+| H9, H10, F4.3, T1.5 | En la versión completa el calendario era solo la semana tipo: no había dónde agendar una sesión puntual ni cómo cambiar de semana. | Selector «Semana tipo / Agenda por fecha». La agenda por fecha navega semanas, agenda, reprograma y abre el detalle. La vista y la semana van en la URL. |
+| H32, F5 transversal | F5 volvía a la primera pestaña, al primer paciente del portal o a la página 1. | Pestaña de la ficha, paciente del portal y de informes, filtros y página de Sesiones, mes del control y filtro de Pacientes en la URL (`useEstadoEnUrl`). |
+| T4.1 | Los renglones no se podían editar. | Botón «Editar» en el lugar (Enter guarda, Escape cancela). |
+| F5.3 | Un paciente pausado solo se encontraba por URL. | Filtro «En pausa o con alta» en Pacientes (`GET /pacientes?estado=inactivos`). |
+| F4.4 | El N.º de historia de ejemplo ya estaba usado. | El listado devuelve `siguiente_nro_historia` (el siguiente libre, contando todos los pacientes). |
+| F5.5 | Archivar por debajo de 3 se rechazaba con un aviso verde. | Se avisa antes de abrir la confirmación, en amarillo; los rechazos del servidor salen en rojo. |
+| F6.1 / F6.2 | Editar una plantilla abría el Área vacía; el duplicado marcaba el Área; pegar más de 700 caracteres cortaba sin avisar. | El área viaja al editar; el duplicado marca el texto; el campo avisa cuando recorta lo pegado. |
+| H21 / H22 / H30 | Con una sola fecha el rango era de 8 días; un período futuro daba «del 01/12 al 22/10»; el portal mostraba la sesión de hoy antes de su hora. | `resolver_rango_pasado`: solo «desde» llega hasta hoy, solo «hasta» arranca en el ingreso, «desde» futuro es 400 y los campos no ofrecen días futuros. El portal mira la hora. |
+| H34 | `2026-02-30` decía «formato incorrecto». | «La fecha … no existe en el calendario.» |
+| H26 | Avisos: filtros inválidos ignorados, paciente no vinculado 200. | 400 con el campo y 403; los avisos de un paciente desvinculado dejan de verse. |
+| T7.2 | Un semestral publicado figuraba en mayo. | El semestral solo se controla en junio y diciembre. |
+| H7 / H12 | La misma sesión se llamaba «En registro», «incompleta» e «Incompleta». | Desde la V3, en todas las pantallas: Realizada / En registro / Ausente. |
+| H8 | «Sin cuenta» parecía hablar del familiar. | «Portal del paciente: con / sin acceso», con explicación. |
+| H13, H11, H15, H19, H20, H29, H31, H36, H37 | Contadores ambiguos, Reabrir sin explicación, duplas sin horario, ingreso ajeno que pedía acciones imposibles, pacientes ajenos en «Mis sesiones», avisos de informes en modos 4/5, dos textos para «pocos datos», «Retrocede» sin explicación, paciente sin salida en modos 4/5. | «marcados»/«calificados», ayuda de Reabrir, horario en la dupla, textos de solo lectura, filtro de pacientes propios, tipos de aviso por capacidad, «Sin datos suficientes» en los dos casos, ayuda de tendencia y «Cerrar sesión» en la pantalla fuera de entrega. |
+| H16 | Nadie con pantalla podía quitar el acceso de la familia a un paciente de baja. | Botón «Familia» en la pantalla del administrador (solo quitar si el paciente no está en tratamiento). |
+| F1.3 | Con un enlace usado se completaban las dos claves antes de enterarse. | `POST /auth/restablecer/verificar` al abrir la pantalla. |
+| Vocabulario alta/baja/pausa | «Alta» significaba ingreso y fin; «baja» también la pausa. | Crear: «Paciente registrado». Dar el alta: «Alta del tratamiento registrada». Pausa: «Motivo de la pausa». Mensajes: «no está en tratamiento activo». Pruebas de la base actualizadas. |
+| PTI | «individual» e «integral» en la misma pantalla. | «integral» en todas partes. |
+| H35 | 41 mensajes «por un error interno». | «por un problema inesperado. Intente nuevamente.» |
+| Plurales | «1 sesión(es)», «2 campo(s)», «1 etapa(s)», «objetivo(s)». | Concordancia en pantalla y en los procedimientos. |
+| F8.4 / F8.6 / mes repetido | Marca `[completar` sin corchete no se detectaba; el error del diálogo quedaba fuera de la vista; «Descartar» en verde; mes duplicado en el control. | Misma regla que el servidor; el error se desplaza a la vista; botón rojo; solo el aviso de semestre. |
+| H3, ORTO-01, H24, H28 | Seed de demostración sin tildes, avisos de sesiones que no existen, pacientes con 2 objetivos. | Seed con tildes (como bytes UTF-8: el archivo sigue ASCII), avisos generados de los datos reales, 3 o 4 objetivos por paciente. |
+| Auditar contraseñas (pendiente) | Recuperaciones y cambios de clave no quedaban auditados; la cuenta deshabilitada figuraba como «Fallido». | Resultados `recuperacion`, `restablecida` e `inactiva`. |
+| Ruido de log (pendiente) | Las reglas de negocio de la base salían como ERROR con traza. | WARNING sin traza. |
+| Pruebas | Dos pruebas fallaban según el día de la semana; `tests/backend` tenía 7 pruebas desactualizadas. | Horarios y limpieza corregidos; `tests/backend` en verde. |
+
+### Seguridad
+Ver `docs/seguridad.md`: sesión en cookie HttpOnly con defensa CSRF, revocación
+al cerrar sesión y al cambiar la clave, límites por IP, política de claves,
+cabeceras, configuración insegura que no arranca y dependencias sin fallas
+conocidas.
+
+### Decisiones (no se cambian)
+- **Avisar cuántos intentos quedan (F2):** no; permitiría distinguir emails con cuenta.
+- **Borradores ajenos:** cualquier terapeuta los lee (lectura clínica abierta) y una coasignada en el período puede descartarlos: ambas son responsables del paciente.
+- **Observaciones en el informe (H23):** se mantiene la decisión de la sección 1.
+
+### Verificación
+Suite de API (`tests/nube/run.sh`) en verde con las pruebas nuevas
+`test_qa_segunda_ronda` y `test_seguridad_web`; `tests/backend` en verde; las 19
+pruebas de pantalla en verde (nuevas: `ui_correcciones_qa`, `ui_seguridad_web`);
+barrido de todas las rutas GET × 8 identidades sin 500 ni accesos indebidos;
+`pip-audit` limpio.

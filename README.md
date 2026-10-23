@@ -39,6 +39,14 @@ real, no está mockeado.
 | Control mensual de informes hechos y pendientes (`/informes`) | ✅ (Entrega 6) |
 | El familiar lee y descarga los informes publicados de su paciente | ✅ (Entrega 6) |
 | Portal del paciente: sus objetivos y su progreso, solo lectura | ✅ (Entrega 6) |
+| Sesión en cookie segura, cierre de sesión que revoca, límites contra fuerza bruta (ver `docs/seguridad.md`) | ✅ (auditoría V6) |
+
+> **Después de hacer `git pull` de esta versión (23/10/2026)** hay que, una vez:
+> 1. `backend\venv\Scripts\pip install -r backend\requirements.txt` (se actualizaron Flask, PyJWT y otras por seguridad),
+> 2. `cd frontend` y `pnpm install` (Vite 6),
+> 3. recargar la base: `schema.sql` cambió (columna nueva en `usuarios`, mensajes y auditoría). Ver el paso 2 y correr después `generar_hashes.py --aplicar --todos`.
+>
+> El navegador ya no guarda el token: si alguien tenía la sesión abierta, vuelve a pedir el login una vez.
 
 **Informes con IA — cómo se configura.** Sin configuración, los informes se
 arman con la plantilla del centro y todo funciona. Para redactarlos con IA se
