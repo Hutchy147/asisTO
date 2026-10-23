@@ -37,12 +37,19 @@ const RESULTADOS = {
 // Local, no UTC: ver aIsoLocal.
 const iso = aIsoLocal;
 
-function ventanaInicial() {
+function ultimosDias(dias) {
   const hasta = new Date();
   const desde = new Date();
-  desde.setDate(desde.getDate() - 7);
-  return { desde: iso(desde), hasta: iso(hasta), resultado: '', email: '' };
+  desde.setDate(desde.getDate() - dias);
+  return { desde: iso(desde), hasta: iso(hasta) };
 }
+
+function ventanaInicial() {
+  return { ...ultimosDias(7), resultado: '', email: '' };
+}
+
+// Atajos como en el panel: escribir fechas fue lo que más costó (usabilidad, RRHH).
+const ATAJOS = [[0, 'Hoy'], [7, 'Últimos 7 días'], [14, 'Últimos 14 días'], [30, 'Últimos 30 días']];
 
 function formatearMomento(texto) {
   // 'AAAA-MM-DD HH:MM:SS' -> 'DD/MM/AAAA HH:MM'
@@ -62,6 +69,12 @@ export default function AuditoriaAccesos() {
     [aplicado.desde, aplicado.hasta, aplicado.resultado, aplicado.email]
   );
   const datos = accesos.datos;
+  const fechasSinAplicar = borrador.desde !== aplicado.desde || borrador.hasta !== aplicado.hasta;
+  // Resultado y atajos se aplican solos; las fechas escritas, con «Ver accesos».
+  const aplicarYa = (cambios) => {
+    setBorrador({ ...borrador, ...cambios });
+    setAplicado({ ...aplicado, ...cambios });
+  };
 
   const columnas = [
     { clave: 'fecha', etiqueta: 'Fecha y hora', ancho: 170, render: (a) => formatearMomento(a.fecha) },
@@ -115,14 +128,28 @@ export default function AuditoriaAccesos() {
             value={borrador.desde} onChange={(e) => setBorrador({ ...borrador, desde: e.target.value })} />
           <TextField label="Hasta" type="date" size="small" InputLabelProps={{ shrink: true }}
             value={borrador.hasta} onChange={(e) => setBorrador({ ...borrador, hasta: e.target.value })} />
-          <TextField select label="Resultado" size="small" sx={{ minWidth: 160 }}
-            value={borrador.resultado} onChange={(e) => setBorrador({ ...borrador, resultado: e.target.value })}>
+          <TextField select label="Resultado" size="small" sx={{ minWidth: 200 }}
+            SelectProps={{ displayEmpty: true }} InputLabelProps={{ shrink: true }}
+            value={borrador.resultado} onChange={(e) => aplicarYa({ resultado: e.target.value })}>
             <MenuItem value="">Todos</MenuItem>
             {Object.entries(RESULTADOS).map(([clave, r]) => <MenuItem key={clave} value={clave}>{r.etiqueta}</MenuItem>)}
           </TextField>
           <TextField label="Email contiene" size="small" sx={{ minWidth: 220 }}
             value={borrador.email} onChange={(e) => setBorrador({ ...borrador, email: e.target.value })} />
           <Button type="submit" variant="contained">Ver accesos</Button>
+          {fechasSinAplicar && (
+            <Typography variant="body2" sx={{ color: 'warning.dark', alignSelf: 'center' }}>
+              Cambió las fechas: toque «Ver accesos» para actualizar.
+            </Typography>
+          )}
+          <Stack direction="row" spacing={1} sx={{ flexBasis: '100%', flexWrap: 'wrap' }}>
+            <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>Atajos:</Typography>
+            {ATAJOS.map(([dias, etiqueta]) => (
+              <Button key={dias} size="small" variant="text" onClick={() => aplicarYa(ultimosDias(dias))}>
+                {etiqueta}
+              </Button>
+            ))}
+          </Stack>
         </Box>
 
         {accesos.cargando && <Cargando texto="Buscando los accesos..." />}
@@ -130,11 +157,15 @@ export default function AuditoriaAccesos() {
 
         {datos && !accesos.cargando && !accesos.error && (
           <>
+            {/* Los totales tienen que cerrar: antes «Registros» no coincidía con
+                la suma de las tarjetas porque faltaban recuperaciones y
+                cuentas deshabilitadas (usabilidad, RRHH). */}
             <Grid container spacing={1.5} sx={{ mb: 3 }}>
-              <Grid item xs={12} sm={3}><StatTile etiqueta="Intentos del período" valor={datos.resumen.total} nota="Todos los del filtro" /></Grid>
-              <Grid item xs={12} sm={3}><StatTile etiqueta="Exitosos" valor={datos.resumen.exitoso} nota="Recuento" /></Grid>
-              <Grid item xs={12} sm={3}><StatTile etiqueta="Fallidos" valor={datos.resumen.fallido} nota="Clave o email incorrectos" /></Grid>
-              <Grid item xs={12} sm={3}><StatTile etiqueta="Bloqueados" valor={datos.resumen.bloqueado} nota="Cuenta bloqueada" /></Grid>
+              <Grid item xs={12} sm={4} md={2.4}><StatTile etiqueta="Registros del período" valor={datos.resumen.total} nota="Suma de las tarjetas" /></Grid>
+              <Grid item xs={12} sm={4} md={2.4}><StatTile etiqueta="Exitosos" valor={datos.resumen.exitoso} nota="Entraron al sistema" /></Grid>
+              <Grid item xs={12} sm={4} md={2.4}><StatTile etiqueta="Fallidos" valor={(datos.resumen.fallido ?? 0) + (datos.resumen.inactiva ?? 0)} nota="Clave o email incorrectos, o cuenta deshabilitada" /></Grid>
+              <Grid item xs={12} sm={6} md={2.4}><StatTile etiqueta="Bloqueados" valor={datos.resumen.bloqueado} nota="Cuenta bloqueada" /></Grid>
+              <Grid item xs={12} sm={6} md={2.4}><StatTile etiqueta="Recuperación de clave" valor={(datos.resumen.recuperacion ?? 0) + (datos.resumen.restablecida ?? 0)} nota="Pedidos de enlace y claves cambiadas" /></Grid>
             </Grid>
 
             {datos.accesos.length === 0 ? (

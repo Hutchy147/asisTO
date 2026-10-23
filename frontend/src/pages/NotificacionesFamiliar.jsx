@@ -83,7 +83,8 @@ export default function NotificacionesFamiliar() {
     <BarraFamiliar activa="avisos" sinLeer={noLeidas}>
       <Typography variant="h4">Avisos</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Novedades del tratamiento. Más abajo puede elegir qué tipos de aviso desea recibir.
+        Novedades del tratamiento. Los avisos se ven en esta página y en el contador de la barra
+        superior; no se envían por correo. Más abajo puede elegir qué tipos de aviso desea recibir.
       </Typography>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -169,6 +170,9 @@ export default function NotificacionesFamiliar() {
       >
         <Box sx={(t) => ({ px: 2.25, py: 1.75, borderBottom: `1px solid ${t.palette.superficie.borde}` })}>
           <Typography variant="h5">Qué avisos recibir</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+            La elección vale para todos los pacientes vinculados a su cuenta.
+          </Typography>
         </Box>
         {preferencias.cargando && <Cargando texto="Cargando sus preferencias..." />}
         {preferencias.error && <EstadoError error={preferencias.error} onReintentar={preferencias.recargar} />}

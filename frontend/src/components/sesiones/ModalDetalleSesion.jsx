@@ -40,7 +40,7 @@ import { etiquetaDeValor } from '../../services/evolucionesService.js';
 import {
   ESTADO_AUSENCIA, ETIQUETA_AUSENCIA_DE, estadoVisible, obtenerSesion,
 } from '../../services/sesionesService.js';
-import { formatearFecha } from '../../utils/fechas.js';
+import { formatearFecha, formatearHora } from '../../utils/fechas.js';
 
 /** Encabezado de bloque con su contador a la derecha. */
 function Bloque({ titulo, contador, children }) {
@@ -170,15 +170,17 @@ export default function ModalDetalleSesion({
   // botón deshabilitado no se pueda forzar desde la consola.
   const puedeEditar = Boolean(onEditar && sesion && esPropia) && hayCapacidad('sesiones.editar');
 
+  const visible = sesion ? estadoVisible(sesion) : null;
+  const futura = visible?.estado === 'agendada';
   const subtitulo = datos
-    ? `${datos.paciente.nombre_completo} · ${formatearFecha(sesion.fecha)} · ${sesion.hora_inicio?.slice(0, 5)}`
+    ? `${datos.paciente.nombre_completo} · ${formatearFecha(sesion.fecha)} · ${formatearHora(sesion.hora_inicio)}`
     : undefined;
 
   return (
     <ModalFormulario
       abierto={abierto}
       ancho={640}
-      titulo="Registro de la sesión"
+      titulo={futura ? "Sesión agendada" : "Registro de la sesión"}
       subtitulo={subtitulo}
       soloCerrar
       onPedirCierre={onCerrar}
@@ -190,9 +192,9 @@ export default function ModalDetalleSesion({
         <>
           <Box sx={{ mb: 2.5 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-              <SesionEstadoChip {...estadoVisible(sesion)} />
+              <SesionEstadoChip {...visible} />
               <Typography variant="body2" color="text.secondary">
-                Atendió {datos.terapeuta?.nombre_completo ?? 'un terapeuta del centro'}
+                {futura ? 'Con' : 'Atendió'} {datos.terapeuta?.nombre_completo ?? 'un terapeuta del centro'}
                 {esPropia ? '' : ' · otro terapeuta'}
               </Typography>
               {sesion?.companero && (
@@ -238,7 +240,9 @@ export default function ModalDetalleSesion({
               <EstadoVacio
                 plano
                 titulo="Todavía no se calificó ningún objetivo"
-                descripcion="La sesión está registrada pero no tiene evolución cargada."
+                descripcion={futura
+                  ? 'La sesión todavía no ocurrió. Los objetivos se califican después de atender al paciente.'
+                  : 'La sesión está registrada pero no tiene evolución cargada.'}
               />
             ) : (
               <Box component="ul" sx={{ m: 0, p: 0 }}>

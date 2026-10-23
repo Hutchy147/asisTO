@@ -9,6 +9,8 @@
 // enteras: solo los escalones que la app realmente usa.
 
 import { createTheme } from '@mui/material/styles';
+// Textos internos de MUI en castellano (el «Close» de los avisos, «No options»).
+import { esES } from '@mui/material/locale';
 
 // --- Núcleo (5) ---
 const EUCALIPTO = '#3E8E7E'; // primary, del logo
@@ -290,6 +292,6 @@ const theme = createTheme({
       styleOverrides: { root: { borderRadius: 8 } },
     },
   },
-});
+}, esES);
 
 export default theme;

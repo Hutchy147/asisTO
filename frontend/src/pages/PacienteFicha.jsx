@@ -333,7 +333,8 @@ export default function PacienteFicha() {
       titulo={paciente.nombre_completo}
       subtitulo={[
         textoEdad(paciente.fecha_nacimiento),
-        paciente.fecha_alta ? `en tratamiento desde ${formatearMes(paciente.fecha_alta)}` : null,
+        // «En tratamiento desde» quedaba mal con el paciente en pausa o con alta.
+        paciente.fecha_alta ? `ingresó en ${formatearMes(paciente.fecha_alta)}` : null,
       ]
         .filter(Boolean)
         .join(' · ')}
@@ -380,9 +381,11 @@ export default function PacienteFicha() {
         <Alert severity="info" sx={{ mb: 2.5 }}>
           <strong>Tratamiento en pausa</strong>
           {paciente.fecha_baja ? ` desde el ${formatearFecha(paciente.fecha_baja)}` : ''}.
-          {' '}Motivo: {paciente.motivo_baja}. Sus objetivos y su asignación siguen como
+          {/* Sin el punto final del motivo: salía «noviembre..». */}
+          {' '}Motivo: {(paciente.motivo_baja ?? '').replace(/\.+\s*$/, '')}. Sus objetivos y su asignación siguen como
           estaban; al reactivarlo retoma donde quedó. Mientras tanto, la historia
-          clínica se consulta entera pero no se modifica.
+          clínica se consulta entera pero no se modifica, y las sesiones que ya estaban
+          agendadas siguen en la agenda: conviene reprogramarlas o quitarlas.
         </Alert>
       ) : soloLectura && (
         <Alert severity="info" sx={{ mb: 2.5 }}>
@@ -822,8 +825,9 @@ export default function PacienteFicha() {
         El tratamiento se interrumpe con la fecha de hoy. El paciente sale del
         listado principal y se lo encuentra con el filtro «En pausa o con alta» de
         Pacientes. No se archiva ningún objetivo ni se cierra la
-        asignación: al reactivarlo retoma donde quedó. Si el tratamiento terminó,
-        utilice «Dar el alta».
+        asignación: al reactivarlo retoma donde quedó. Las sesiones ya agendadas no
+        se borran: quedan en la agenda para reprogramarlas o quitarlas. Si el
+        tratamiento terminó, utilice «Dar el alta».
       </DialogoConfirmacion>
 
       <DialogoConfirmacion

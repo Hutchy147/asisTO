@@ -63,3 +63,13 @@ export function aIsoLocal(fecha) {
   const p = (n) => String(n).padStart(2, '0');
   return `${fecha.getFullYear()}-${p(fecha.getMonth() + 1)}-${p(fecha.getDate())}`;
 }
+
+/**
+ * Hora de la API -> "HH:MM". El backend puede mandar "8:00:00" (TIME de MySQL
+ * sin cero adelante): cortar los primeros 5 caracteres daba "8:00:".
+ */
+export function formatearHora(hora) {
+  if (!hora) return '';
+  const [h, m = '00'] = String(hora).split(':');
+  return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+}

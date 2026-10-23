@@ -343,9 +343,19 @@ export default function CalendarioSemanal({ selectorVista = null }) {
       {agenda.datos && (
         <>
           {turnos.length === 0 && (
-            <Alert severity="info" sx={{ mb: 2 }}>
-              Todavía no hay turnos. Seleccione un horario de la grilla, o use «Nuevo turno»,
-              para cargar un paciente que se atiende todas las semanas en ese día y hora.
+            // Vacía asustaba: un terapeuta con sesiones sueltas creía no tener
+            // agenda (pruebas de usabilidad). Se ofrece la vista por fecha.
+            <Alert
+              severity="info" sx={{ mb: 2 }}
+              action={selectorVista ? (
+                <Button color="inherit" size="small" sx={{ whiteSpace: 'nowrap' }} onClick={() => navigate('/calendario?vista=fechas')}>
+                  Ver mis sesiones por fecha
+                </Button>
+              ) : null}
+            >
+              Todavía no hay turnos fijos. Las sesiones agendadas día por día se ven en «Agenda por fecha».
+              Para cargar un paciente que se atiende todas las semanas en el mismo día y hora, seleccione
+              un horario de la grilla o use «Nuevo turno».
             </Alert>
           )}
           <Box sx={(t) => ({ border: `1px solid ${t.palette.divider}`, borderRadius: '10px', overflowX: 'auto', backgroundColor: t.palette.background.paper })}>

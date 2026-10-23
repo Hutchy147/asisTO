@@ -309,8 +309,10 @@ export default function GraficoEvolucion({ serie, titulo }) {
                 ? tema.palette.sesionEstado.ausencia.fg
                 : tema.palette.sesionEstado.incompleta.fg
             }
-            strokeWidth="1"
-            opacity="0.6"
+            // La ausencia más gruesa y opaca: con el mismo trazo, ámbar y
+            // rojo se confundían (pruebas de usabilidad con familias).
+            strokeWidth={punto.estado_sesion === 'ausencia' ? 3 : 1}
+            opacity={punto.estado_sesion === 'ausencia' ? 0.9 : 0.6}
           >
             <title>
               {`${formatearFecha(punto.fecha)} — ${
@@ -378,6 +380,17 @@ export default function GraficoEvolucion({ serie, titulo }) {
           texto="ausencias"
           singular="ausencia"
         />
+        {tramos.some((t) => t.punteado) && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <Box
+              component="span"
+              sx={(t) => ({ width: 18, borderTop: `2px dashed ${t.palette.primary.main}`, flex: 'none' })}
+            />
+            <Typography variant="body2" color="text.secondary">
+              línea punteada: hubo sesiones sin calificar en el medio
+            </Typography>
+          </Box>
+        )}
       </Box>
 
       {calificados.length === 0 && (

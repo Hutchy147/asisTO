@@ -29,8 +29,8 @@ import CalendarioSemanal from './CalendarioSemanal.jsx';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { hayCapacidad } from '../config/entregas.js';
 import { listarPacientes } from '../services/pacientesService.js';
-import { ETIQUETA_ESTADO, faltaEvolucion, listarSesiones } from '../services/sesionesService.js';
-import { formatearFecha, formatearFechaCorta } from '../utils/fechas.js';
+import { ETIQUETA_ESTADO, estadoVisible, faltaEvolucion, listarSesiones } from '../services/sesionesService.js';
+import { formatearFecha, formatearFechaCorta, formatearHora } from '../utils/fechas.js';
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 const HORA_INICIO = 8;
@@ -67,16 +67,22 @@ function BloqueSesion({ sesion, onAbrir }) {
   const duracion = Math.max(0.5, fin - inicio);
   // La definición vive en sesionesService para que el panel y el
   // calendario no la calculen cada uno por su lado.
-  const falta = faltaEvolucion(sesion);
+  // Una sesión que todavía no ocurrió es «Agendada», no «Falta la evolución»
+  // (pruebas de usabilidad: una reposición del miércoles siguiente aparecía
+  // como pendiente y el terapeuta desconfiaba de la lista).
+  const visible = estadoVisible(sesion);
+  const futura = visible.estado === 'agendada';
+  const falta = faltaEvolucion(sesion) && !futura;
+  const claveColor = futura ? 'agendada' : sesion.estado;
 
   return (
     <Box
       component="button"
       type="button"
       onClick={() => onAbrir(sesion)}
-      title={`${sesion.paciente.nombre_completo} · ${sesion.estado}${falta ? ' · falta cargar la evolución' : ''}`}
+      title={`${sesion.paciente.nombre_completo} · ${visible.etiqueta}${falta ? ' · falta cargar la evolución' : ''}`}
       sx={(t) => {
-        const colores = t.palette.sesionEstado[sesion.estado];
+        const colores = t.palette.sesionEstado[claveColor];
         return {
           position: 'absolute',
           left: 5,
@@ -109,7 +115,7 @@ function BloqueSesion({ sesion, onAbrir }) {
         sx={{ display: 'flex', alignItems: 'center', gap: 0.75, fontSize: 12.5, fontWeight: 600, lineHeight: 1.2, minWidth: 0 }}
       >
         <Box component="span" className="tabular" sx={{ flex: 'none' }}>
-          {sesion.hora_inicio?.slice(0, 5)}
+          {formatearHora(sesion.hora_inicio)}
         </Box>
         <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {sesion.paciente.nombre_completo}
@@ -120,12 +126,12 @@ function BloqueSesion({ sesion, onAbrir }) {
         sx={(t) => ({
           fontSize: 11,
           fontWeight: falta ? 500 : 400,
-          color: falta ? t.palette.text.primary : t.palette.sesionEstado[sesion.estado].fg,
+          color: falta ? t.palette.text.primary : t.palette.sesionEstado[claveColor].fg,
         })}
       >
         {/* El color y la regla izquierda ya dicen el estado; el texto se
             usa para lo accionable cuando hay algo que hacer. */}
-        {falta ? 'Falta la evolución' : ETIQUETA_ESTADO[sesion.estado]}
+        {falta ? 'Falta la evolución' : (futura ? 'Agendada' : ETIQUETA_ESTADO[sesion.estado])}
       </Box>
     </Box>
   );
@@ -133,6 +139,7 @@ function BloqueSesion({ sesion, onAbrir }) {
 
 function Leyenda() {
   const items = [
+    { clave: 'agendada', etiqueta: 'Agendada' },
     // Mismas palabras que los bloques de la grilla (Realizada / En registro / Ausente).
     { clave: 'completa', etiqueta: ETIQUETA_ESTADO.completa },
     { clave: 'incompleta', etiqueta: ETIQUETA_ESTADO.incompleta },
@@ -259,7 +266,7 @@ function CalendarioPorDia({ selectorVista = null }) {
   return (
     <AppLayout
       titulo="Calendario"
-      subtitulo={`${formatearFecha(desde)} al ${formatearFecha(hasta)}${sesiones.datos ? ` · ${sesiones.datos.total} sesiones` : ''}`}
+      subtitulo={`${formatearFecha(desde)} al ${formatearFecha(hasta)}${sesiones.datos ? ` · ${sesiones.datos.total} ${sesiones.datos.total === 1 ? 'sesión' : 'sesiones'}` : ''}`}
       acciones={
         <>
           {selectorVista}
@@ -601,9 +608,10 @@ function CalendarioPorDia({ selectorVista = null }) {
           fechaInicial={modalSesion?.fecha ?? ''}
           horaInicial={modalSesion?.hora ?? ''}
           onCerrar={() => setModalSesion(null)}
-          onAgendada={(respuesta) => {
+          onAgendada={() => {
             recargar();
-            setAviso(respuesta?.mensaje ?? 'Sesión agendada correctamente');
+            // El procedimiento responde «registrada»: al agendar se dice «agendada».
+            setAviso('Sesión agendada correctamente');
           }}
         />
       ) : (

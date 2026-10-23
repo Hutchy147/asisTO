@@ -82,7 +82,7 @@ export default function ModalObservacionesRrhh({ sesion, abierto, onCerrar, onGu
   return (
     <Dialog open={Boolean(abierto)} onClose={onCerrar} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ pb: 0.5 }}>
-        Observaciones técnicas
+        Observaciones administrativas
         {sesion && (
           <Typography variant="body2" color="text.secondary" className="texto-libre">
             {`${sesion.paciente} · ${formatearFecha(sesion.fecha)} · ${sesion.hora_inicio ?? ''}`}

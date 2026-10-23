@@ -81,7 +81,7 @@ export default function SeccionInformes({ paciente, puedeEscribir, onAviso, tien
       )}
 
       <ModalGenerarInforme
-        abierto={generando} idPaciente={paciente.id} iaDisponible={Boolean(historial.datos?.ia_disponible)}
+        abierto={generando} idPaciente={paciente.id} nombrePaciente={paciente.nombre_completo} iaDisponible={Boolean(historial.datos?.ia_disponible)}
         hayPuedePti={tieneIngreso} borradores={borradores}
         onCerrar={() => setGenerando(false)} onGenerado={alGenerar}
       />

@@ -24,6 +24,18 @@ export const ESCALA_VALORES = [
   { valor: 5, etiqueta: 'Logrado' },
 ];
 
+/**
+ * Qué significa cada palabra, dicho para la familia (pruebas de usabilidad:
+ * «¿Inicial es bueno o malo?»). Mismo orden que ESCALA_VALORES.
+ */
+export const SIGNIFICADO_NIVEL = {
+  1: 'Todavía no lo consigue, aun con ayuda.',
+  2: 'Empieza a hacerlo, con mucha ayuda.',
+  3: 'Lo hace a veces o con algo de ayuda.',
+  4: 'Lo hace casi siempre, con poca ayuda.',
+  5: 'Lo hace solo y de manera sostenida.',
+};
+
 /** Palabra de la escala. `null` cuando todavía no se calificó. */
 export function etiquetaDeValor(valor) {
   if (valor === null || valor === undefined) return null;
@@ -45,7 +57,18 @@ export function resumenEnPalabras(puntos) {
   const tramo = Math.max(1, Math.floor(valores.length / 3));
   const promedio = (lista) => lista.reduce((a, b) => a + b, 0) / lista.length;
   const diferencia = promedio(valores.slice(-tramo)) - promedio(valores.slice(0, tramo));
-  if (diferencia >= 0.5) return { texto: 'Viene mejorando.', tono: 'bien' };
+  // Una caída fuerte en la última sesión (dos escalones o más) no puede
+  // quedar tapada por el promedio: una madre vio «Logrado» -> «Inicial» y el
+  // resumen decía «Se mantiene estable».
+  const cayoAlFinal = valores[valores.length - 2] - valores[valores.length - 1] >= 2;
+  if (diferencia >= 0.5) {
+    return cayoAlFinal
+      ? { texto: 'Viene mejorando, aunque en la última sesión le costó más. Es habitual que haya altibajos.', tono: 'bien' }
+      : { texto: 'Viene mejorando.', tono: 'bien' };
+  }
+  if (cayoAlFinal && diferencia > -0.5) {
+    return { texto: 'En la última sesión le costó más que en las anteriores. Es habitual que haya altibajos; el equipo lo sigue trabajando.', tono: 'atencion' };
+  }
   if (diferencia <= -0.5) {
     return { texto: 'En las últimas sesiones le costó más. Es habitual que haya altibajos; el equipo lo sigue trabajando.', tono: 'atencion' };
   }

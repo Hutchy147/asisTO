@@ -94,7 +94,8 @@ export default function SeccionFamiliares({ paciente, puedeGestionar = true, sol
           <Typography variant="h5">Familiares con acceso</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
             Cada familiar vinculado puede consultar la evolución del paciente y recibe
-            avisos del tratamiento. No ve el diagnóstico ni las observaciones clínicas.
+            avisos del tratamiento. En el portal no ve el diagnóstico ni las notas de cada
+            sesión; sí lee completos los informes que se publiquen.
           </Typography>
         </Box>
         {puedeGestionar && !soloQuitar && (

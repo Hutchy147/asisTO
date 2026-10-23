@@ -76,6 +76,7 @@ export default function ControlInformes() {
       const historial = await listarInformesDePaciente(fila.id_paciente);
       setGenerar({
         id_paciente: fila.id_paciente,
+        paciente: fila.paciente,
         tipo,
         periodo: tipo === 'mensual' ? datos.mes : tipo === 'semestral' ? datos.semestre : 'pti',
         ia: Boolean(historial.ia_disponible),
@@ -144,7 +145,7 @@ export default function ControlInformes() {
       {generar && (
         <ModalGenerarInforme
           key={`${generar.id_paciente}-${generar.tipo}-${generar.periodo}`}
-          abierto idPaciente={generar.id_paciente} iaDisponible={generar.ia}
+          abierto idPaciente={generar.id_paciente} nombrePaciente={generar.paciente} iaDisponible={generar.ia}
           borradores={generar.borradores} tipoInicial={generar.tipo} periodoInicial={generar.periodo}
           onCerrar={() => setGenerar(null)}
           onGenerado={(r) => {

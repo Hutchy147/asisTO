@@ -17,6 +17,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
 import BarraFamiliar from '../components/familiar/BarraFamiliar.jsx';
+import EscalaExplicada from '../components/familiar/EscalaExplicada.jsx';
 import GraficoEvolucion from '../components/data/GraficoEvolucion.jsx';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { hayCapacidad } from '../config/entregas.js';
@@ -25,7 +26,7 @@ import { useEstadoEnUrl, useFiltrosEnUrl } from '../hooks/useEstadoEnUrl.js';
 import { contarNoLeidas } from '../services/notificacionesService.js';
 import { obtenerEvolucionVinculada, listarPacientesVinculados } from '../services/portalFamiliarService.js';
 import { etiquetaDeValor, resumenEnPalabras } from '../services/evolucionesService.js';
-import { aIsoLocal, formatearFecha, textoEdad } from '../utils/fechas.js';
+import { aIsoLocal, formatearFecha, formatearHora, textoEdad } from '../utils/fechas.js';
 
 const ESTADOS_PACIENTE = {
   en_tratamiento: 'En tratamiento',
@@ -67,6 +68,28 @@ function EstadoParaFamilia({ estado }) {
   );
 }
 
+/** Atajos de período: elegir dos fechas era lo que más costaba en el celular. */
+const ATAJOS = [
+  { etiqueta: 'Último mes', meses: 1 },
+  { etiqueta: 'Últimos 3 meses', meses: 3 },
+];
+
+function haceMeses(meses) {
+  const fecha = new Date();
+  fecha.setMonth(fecha.getMonth() - meses);
+  return aIsoLocal(fecha);
+}
+
+/** "12 sesiones: asistió a 11 y faltó a 1". */
+function textoAsistencia(sesiones) {
+  const total = sesiones.length;
+  const faltas = sesiones.filter((s) => s.estado_sesion === 'ausencia').length;
+  const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+  if (total === 0) return null;
+  if (faltas === 0) return `${plural(total, 'sesión', 'sesiones')} en el período, sin ausencias.`;
+  return `${plural(total, 'sesión', 'sesiones')} en el período: asistió a ${total - faltas} y faltó a ${faltas}.`;
+}
+
 const TONO_RESUMEN = { bien: 'success.main', igual: 'text.primary', atencion: 'warning.dark', pocos: 'text.secondary' };
 
 function ListaDeSesiones({ sesiones }) {
@@ -81,7 +104,7 @@ function ListaDeSesiones({ sesiones }) {
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: s.valores.length ? 0.75 : 0 }}>
             <Typography variant="body2" className="tabular" sx={{ fontWeight: 600 }}>
-              {formatearFecha(s.fecha)}{s.hora_inicio ? ` · ${String(s.hora_inicio).slice(0, 5)}` : ''}
+              {formatearFecha(s.fecha)}{s.hora_inicio ? ` · ${formatearHora(s.hora_inicio)}` : ''}
             </Typography>
             <EstadoParaFamilia estado={s.estado_sesion} />
             {s.estado_sesion !== 'ausencia' && s.valores.length === 0 && (
@@ -117,6 +140,11 @@ function EvolucionDe({ paciente }) {
 
   const aplicar = () => { if (!rangoInvalido && !sinFechas) setFiltro({ desde, hasta }); };
   const limpiar = () => { setDesde(''); setHasta(''); setFiltro({ desde: '', hasta: '' }); };
+  const atajo = (meses) => {
+    const rango = { desde: haceMeses(meses), hasta: aIsoLocal(new Date()) };
+    setDesde(rango.desde); setHasta(rango.hasta); setFiltro(rango);
+  };
+  const atajoActivo = (meses) => filtro.desde === haceMeses(meses) && filtro.hasta === aIsoLocal(new Date());
 
   const datos = evolucion.datos;
   // Desde cuándo hay sesiones cargadas: el tratamiento puede haber empezado
@@ -146,15 +174,23 @@ function EvolucionDe({ paciente }) {
           error={rangoInvalido} sx={{ flex: '1 1 150px' }}
           helperText={rangoInvalido ? 'La fecha final no puede ser anterior a la inicial.' : ' '}
         />
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
           <Button variant="contained" onClick={aplicar} disabled={rangoInvalido || sinFechas}>Filtrar</Button>
           <Button color="inherit" onClick={limpiar} disabled={!filtro.desde && !filtro.hasta && sinFechas}>
             Todo el tratamiento
           </Button>
+          {ATAJOS.map((a) => (
+            <Button
+              key={a.meses} onClick={() => atajo(a.meses)}
+              variant={atajoActivo(a.meses) ? 'contained' : 'outlined'}
+            >
+              {a.etiqueta}
+            </Button>
+          ))}
         </Box>
         {sinFechas && (
           <Typography variant="caption" color="text.secondary" sx={{ flexBasis: '100%', mt: -1 }}>
-            Elija una fecha de inicio, de fin o ambas para ver solo ese período.
+            Use un atajo, o elija una fecha de inicio, de fin o ambas para ver solo ese período.
           </Typography>
         )}
       </Box>
@@ -177,7 +213,7 @@ function EvolucionDe({ paciente }) {
               titulo="Cómo viene cada objetivo"
               descripcion={
                 datos.periodo.completo
-                  ? `Todo lo registrado${primeraSesion ? ` desde el ${formatearFecha(primeraSesion)}` : ''} hasta hoy. Cada objetivo es algo que se está trabajando en la terapia.`
+                  ? `Todo lo cargado en el sistema${primeraSesion ? ` desde la primera sesión registrada, el ${formatearFecha(primeraSesion)},` : ''} hasta hoy. Cada objetivo es algo que se está trabajando en la terapia.`
                   : `Del ${formatearFecha(datos.periodo.desde)} al ${formatearFecha(datos.periodo.hasta)}.`
               }
             >
@@ -192,7 +228,9 @@ function EvolucionDe({ paciente }) {
                   <Typography variant="body2" color="text.secondary">
                     En cada sesión la terapeuta califica cómo le fue en algunos objetivos, de «No logrado» a
                     «Logrado». Los altibajos de una sesión a otra son normales: importa hacia dónde va.
+                    {textoAsistencia(datos.sesiones) ? ` ${textoAsistencia(datos.sesiones)}` : ''}
                   </Typography>
+                  <EscalaExplicada />
                   {datos.objetivos.map((serie) => {
                     const resumen = resumenEnPalabras(serie.puntos);
                     return (
@@ -222,7 +260,11 @@ function EvolucionDe({ paciente }) {
           )}
 
           {pestania === 'sesiones' && (
-            <Tarjeta titulo="Sesiones" descripcion="Las sesiones ya realizadas, de la más reciente a la más antigua, con lo trabajado en cada una.">
+            <Tarjeta
+              titulo="Sesiones"
+              descripcion={`Las sesiones ya realizadas, de la más reciente a la más antigua, con lo trabajado en cada una.${
+                textoAsistencia(datos.sesiones) ? ` ${textoAsistencia(datos.sesiones)}` : ''}`}
+            >
               {datos.sesiones.length === 0 ? (
                 <EstadoVacio plano titulo="No hay sesiones en este período" descripcion="Pruebe con otro rango de fechas." />
               ) : (
@@ -267,7 +309,9 @@ export default function PortalFamiliar() {
               <Typography variant="body2" color="text.secondary">
                 {[
                   textoEdad(paciente.fecha_nacimiento),
-                  paciente.fecha_alta ? `en tratamiento desde el ${formatearFecha(paciente.fecha_alta)}` : null,
+                  // «En tratamiento desde» confundía con la fecha de la primera
+                  // sesión cargada y con un tratamiento en pausa.
+                  paciente.fecha_alta ? `ingresó al centro el ${formatearFecha(paciente.fecha_alta)}` : null,
                 ].filter(Boolean).join(' · ')}
               </Typography>
             </Box>

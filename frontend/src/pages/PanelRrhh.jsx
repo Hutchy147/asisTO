@@ -180,6 +180,20 @@ export default function PanelRrhh() {
   ));
   const resumen = reporte.datos?.resumen;
 
+  // Qué filas del listado se muestran. Filtra en pantalla: los recuentos y
+  // la exportación siguen siendo del período completo (usabilidad, RRHH:
+  // «no pude ver solo las ausencias, recorrí 86 filas»).
+  const [mostrar, setMostrar] = useState('todas');
+  const sesionesListadas = sesiones.filter((s) => {
+    if (mostrar === 'ausencias') return s.estado === ESTADO_AUSENCIA;
+    if (mostrar === 'paciente' || mostrar === 'terapeuta') return s.estado === ESTADO_AUSENCIA && s.ausencia_de === mostrar;
+    if (mostrar === 'sin_cerrar') return s.estado === 'incompleta';
+    return true;
+  });
+  // Fechas cambiadas que todavía no se aplicaron: se avisa, porque los
+  // totales de abajo siguen siendo del período anterior.
+  const fechasSinAplicar = borrador.desde !== aplicado.desde || borrador.hasta !== aplicado.hasta;
+
   // Los terapeutas del filtro salen del reporte SIN filtrar. Si salieran del
   // reporte ya filtrado, al elegir uno la lista se quedaria con ese solo y no
   // habria como volver a los demas.
@@ -329,14 +343,12 @@ export default function PanelRrhh() {
       // dibuja como texto y no sólo como número: "2 obs." se entiende sin
       // leer el encabezado, y un "0" gris no compite visualmente con el
       // resto de la fila.
+      // Subrayado y «Agregar» en vez de «—»: el contador no parecía un
+      // botón y no se encontraba cómo cargar una (usabilidad, RRHH).
       render: (s) => (
-        s.obs_rrhh > 0
-          ? (
-            <Box component="span" sx={{ fontWeight: 600, color: 'primary.main' }}>
-              {s.obs_rrhh} obs.
-            </Box>
-          )
-          : <Box component="span" sx={{ color: 'text.disabled' }}>—</Box>
+        <Box component="span" sx={{ fontWeight: 600, color: 'primary.main', textDecoration: 'underline', fontSize: 13 }}>
+          {s.obs_rrhh > 0 ? `${s.obs_rrhh} obs.` : 'Agregar'}
+        </Box>
       ),
     },
   ];
@@ -419,7 +431,12 @@ export default function PanelRrhh() {
             // displayEmpty: si no, «Todos» se veía como una opción en blanco.
             SelectProps={{ displayEmpty: true }} InputLabelProps={{ shrink: true }}
             value={borrador.idTerapeuta}
-            onChange={(e) => setBorrador({ ...borrador, idTerapeuta: e.target.value })}
+            // El terapeuta se aplica al elegirlo, con las fechas ya aplicadas:
+            // ver los totales del centro con una terapeuta elegida confundía.
+            onChange={(e) => {
+              setBorrador({ ...borrador, idTerapeuta: e.target.value });
+              setAplicado({ ...aplicado, idTerapeuta: e.target.value });
+            }}
           >
             <MenuItem value="">Todos los terapeutas</MenuItem>
             {terapeutas.map((t) => (
@@ -427,6 +444,11 @@ export default function PanelRrhh() {
             ))}
           </TextField>
           <Button type="submit" variant="contained">Ver período</Button>
+          {fechasSinAplicar && (
+            <Typography variant="body2" sx={{ color: 'warning.dark', alignSelf: 'center' }}>
+              Cambió las fechas: toque «Ver período» para actualizar los totales.
+            </Typography>
+          )}
           <Stack direction="row" spacing={1} sx={{ flexBasis: '100%' }}>
             <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>Atajos:</Typography>
             {[['este_mes', 'Este mes'], ['mes_anterior', 'Mes anterior'], ['90', 'Últimos 90 días']].map(([clave, etiqueta]) => (
@@ -530,10 +552,27 @@ export default function PanelRrhh() {
             )}
 
             {/* --- Listado --- */}
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, mt: 3, mb: 1.5 }}>
-              Sesiones del período
-            </Typography>
-            {sesiones.length === 0 ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 3, mb: 1.5, flexWrap: 'wrap' }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, flex: 1 }}>
+                Sesiones del período
+              </Typography>
+              <TextField
+                select label="Mostrar" size="small" sx={{ minWidth: 220 }} id="rrhh-mostrar"
+                value={mostrar} onChange={(e) => setMostrar(e.target.value)}
+              >
+                <MenuItem value="todas">Todas las sesiones</MenuItem>
+                <MenuItem value="ausencias">Solo ausencias</MenuItem>
+                <MenuItem value="paciente">Ausencias: faltó el paciente</MenuItem>
+                <MenuItem value="terapeuta">Ausencias: faltó el terapeuta</MenuItem>
+                <MenuItem value="sin_cerrar">Solo sin cerrar</MenuItem>
+              </TextField>
+            </Box>
+            {sesiones.length > 0 && sesionesListadas.length === 0 ? (
+              <EstadoVacio
+                titulo="No hay sesiones de ese tipo en el período"
+                descripcion="Elija «Todas las sesiones» en «Mostrar» para ver el listado completo."
+              />
+            ) : sesiones.length === 0 ? (
               <EstadoVacio
                 titulo="No hubo sesiones en este período"
                 descripcion="Pruebe con un rango más amplio o quite el filtro por terapeuta."
@@ -542,15 +581,15 @@ export default function PanelRrhh() {
               <>
                 <DataTable
                   columnas={columnas}
-                  filas={sesiones.slice(0, MAXIMO_FILAS_VISIBLES)}
+                  filas={sesionesListadas.slice(0, MAXIMO_FILAS_VISIBLES)}
                   claveFila={(s) => s.id_sesion}
                   onAbrirFila={(s) => setSesionObservada(s)}
                   etiquetaFila={(s) => `Observaciones de la sesión de ${s.paciente} del ${s.fecha}`}
                 />
-                {sesiones.length > MAXIMO_FILAS_VISIBLES && (
+                {sesionesListadas.length > MAXIMO_FILAS_VISIBLES && (
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                    Se muestran las primeras {MAXIMO_FILAS_VISIBLES} de {sesiones.length} sesiones
-                    del período. Los recuentos de arriba son sobre las {sesiones.length}, no sobre
+                    Se muestran las primeras {MAXIMO_FILAS_VISIBLES} de {sesionesListadas.length} sesiones.
+                    Los recuentos de arriba son sobre las {sesiones.length} del período, no sobre
                     las que se ven. Acote el período o filtre por terapeuta para recorrerlas todas.
                   </Typography>
                 )}

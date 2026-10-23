@@ -22,6 +22,7 @@ import GraficoEvolucion from '../components/data/GraficoEvolucion.jsx';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { usePeticion } from '../hooks/usePeticion.js';
+import EscalaExplicada from '../components/familiar/EscalaExplicada.jsx';
 import { etiquetaDeValor, resumenEnPalabras } from '../services/evolucionesService.js';
 
 const TONO_RESUMEN = { bien: 'success.main', igual: 'text.primary', atencion: 'warning.dark', pocos: 'text.secondary' };
@@ -134,6 +135,7 @@ export default function PortalPaciente() {
                   En cada sesión se califica cómo le fue en algunos objetivos, de «No logrado» a «Logrado».
                   Los altibajos de una sesión a otra son normales: importa hacia dónde va.
                 </Typography>
+                <EscalaExplicada />
                 {activos.map(bloque)}
                 {archivados.length > 0 && (
                   <>

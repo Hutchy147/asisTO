@@ -39,7 +39,8 @@ export default function AccountFlag({ tieneCuenta }) {
         })}
       />
       {/* Es la cuenta DEL PACIENTE para su portal, no la del familiar (H8). */}
-      {tieneCuenta ? 'Con acceso al portal' : 'Sin acceso al portal'}
+      {/* «Sin acceso al portal» se leía como «la familia no ve nada». */}
+      {tieneCuenta ? 'El paciente tiene cuenta' : 'El paciente no tiene cuenta'}
     </Box>
   );
 }

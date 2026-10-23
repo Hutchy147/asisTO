@@ -136,7 +136,9 @@ INSERT INTO pacientes
   -- asi que el estado "dado de baja" existia pero no se podia MOSTRAR: la
   -- ficha en modo lectura salia vacia y el grafico de evolucion tambien. El
   -- caso interesante no era demostrable en la base de la demo.
-  (16, NULL, 'Ignacio',   'Rivas',     '2011-04-25', 'Alta por cumplimiento de objetivos.',                                     'HC-0016', TRUE,
+  -- El diagnostico es un diagnostico: antes decia "Alta por cumplimiento de
+  -- objetivos." y aparecia en la columna Diagnostico (usabilidad).
+  (16, NULL, 'Ignacio',   'Rivas',     '2011-04-25', 'Dispraxia del desarrollo. Motricidad fina y escritura.',                  'HC-0016', TRUE,
    DATE_SUB(CURDATE(), INTERVAL 150 DAY)),
   -- Paciente RECIEN INGRESADO, con objetivos en FORMATO REAL DE TO.
   -- Ver el bloque "OBJETIVOS DEL PACIENTE 17" mas abajo, que explica de
@@ -425,7 +427,7 @@ BEGIN
               VALUES (
                 v_id_sesion, v_id_obj, 1 + (v_contador MOD 5),
                 CASE v_contador MOD 4
-                  WHEN 0 THEN 'Buena disposicion durante toda la actividad.'
+                  WHEN 0 THEN CONVERT(0x4275656E6120646973706F73696369C3B36E20647572616E746520746F6461206C61206163746976696461642E USING utf8mb4)
                   WHEN 1 THEN CONVERT(0x4E656365736974C3B32061706F796F2076657262616C20656E206C6120736567756E6461206D697461642E USING utf8mb4)
                   WHEN 2 THEN 'Avance respecto de la semana anterior.'
                   ELSE        'Sostuvo la consigna con ayuda puntual.'
@@ -673,7 +675,8 @@ UPDATE asignaciones
 UPDATE pacientes
    SET activo = FALSE,
        fecha_baja = DATE_SUB(CURDATE(), INTERVAL 90 DAY),
-       tipo_cierre = 'alta'
+       tipo_cierre = 'alta',
+       motivo_baja = 'Alta por cumplimiento de objetivos'
  WHERE id = 16;
 
 UPDATE objetivos_terapeuticos
@@ -799,8 +802,11 @@ SELECT fp.id_familiar, o.id_paciente, 'cambio_objetivo',
  WHERE o.id = (SELECT MIN(o2.id) FROM objetivos_terapeuticos o2 WHERE o2.id_paciente = o.id_paciente);
 
 -- Observaciones tecnicas de RRHH sobre las primeras ausencias registradas
-INSERT INTO observaciones_rrhh (id_sesion, id_rrhh, texto)
-SELECT id, 1, CONVERT(0x417573656E63696120726567697374726164612E205365206E6F7469666963C3B3206120636F6F7264696E616369C3B36E2E USING utf8mb4)
+-- Fechadas al dia siguiente de cada ausencia: con la hora de la carga
+-- parecian escritas por RRHH minutos antes de entrar (usabilidad).
+INSERT INTO observaciones_rrhh (id_sesion, id_rrhh, texto, fecha_registro)
+SELECT id, 1, CONVERT(0x417573656E63696120726567697374726164612E205365206E6F7469666963C3B3206120636F6F7264696E616369C3B36E2E USING utf8mb4),
+       LEAST(TIMESTAMP(fecha + INTERVAL 1 DAY, '09:30:00'), NOW())
   FROM sesiones WHERE estado = 'ausencia' ORDER BY id LIMIT 12;
 
 INSERT INTO informes

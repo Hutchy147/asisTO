@@ -22,7 +22,7 @@ import { Aviso, Cargando, EstadoError, EstadoVacio } from '../components/estado/
 import { hayCapacidad } from '../config/entregas.js';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { useEstadoEnUrl } from '../hooks/useEstadoEnUrl.js';
-import { contarNoLeidas } from '../services/notificacionesService.js';
+import { contarNoLeidas, obtenerPreferencias } from '../services/notificacionesService.js';
 import {
   descargarPdfInformeVinculado, listarInformesVinculados, listarPacientesVinculados,
   obtenerInformeVinculado,
@@ -74,7 +74,7 @@ function LectorInforme({ idPaciente, idInforme, onCerrar }) {
   );
 }
 
-function InformesDe({ paciente }) {
+function InformesDe({ paciente, textoAviso }) {
   const lista = usePeticion(() => listarInformesVinculados(paciente.id), [paciente.id]);
   const [abierto, setAbierto] = useState(null);
 
@@ -106,7 +106,7 @@ function InformesDe({ paciente }) {
         lista.datos.informes.length === 0 ? (
           <EstadoVacio
             titulo="Todavía no hay informes publicados"
-            descripcion={`Cuando el equipo terapéutico publique un informe de ${paciente.nombre_completo}, lo podrá leer y descargar aquí. Se le avisará cuando esté disponible.`}
+            descripcion={`Cuando el equipo terapéutico publique un informe de ${paciente.nombre_completo}, lo podrá leer y descargar aquí.${textoAviso}`}
           />
         ) : (
           <DataTable columnas={columnas} filas={lista.datos.informes} claveFila={(i) => i.id} />
@@ -123,6 +123,18 @@ export default function InformesFamiliar() {
     () => (hayCapacidad('notificaciones') ? contarNoLeidas() : Promise.resolve({ no_leidas: 0 })),
     [],
   );
+  // Lo que se promete sobre el aviso depende de la preferencia del familiar:
+  // decía «Se le avisará» aunque tuviera los avisos de informes apagados.
+  const preferencias = usePeticion(
+    () => (hayCapacidad('notificaciones') ? obtenerPreferencias() : Promise.resolve(null)),
+    [],
+  );
+  const avisoInforme = preferencias.datos?.preferencias?.find((p) => p.tipo === 'informe_generado');
+  const textoAviso = !avisoInforme
+    ? ''
+    : avisoInforme.habilitada
+      ? ' Cuando haya uno nuevo, le aparecerá un aviso en «Avisos».'
+      : ' Tiene desactivados los avisos de informes nuevos: puede activarlos en «Avisos».';
   const [elegidoUrl, setElegido] = useEstadoEnUrl('paciente', '');
   const elegido = Number(elegidoUrl) || null;
   const lista = pacientes.datos?.pacientes ?? [];
@@ -153,7 +165,7 @@ export default function InformesFamiliar() {
               {lista.map((p) => <Tab key={p.id} value={p.id} label={p.nombre_completo} />)}
             </Tabs>
           )}
-          <InformesDe key={paciente.id} paciente={paciente} />
+          <InformesDe key={paciente.id} paciente={paciente} textoAviso={textoAviso} />
         </>
       )}
     </BarraFamiliar>

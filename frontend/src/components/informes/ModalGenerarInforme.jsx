@@ -37,7 +37,7 @@ function opcionesSemestre() {
 }
 
 export default function ModalGenerarInforme({
-  abierto, idPaciente, iaDisponible, hayPuedePti = true, borradores = [],
+  abierto, idPaciente, nombrePaciente = '', iaDisponible, hayPuedePti = true, borradores = [],
   tipoInicial = 'mensual', periodoInicial = '', onCerrar, onGenerado,
 }) {
   const hoy = new Date();
@@ -73,6 +73,10 @@ export default function ModalGenerarInforme({
     <Dialog open={abierto} onClose={enviando ? undefined : onCerrar} PaperProps={{ sx: { width: 520, maxWidth: '95vw' } }}>
       <Box sx={{ px: 3, pt: 2.5 }}>
         <Typography variant="h5">Generar informe</Typography>
+        {/* Para confirmar de quién es sin depender de la fila tocada (usabilidad). */}
+        {nombrePaciente && (
+          <Typography variant="body2" color="text.secondary" className="texto-libre">{nombrePaciente}</Typography>
+        )}
       </Box>
       <DialogContent sx={{ px: 3, py: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
         {error && <Aviso severidad="error">{error.message}</Aviso>}
