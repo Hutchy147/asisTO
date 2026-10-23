@@ -2,6 +2,8 @@
 // Estado de sesion de la app: usuario, rol, perfil y token.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import Alert from '@mui/material/Alert';
+import Snackbar from '@mui/material/Snackbar';
 
 import {
   getMe,
@@ -84,8 +86,13 @@ export function AuthProvider({ children }) {
     };
   }, [limpiarSesion]);
 
+  // Claves equivocadas con esta cuenta desde el ingreso anterior: se avisa al
+  // entrar para que la persona se entere si alguien probó (usabilidad, RRHH).
+  const [intentosFallidos, setIntentosFallidos] = useState(0);
+
   const login = useCallback(async (email, contrasena) => {
     const datos = await loginRequest(email, contrasena);
+    setIntentosFallidos(Number(datos.intentos_fallidos) || 0);
     // El token NO se guarda: el backend dejó la cookie HttpOnly.
     marcarSesion(true);
     setUsuario(datos.usuario);
@@ -103,6 +110,7 @@ export function AuthProvider({ children }) {
     }
     limpiarSesion();
     setAvisoSesion('');
+    setIntentosFallidos(0);
   }, [limpiarSesion]);
 
   // useCallback y no una arrow suelta dentro del useMemo: si cambiara de
@@ -125,7 +133,22 @@ export function AuthProvider({ children }) {
     [usuario, perfil, cargando, avisoSesion, login, logout, limpiarAviso]
   );
 
-  return <AuthContext.Provider value={valor}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={valor}>
+      {children}
+      <Snackbar
+        open={intentosFallidos > 0 && Boolean(usuario)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert severity="warning" variant="filled" onClose={() => setIntentosFallidos(0)} sx={{ maxWidth: 560 }}>
+          {intentosFallidos === 1
+            ? 'Desde su último ingreso hubo 1 intento fallido de entrar con su cuenta.'
+            : `Desde su último ingreso hubo ${intentosFallidos} intentos fallidos de entrar con su cuenta.`}
+          {' '}Si no fue usted, cambie su contraseña.
+        </Alert>
+      </Snackbar>
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

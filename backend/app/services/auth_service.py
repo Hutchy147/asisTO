@@ -218,6 +218,31 @@ def autenticar(email, contrasena):
     return token, usuario, obtener_perfil(usuario)
 
 
+def intentos_fallidos_previos(id_usuario):
+    """
+    Claves equivocadas (o bloqueos) con esta cuenta entre el ingreso anterior
+    y el actual. Se muestra al entrar: es la forma de que la persona se entere
+    de que alguien probo con su cuenta (usabilidad, RRHH). Se llama DESPUES de
+    auditar el ingreso actual, por eso el corte es el PENULTIMO exitoso. Sin
+    ingreso anterior se cuentan los ultimos 30 dias.
+    """
+    anterior = db.session.execute(
+        text(
+            "SELECT id FROM auditoria_accesos WHERE id_usuario = :u AND resultado = 'exitoso' "
+            "ORDER BY id DESC LIMIT 1 OFFSET 1"
+        ),
+        {'u': id_usuario},
+    ).scalar()
+    condicion = 'id > :desde' if anterior else 'fecha >= NOW() - INTERVAL 30 DAY'
+    return int(db.session.execute(
+        text(
+            "SELECT COUNT(*) FROM auditoria_accesos WHERE id_usuario = :u "
+            f"AND resultado IN ('fallido', 'bloqueado') AND {condicion}"
+        ),
+        {'u': id_usuario, 'desde': anterior or 0},
+    ).scalar() or 0)
+
+
 def obtener_perfil(usuario):
     """
     Datos del perfil segun el rol. None si el rol no tiene perfil cargado.

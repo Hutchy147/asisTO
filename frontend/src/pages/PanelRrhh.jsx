@@ -184,6 +184,10 @@ export default function PanelRrhh() {
   // la exportación siguen siendo del período completo (usabilidad, RRHH:
   // «no pude ver solo las ausencias, recorrí 86 filas»).
   const [mostrar, setMostrar] = useState('todas');
+  // Filas dibujadas: de a 100 para que el navegador no se pegue, con «Mostrar
+  // más» para poder recorrer todas sin filtrar (usabilidad, RRHH).
+  const [visibles, setVisibles] = useState(MAXIMO_FILAS_VISIBLES);
+  useEffect(() => { setVisibles(MAXIMO_FILAS_VISIBLES); }, [aplicado, mostrar]);
   const sesionesListadas = sesiones.filter((s) => {
     if (mostrar === 'ausencias') return s.estado === ESTADO_AUSENCIA;
     if (mostrar === 'paciente' || mostrar === 'terapeuta') return s.estado === ESTADO_AUSENCIA && s.ausencia_de === mostrar;
@@ -260,8 +264,10 @@ export default function PanelRrhh() {
     // Sale `sesiones` ENTERO, no `sesiones.slice(...)`: el tope de 100 es
     // para que el navegador no se pegue dibujando, y un archivo no dibuja
     // nada. Exportar lo que se ve seria exportar un recorte de pantalla.
-    const contenido = armarCsv(sesiones, columnasCsv);
-    const nombre = `asistencias_${aplicado.desde}_${aplicado.hasta}.csv`;
+    // Con «Mostrar» filtrado sale lo filtrado: el botón lo dice (usabilidad,
+    // RRHH: «no sé si exporta lo filtrado o todo»).
+    const contenido = armarCsv(sesionesListadas, columnasCsv);
+    const nombre = `asistencias_${aplicado.desde}_${aplicado.hasta}${mostrar === 'todas' ? '' : `_${mostrar}`}.csv`;
     descargarCsv(nombre, contenido);
     setDescarga(nombre);
   };
@@ -303,7 +309,12 @@ export default function PanelRrhh() {
       clave: 'estado',
       etiqueta: 'Estado',
       ancho: 128,
-      render: (s) => <SesionEstadoChip {...estadoVisible(s)} />,
+      // Mismas palabras que las tarjetas y el resumen: «Sin cerrar», no
+      // «En registro» (usabilidad, RRHH).
+      render: (s) => {
+        const visible = estadoVisible(s);
+        return <SesionEstadoChip {...visible} etiqueta={visible.estado === 'incompleta' ? 'Sin cerrar' : visible.etiqueta} />;
+      },
     },
     {
       clave: 'ausencia_de',
@@ -353,10 +364,16 @@ export default function PanelRrhh() {
     },
   ];
 
+  // Un rango invertido no se manda: antes salía el error del servidor con un
+  // «Reintentar» que repetía lo mismo, y el botón de exportar seguía activo
+  // con los datos del período anterior (usabilidad, RRHH).
+  const rangoInvalido = Boolean(borrador.desde && borrador.hasta && borrador.desde > borrador.hasta);
   const aplicar = (evento) => {
     evento?.preventDefault();
-    setAplicado({ ...borrador });
+    if (!rangoInvalido) setAplicado({ ...borrador });
   };
+  const hoyIso = iso(new Date());
+  const periodoFuturo = aplicado.desde > hoyIso;
 
   return (
     <Box sx={{ minHeight: '100vh' }}>
@@ -391,7 +408,7 @@ export default function PanelRrhh() {
         <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 0.5 }}>
           <Typography variant="h4">Panel de RRHH</Typography>
           <Chip
-            label="rrhh"
+            label="RRHH"
             sx={(theme) => ({
               backgroundColor: theme.palette.roles.rrhh.bg,
               color: theme.palette.roles.rrhh.fg,
@@ -425,6 +442,8 @@ export default function PanelRrhh() {
             InputLabelProps={{ shrink: true }}
             value={borrador.hasta}
             onChange={(e) => setBorrador({ ...borrador, hasta: e.target.value })}
+            error={rangoInvalido}
+            helperText={rangoInvalido ? 'Es anterior a «Desde».' : undefined}
           />
           <TextField
             select label="Terapeuta" size="small" sx={{ minWidth: 220 }}
@@ -443,7 +462,7 @@ export default function PanelRrhh() {
               <MenuItem key={t.id} value={t.id}>{t.nombre}</MenuItem>
             ))}
           </TextField>
-          <Button type="submit" variant="contained">Ver período</Button>
+          <Button type="submit" variant="contained" disabled={rangoInvalido}>Ver período</Button>
           {fechasSinAplicar && (
             <Typography variant="body2" sx={{ color: 'warning.dark', alignSelf: 'center' }}>
               Cambió las fechas: toque «Ver período» para actualizar los totales.
@@ -473,11 +492,12 @@ export default function PanelRrhh() {
             type="button"
             variant="outlined"
             onClick={exportar}
-            disabled={reporte.cargando || sesiones.length === 0}
+            disabled={reporte.cargando || Boolean(reporte.error) || fechasSinAplicar || sesionesListadas.length === 0}
           >
-            {sesiones.length > 0
-              ? `Exportar a Excel (${sesiones.length} ${sesiones.length === 1 ? 'sesión' : 'sesiones'})`
-              : 'Exportar a Excel'}
+            {/* Es un CSV: «Excel» a secas prometía un .xlsx (usabilidad, RRHH). */}
+            {sesionesListadas.length > 0
+              ? `Exportar para Excel, CSV (${sesionesListadas.length} ${sesionesListadas.length === 1 ? 'sesión' : 'sesiones'}${mostrar === 'todas' ? '' : ' filtradas'})`
+              : 'Exportar para Excel, CSV'}
           </Button>
         </Box>
 
@@ -495,7 +515,7 @@ export default function PanelRrhh() {
                 <StatTile etiqueta="Realizadas" valor={resumen.por_estado?.completa ?? 0} nota="Se dieron y están registradas" />
               </Grid>
               <Grid item xs={12} sm={3}>
-                <StatTile etiqueta="Sin cerrar" valor={resumen.por_estado?.incompleta ?? 0} nota="Se dieron; la terapeuta no terminó de registrarlas" />
+                <StatTile etiqueta="Sin cerrar" valor={resumen.por_estado?.incompleta ?? 0} nota="Se dieron; el terapeuta no terminó de registrarlas" />
               </Grid>
               <Grid item xs={12} sm={3}>
                 <StatTile etiqueta="Ausencias" valor={resumen.por_estado?.ausencia ?? 0} nota="Desglose abajo" />
@@ -537,7 +557,7 @@ export default function PanelRrhh() {
               <>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 3, mb: 1.5, flexWrap: 'wrap' }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 600, flex: 1 }}>Resumen por terapeuta</Typography>
-                  <Button variant="outlined" size="small" onClick={exportarResumen}>Exportar el resumen a Excel</Button>
+                  <Button variant="outlined" size="small" onClick={exportarResumen}>Exportar el resumen para Excel, CSV</Button>
                 </Box>
                 <DataTable
                   columnas={COLUMNAS_RESUMEN.map((c) => ({ clave: c.clave, etiqueta: c.etiqueta, render: (f) => f[c.clave] }))}
@@ -545,7 +565,7 @@ export default function PanelRrhh() {
                   claveFila={(f) => f.id_terapeuta}
                 />
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                  «Sin cerrar»: la sesión se dio pero la terapeuta todavía no terminó de cargarla.
+                  «Sin cerrar»: la sesión se dio pero el terapeuta todavía no terminó de cargarla.
                   «Superpuestas» (en el listado): sesiones de la misma terapeuta que se pisan en el horario; conviene revisarlas.
                 </Typography>
               </>
@@ -574,24 +594,30 @@ export default function PanelRrhh() {
               />
             ) : sesiones.length === 0 ? (
               <EstadoVacio
-                titulo="No hubo sesiones en este período"
-                descripcion="Pruebe con un rango más amplio o quite el filtro por terapeuta."
+                titulo={periodoFuturo ? 'El período elegido todavía no ocurrió' : 'No hubo sesiones en este período'}
+                descripcion={periodoFuturo
+                  ? 'Las fechas son posteriores a hoy. Elija un período pasado o use los atajos.'
+                  : 'Pruebe con un rango más amplio o quite el filtro por terapeuta.'}
               />
             ) : (
               <>
                 <DataTable
                   columnas={columnas}
-                  filas={sesionesListadas.slice(0, MAXIMO_FILAS_VISIBLES)}
+                  filas={sesionesListadas.slice(0, visibles)}
                   claveFila={(s) => s.id_sesion}
                   onAbrirFila={(s) => setSesionObservada(s)}
                   etiquetaFila={(s) => `Observaciones de la sesión de ${s.paciente} del ${s.fecha}`}
                 />
-                {sesionesListadas.length > MAXIMO_FILAS_VISIBLES && (
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                    Se muestran las primeras {MAXIMO_FILAS_VISIBLES} de {sesionesListadas.length} sesiones.
-                    Los recuentos de arriba son sobre las {sesiones.length} del período, no sobre
-                    las que se ven. Acote el período o filtre por terapeuta para recorrerlas todas.
-                  </Typography>
+                {sesionesListadas.length > visibles && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 1, flexWrap: 'wrap' }}>
+                    <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+                      Se muestran {visibles} de {sesionesListadas.length} sesiones. Los recuentos de arriba
+                      son sobre las {sesiones.length} del período, no sobre las que se ven.
+                    </Typography>
+                    <Button variant="outlined" size="small" onClick={() => setVisibles((v) => v + MAXIMO_FILAS_VISIBLES)}>
+                      Mostrar {Math.min(MAXIMO_FILAS_VISIBLES, sesionesListadas.length - visibles)} más
+                    </Button>
+                  </Box>
                 )}
               </>
             )}

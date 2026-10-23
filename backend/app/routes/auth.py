@@ -10,7 +10,7 @@ from app.utils import limites
 from app.utils.errors import ErrorAplicacion
 
 from app.services.auth_service import (
-    autenticar, enlace_de_recuperacion_vigente, obtener_perfil,
+    autenticar, enlace_de_recuperacion_vigente, intentos_fallidos_previos, obtener_perfil,
     restablecer_contrasena, solicitar_recuperacion,
 )
 from app.utils.security import requiere_rol
@@ -61,6 +61,7 @@ def login():
         'token': token,
         'usuario': usuario.to_dict(),
         'perfil': perfil,
+        'intentos_fallidos': intentos_fallidos_previos(usuario.id),
     })
     _poner_cookie(respuesta, token)
     return respuesta, 200

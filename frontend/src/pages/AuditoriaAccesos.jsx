@@ -52,9 +52,10 @@ function ventanaInicial() {
 const ATAJOS = [[0, 'Hoy'], [7, 'Últimos 7 días'], [14, 'Últimos 14 días'], [30, 'Últimos 30 días']];
 
 function formatearMomento(texto) {
-  // 'AAAA-MM-DD HH:MM:SS' -> 'DD/MM/AAAA HH:MM'
-  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(texto ?? '');
-  return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : (texto ?? '—');
+  // 'AAAA-MM-DD HH:MM:SS' -> 'DD/MM/AAAA HH:MM:SS'. Con segundos: tres
+  // intentos del mismo minuto se veían idénticos (usabilidad, RRHH).
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):?(\d{2})?/.exec(texto ?? '');
+  return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}${m[6] ? `:${m[6]}` : ''}` : (texto ?? '—');
 }
 
 export default function AuditoriaAccesos() {

@@ -64,6 +64,12 @@ export default function RecuperarContrasena() {
             <Stack spacing={2}>
               <Typography variant="body2" color="text.secondary">
                 Ingrese el email de su cuenta y se generará un enlace para elegir una contraseña nueva.
+                El enlace vale una hora y sirve una sola vez.
+              </Typography>
+              {/* Contra el phishing: qué nunca hace el sistema (usabilidad, RRHH). */}
+              <Typography variant="body2" color="text.secondary">
+                AsisTO nunca le pide su contraseña por correo, mensaje o teléfono. Desconfíe de cualquier
+                enlace que no lleve a esta misma dirección.
               </Typography>
               <TextField
                 label="Email" type="email" value={email} autoFocus required fullWidth

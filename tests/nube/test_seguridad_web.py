@@ -57,6 +57,17 @@ class SesionEnCookie(BaseApi):
         self.assertEqual(self.client.get('/api/auth/me', headers={'Authorization': f'Bearer {token2}'}).status_code, 200)
         self._tokens.pop('diego', None)
 
+    def test_el_ingreso_avisa_los_intentos_fallidos_desde_el_anterior(self):
+        email = EMAILS['rrhh']
+        # ingreso de referencia: a partir de aca se cuenta
+        self.assertEqual(self._entrar(self._navegador(), 'rrhh').get_json()['intentos_fallidos'] >= 0, True)
+        for _ in range(2):
+            r = self.client.post('/api/auth/login', json={'email': email, 'contrasena': 'equivocada123'})
+            self.assertEqual(r.status_code, 401)
+        self.assertEqual(self._entrar(self._navegador(), 'rrhh').get_json()['intentos_fallidos'], 2)
+        # control: el siguiente ingreso ya no los repite
+        self.assertEqual(self._entrar(self._navegador(), 'rrhh').get_json()['intentos_fallidos'], 0)
+
     def test_restablecer_la_contrasena_revoca_las_sesiones(self):
         token = self._entrar(self._navegador(), 'rrhh').get_json()['token']
         enlace = self.client.post('/api/auth/recuperar', json={'email': EMAILS['rrhh']}).get_json().get('token_desarrollo')
