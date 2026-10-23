@@ -25,7 +25,7 @@ import ModalEditarSesion from '../components/sesiones/ModalEditarSesion.jsx';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { useFiltrosEnUrl } from '../hooks/useEstadoEnUrl.js';
 import { listarPacientes } from '../services/pacientesService.js';
-import { ETIQUETA_ESTADO, listarSesionesRegistradas } from '../services/sesionesService.js';
+import { estadoVisible, listarSesionesRegistradas } from '../services/sesionesService.js';
 import { formatearFecha } from '../utils/fechas.js';
 
 const POR_PAGINA = 15;
@@ -96,10 +96,10 @@ export default function SesionesRegistradas() {
     },
     {
       clave: 'estado', etiqueta: 'Estado', ancho: 130,
-      // Acá se muestra el estado con que se cerró la sesión (el mismo del
-      // filtro), no la etapa de trabajo del Panel: lo pendiente no está en
-      // esta pantalla.
-      render: (s) => <SesionEstadoChip estado={s.estado} etiqueta={ETIQUETA_ESTADO[s.estado]} />,
+      // La misma etapa que el Panel y el detalle: antes esta lista decía
+      // «Realizada» y el Panel «Por registrar» para la misma sesión
+      // (usabilidad, terapeuta).
+      render: (s) => <SesionEstadoChip {...estadoVisible(s)} />,
     },
     {
       clave: 'evolucion', etiqueta: 'Evolución', ancho: 130,
@@ -131,13 +131,15 @@ export default function SesionesRegistradas() {
         </CampoTexto>
         <CampoTexto id="filtro-terapeuta" etiqueta="Terapeuta" select valor={filtros.terapeuta} onChange={cambiar('terapeuta')}>
           <MenuItem value="mias">Mis sesiones</MenuItem>
-          <MenuItem value="todas">Todas las terapeutas</MenuItem>
+          <MenuItem value="todas">Todos los terapeutas</MenuItem>
         </CampoTexto>
         <CampoTexto id="filtro-estado" etiqueta="Estado" select valor={filtros.estado} onChange={cambiar('estado')}>
           <MenuItem value="">Todos</MenuItem>
-          <MenuItem value="completa">{ETIQUETA_ESTADO.completa}</MenuItem>
-          <MenuItem value="incompleta">{ETIQUETA_ESTADO.incompleta}</MenuItem>
-          <MenuItem value="ausencia">{ETIQUETA_ESTADO.ausencia}</MenuItem>
+          {/* El filtro va por cómo se cerró la sesión; una cerrada sin
+              calificar figura «Por registrar» en la columna. */}
+          <MenuItem value="completa">Cerradas como realizadas</MenuItem>
+          <MenuItem value="incompleta">Sin cerrar</MenuItem>
+          <MenuItem value="ausencia">Ausencias</MenuItem>
         </CampoTexto>
       </Box>
 

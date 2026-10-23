@@ -110,7 +110,7 @@ class InformesApi(BaseApi):
         d = self.borrador(tipo='semestral', periodo=PERIODO_SEM)
         texto = d['contenido']
         self.assertIn('Primer semestre de 2026', texto)
-        self.assertRegex(texto, r'sesi[oó]n(es)? realizada')
+        self.assertRegex(texto, r'asisti[oó] a \d+ sesi[oó]n')
         palabras = ('No logrado', 'Inicial', 'En proceso', 'Avanzado', 'Logrado')
         self.assertTrue(any(p in texto for p in palabras), texto)
         # nada de promedios ni porcentajes

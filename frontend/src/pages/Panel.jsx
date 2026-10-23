@@ -103,6 +103,11 @@ export default function Panel() {
   const hoy = usePeticion(listarSesionesDeHoy, []);
   const pendientes = usePeticion(listarPendientesDeEvolucion, []);
   const pacientes = usePeticion(listarPacientes, []);
+  // Con asignaciones, el bloque muestra solo los propios: mezclaba pacientes
+  // de otros terapeutas como «activos» (usabilidad, terapeuta).
+  const misPacientes = (pacientes.datos?.pacientes ?? []).filter(
+    (p) => !hayCapacidad('asignaciones.gestionar') || p.asignado_a_mi,
+  );
   const deLaSemana = usePeticion(() => listarSesiones(semana), [semana.desde, semana.hasta]);
 
   const fecha = new Date();
@@ -354,9 +359,9 @@ export default function Panel() {
 
             {/* --- Pacientes activos --- */}
             <Bloque
-              titulo="Pacientes activos"
+              titulo={hayCapacidad('asignaciones.gestionar') ? 'Mis pacientes' : 'Pacientes activos'}
               descripcion={
-                pacientes.datos ? `${pacientes.datos.total} en seguimiento` : 'Cargando...'
+                pacientes.datos ? `${misPacientes.length} en seguimiento` : 'Cargando...'
               }
               acciones={
                 <Button size="small" variant="outlined" onClick={() => navigate('/pacientes')}>
@@ -369,11 +374,11 @@ export default function Panel() {
                 <EstadoError error={pacientes.error} onReintentar={pacientes.recargar} />
               )}
               {pacientes.datos && !pacientes.cargando && !pacientes.error && (
-                pacientes.datos.total === 0 ? (
+                misPacientes.length === 0 ? (
                   <EstadoVacio
                     plano
                     titulo="Todavía no hay pacientes cargados"
-                    descripcion="Cuando des de alta al primero va a aparecer acá."
+                    descripcion="Cuando se registre o se le asigne un paciente, aparecerá aquí."
                     acciones={
                       <Button variant="contained" onClick={() => navigate('/pacientes')}>
                         Agregar paciente
@@ -384,7 +389,7 @@ export default function Panel() {
                   // Acceso rápido, no la grilla completa: esa ya tiene su
                   // pantalla propia.
                   <Box>
-                    {pacientes.datos.pacientes.slice(0, 5).map((paciente) => (
+                    {misPacientes.slice(0, 5).map((paciente) => (
                       <Box
                         key={paciente.id}
                         component="button"

@@ -3,7 +3,7 @@
 
 from flask import Blueprint, jsonify, request
 
-from app.services.evoluciones_service import listar_por_sesion, registrar_evolucion
+from app.services.evoluciones_service import corregir_evolucion, listar_por_sesion, registrar_evolucion
 from app.utils.security import requiere_rol
 
 evoluciones_bp = Blueprint('evoluciones', __name__)
@@ -26,3 +26,18 @@ def crear():
 @requiere_rol('terapeuta')
 def listar_de_sesion(id_sesion):
     return jsonify(listar_por_sesion(id_sesion)), 200
+
+
+@evoluciones_bp.put('/evoluciones/<int:id_evolucion>')
+@requiere_rol('terapeuta')
+def corregir(id_evolucion):
+    """Corrige una calificacion con el registro de la sesion abierto."""
+    datos = request.get_json(silent=True) or {}
+    return jsonify({'mensaje': corregir_evolucion(id_evolucion, datos)}), 200
+
+
+@evoluciones_bp.delete('/evoluciones/<int:id_evolucion>')
+@requiere_rol('terapeuta')
+def quitar(id_evolucion):
+    """Quita una calificacion: el objetivo vuelve a quedar sin calificar."""
+    return jsonify({'mensaje': corregir_evolucion(id_evolucion, {}, quitar=True)}), 200

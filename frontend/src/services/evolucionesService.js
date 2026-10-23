@@ -1,7 +1,7 @@
 // frontend/src/services/evolucionesService.js
 // Contrato: docs/api-sesiones-evoluciones.md
 
-import { post } from './api.js';
+import { del, post, put } from './api.js';
 
 /**
  * Escala de logro del centro. ÚNICO lugar donde el número de la base se
@@ -44,9 +44,12 @@ export function etiquetaDeValor(valor) {
 
 /**
  * Resumen EN PALABRAS SIMPLES de cómo viene un objetivo, para la familia y el
- * paciente (pruebas de usabilidad: un padre veía «Logrado» y luego «Inicial»
- * y concluía que su hija empeoraba). Compara el promedio de las primeras
- * calificaciones del período con el de las últimas; con menos de 3 no opina.
+ * paciente. Compara el promedio de las primeras calificaciones del período con
+ * el de las últimas, y NUNCA contradice el último tramo del gráfico (pruebas de
+ * usabilidad: decía «le costó más» cuando la última calificación había subido,
+ * y «estable» con saltos de Inicial a Logrado). Siempre termina con el nivel
+ * de la primera y de la última calificación, que es lo que se ve en el gráfico.
+ * Con menos de 3 calificaciones no opina.
  * -> { texto, tono: 'bien' | 'igual' | 'atencion' | 'pocos' }
  */
 export function resumenEnPalabras(puntos) {
@@ -57,22 +60,35 @@ export function resumenEnPalabras(puntos) {
   const tramo = Math.max(1, Math.floor(valores.length / 3));
   const promedio = (lista) => lista.reduce((a, b) => a + b, 0) / lista.length;
   const diferencia = promedio(valores.slice(-tramo)) - promedio(valores.slice(0, tramo));
-  // Una caída fuerte en la última sesión (dos escalones o más) no puede
-  // quedar tapada por el promedio: una madre vio «Logrado» -> «Inicial» y el
-  // resumen decía «Se mantiene estable».
-  const cayoAlFinal = valores[valores.length - 2] - valores[valores.length - 1] >= 2;
+  const ultimo = valores[valores.length - 1];
+  const previo = valores[valores.length - 2];
+  const cayoAlFinal = previo - ultimo >= 2;
+  const subioAlFinal = ultimo > previo;
+  const variacion = Math.max(...valores) - Math.min(...valores);
+  const detalle = ` Empezó el período en «${etiquetaDeValor(valores[0])}» y la última calificación fue «${etiquetaDeValor(ultimo)}».`;
+  const calma = ' Es habitual que haya altibajos; el equipo lo sigue trabajando.';
+
+  let texto;
+  let tono;
   if (diferencia >= 0.5) {
-    return cayoAlFinal
-      ? { texto: 'Viene mejorando, aunque en la última sesión le costó más. Es habitual que haya altibajos.', tono: 'bien' }
-      : { texto: 'Viene mejorando.', tono: 'bien' };
+    tono = 'bien';
+    texto = cayoAlFinal ? 'Viene mejorando, aunque en la última sesión le costó más.' : 'Viene mejorando.';
+  } else if (diferencia <= -0.5) {
+    tono = 'atencion';
+    texto = subioAlFinal
+      ? `Está por debajo del comienzo del período, aunque en la última sesión mejoró.${calma}`
+      : `En las últimas sesiones le costó más que al comienzo del período.${calma}`;
+  } else if (cayoAlFinal) {
+    tono = 'atencion';
+    texto = `En la última sesión le costó más que en las anteriores.${calma}`;
+  } else if (variacion >= 3) {
+    tono = 'igual';
+    texto = 'Varía bastante de una sesión a otra, sin una tendencia clara.';
+  } else {
+    tono = 'igual';
+    texto = 'Se mantiene estable.';
   }
-  if (cayoAlFinal && diferencia > -0.5) {
-    return { texto: 'En la última sesión le costó más que en las anteriores. Es habitual que haya altibajos; el equipo lo sigue trabajando.', tono: 'atencion' };
-  }
-  if (diferencia <= -0.5) {
-    return { texto: 'En las últimas sesiones le costó más. Es habitual que haya altibajos; el equipo lo sigue trabajando.', tono: 'atencion' };
-  }
-  return { texto: 'Se mantiene estable.', tono: 'igual' };
+  return { texto: texto + detalle, tono };
 }
 
 /**
@@ -99,6 +115,19 @@ export function registrarEvolucion({
     valor,
     observaciones,
   });
+}
+
+/**
+ * Corrige una calificación ya guardada. Solo quien atendió la sesión y con el
+ * registro abierto (una sesión terminada se reabre primero).
+ */
+export function corregirEvolucion(idEvolucion, { valor, observaciones = null }) {
+  return put(`/evoluciones/${idEvolucion}`, { valor, observaciones });
+}
+
+/** Quita una calificación: el objetivo vuelve a quedar sin calificar. */
+export function quitarEvolucion(idEvolucion) {
+  return del(`/evoluciones/${idEvolucion}`);
 }
 
 // Se borraron de aca:

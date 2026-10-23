@@ -3,6 +3,7 @@
 // del rol, navegación entre Progreso, Informes y Avisos, y cierre de sesión.
 // Pensada también para el celular (es como entra la mayoría de las familias).
 
+import { useEffect } from 'react';
 import AppBar from '@mui/material/AppBar';
 import Badge from '@mui/material/Badge';
 import Box from '@mui/material/Box';
@@ -18,6 +19,16 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { hayCapacidad } from '../../config/entregas.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 
+const CLAVE_ELEGIDO = 'asisto.familiar.paciente';
+
+function leerElegido() {
+  try { return window.sessionStorage.getItem(CLAVE_ELEGIDO); } catch { return null; }
+}
+
+function guardarElegido(valor) {
+  try { window.sessionStorage.setItem(CLAVE_ELEGIDO, valor); } catch { /* sin almacenamiento: solo la URL */ }
+}
+
 export default function BarraFamiliar({ activa, sinLeer = 0, children }) {
   const { usuario, logout } = useAuth();
   const navigate = useNavigate();
@@ -26,7 +37,10 @@ export default function BarraFamiliar({ activa, sinLeer = 0, children }) {
   const conAvisos = hayCapacidad('notificaciones');
   const conInformes = hayCapacidad('familiar.informes');
   // El hijo elegido viaja entre Progreso e Informes: antes se volvía al primero.
-  const paciente = params.get('paciente');
+  // También pasa por Avisos y se recuerda en la pestaña del navegador: de
+  // Progreso (Mía) a Avisos y a Informes volvía a Tomás (usabilidad, madre).
+  const paciente = params.get('paciente') ?? leerElegido();
+  useEffect(() => { if (params.get('paciente')) guardarElegido(params.get('paciente')); }, [params]);
   const conPaciente = (ruta) => (paciente ? `${ruta}?paciente=${paciente}` : ruta);
 
   const boton = (id, etiqueta, ruta, insignia = 0) => (
@@ -62,7 +76,7 @@ export default function BarraFamiliar({ activa, sinLeer = 0, children }) {
           <Stack direction="row" spacing={{ xs: 1, sm: 2 }} sx={{ flexGrow: 1, flexBasis: { xs: '100%', sm: 'auto' } }}>
             {boton('evolucion', 'Progreso', conPaciente('/familiar'))}
             {conInformes && boton('informes', 'Informes', conPaciente('/familiar/informes'))}
-            {conAvisos && boton('avisos', 'Avisos', '/familiar/notificaciones', sinLeer)}
+            {conAvisos && boton('avisos', 'Avisos', conPaciente('/familiar/notificaciones'), sinLeer)}
           </Stack>
           {!celular && (
             <Stack direction="row" spacing={2} alignItems="center">

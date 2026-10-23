@@ -198,7 +198,9 @@ export default function Pacientes() {
               {conAsignaciones && !verInactivos && (
                 <FormControlLabel
                   control={<Switch checked={soloMios} onChange={(e) => setSoloMios(e.target.checked)} />}
-                  label="Mis pacientes"
+                  // «Solo»: apagado se entiende que muestra a todos; «Mis
+                  // pacientes» apagado no lo decía (usabilidad, terapeuta).
+                  label="Solo mis pacientes"
                 />
               )}
             </Box>

@@ -8,6 +8,16 @@ import unittest
 
 from _base import BaseApi, CONTRASENA, EMAILS
 
+# La clave nueva tiene que ser distinta de la actual (ola 3 de usabilidad):
+# se cambia a esta y despues se restituye la de siempre por la base.
+CLAVE_NUEVA = 'Otraclave77'
+
+
+def restituir_clave(prueba, email):
+    import bcrypt
+    hash_ = bcrypt.hashpw(CONTRASENA.encode(), bcrypt.gensalt(rounds=4)).decode()
+    prueba.sql(f"UPDATE usuarios SET contrasena_hash = '{hash_}' WHERE email = '{email}'")
+
 
 class SesionEnCookie(BaseApi):
     def _navegador(self):
@@ -73,10 +83,11 @@ class SesionEnCookie(BaseApi):
         enlace = self.client.post('/api/auth/recuperar', json={'email': EMAILS['rrhh']}).get_json().get('token_desarrollo')
         if not enlace:
             self.skipTest('RECUPERACION_MOSTRAR_TOKEN apagado en este entorno')
-        r = self.client.post('/api/auth/restablecer', json={'token': enlace, 'contrasena_nueva': CONTRASENA})
+        r = self.client.post('/api/auth/restablecer', json={'token': enlace, 'contrasena_nueva': CLAVE_NUEVA})
         self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
         self.assertEqual(self.client.get('/api/auth/me', headers={'Authorization': f'Bearer {token}'}).status_code, 401)
         self._tokens.pop('rrhh', None)
+        restituir_clave(self, EMAILS['rrhh'])
 
 
 class Cabeceras(BaseApi):
@@ -145,9 +156,10 @@ class PoliticaYConfiguracion(BaseApi):
             self.assertEqual(r.status_code, 400, clave)
             self.assertIn(fragmento, r.get_json()['mensaje'])
         # control positivo: el enlace sigue vigente y una clave razonable entra
-        r = self.client.post('/api/auth/restablecer', json={'token': enlace, 'contrasena_nueva': CONTRASENA})
+        r = self.client.post('/api/auth/restablecer', json={'token': enlace, 'contrasena_nueva': CLAVE_NUEVA})
         self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
         self._tokens.pop('paciente', None)
+        restituir_clave(self, EMAILS['paciente'])
 
     def test_configuracion_insegura_no_arranca(self):
         from config import Config, ConfigInvalida

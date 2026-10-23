@@ -67,7 +67,7 @@ function LectorInforme({ idPaciente, idInforme, onCerrar }) {
         {datos && <TextoInforme contenido={datos.contenido} />}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
-        <Button color="inherit" onClick={descargar} disabled={!datos}>Descargar PDF (para guardar o imprimir)</Button>
+        <Button variant="outlined" onClick={descargar} disabled={!datos}>Descargar PDF (para guardar o imprimir)</Button>
         <Button variant="outlined" onClick={onCerrar}>Cerrar</Button>
       </DialogActions>
     </Dialog>

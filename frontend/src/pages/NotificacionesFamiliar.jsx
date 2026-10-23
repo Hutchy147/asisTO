@@ -17,6 +17,7 @@ import Typography from '@mui/material/Typography';
 import BarraFamiliar from '../components/familiar/BarraFamiliar.jsx';
 import { Cargando, EstadoError, EstadoVacio } from '../components/estado/index.js';
 import { usePeticion } from '../hooks/usePeticion.js';
+import { useEstadoEnUrl } from '../hooks/useEstadoEnUrl.js';
 import { hayCapacidad } from '../config/entregas.js';
 import {
   guardarPreferencia, listarNotificaciones, marcarNotificacion, marcarTodasLeidas,
@@ -30,8 +31,9 @@ function fechaHora(iso) {
 }
 
 export default function NotificacionesFamiliar() {
-  const [tipo, setTipo] = useState('');
-  const [leida, setLeida] = useState('');
+  // Filtros en la URL: F5 los conserva, como en Progreso (usabilidad, madre).
+  const [tipo, setTipo] = useEstadoEnUrl('tipo', '');
+  const [leida, setLeida] = useEstadoEnUrl('estado', '');
   const [error, setError] = useState('');
 
   const lista = usePeticion(() => listarNotificaciones({ tipo, leida }), [tipo, leida]);
@@ -66,7 +68,7 @@ export default function NotificacionesFamiliar() {
       // Confirmación visible: sin ella no se sabía si el cambio había quedado.
       setGuardado(habilitada
         ? `Listo: va a recibir los avisos de «${item.etiqueta}».`
-        : `Listo: ya no va a recibir los avisos de «${item.etiqueta}».`);
+        : `Listo: ya no va a recibir los avisos de «${item.etiqueta}». Los que ya recibió siguen en el historial.`);
     } catch (fallo) {
       setError(fallo.message);
     }

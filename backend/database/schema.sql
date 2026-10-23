@@ -1393,6 +1393,34 @@ BEGIN
     END IF;
   END IF;
 
+  -- SESION YA REGISTRADA MOVIDA AL FUTURO (2026-10-23, pruebas de
+  -- usabilidad): una sesion realizada y calificada se podia reprogramar al
+  -- 25/12 y quedaba "Agendada" con la evolucion adentro, fuera del listado
+  -- de sesiones. Lo que ya ocurrio no se reprograma: solo puede ir a una
+  -- fecha futura una sesion sin cerrar y sin nada registrado (evoluciones o
+  -- renglones del registro). Corre solo si cambia el momento de la sesion.
+  IF (NEW.fecha <> OLD.fecha OR NEW.hora_inicio <> OLD.hora_inicio)
+     AND TIMESTAMP(NEW.fecha, NEW.hora_inicio) > NOW() THEN
+    IF NEW.estado <> 'incompleta' THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+          'Una sesion realizada o ausente no se puede pasar a una fecha futura';
+    END IF;
+    SELECT COUNT(*) INTO v_evoluciones
+      FROM evoluciones
+     WHERE id_sesion = OLD.id;
+    SELECT COUNT(*) INTO v_renglones
+      FROM sesion_renglones
+     WHERE id_sesion = OLD.id AND momento = 'registro';
+    IF v_evoluciones > 0 OR v_renglones > 0 THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+          'Una sesion con evoluciones o notas registradas no se puede pasar a una fecha futura';
+    END IF;
+    SET v_evoluciones = 0;
+    SET v_renglones = 0;
+  END IF;
+
   -- Regla 2 por la puerta de atras: marcar como ausencia una sesion que
   -- ya tiene evolucion cargada deja exactamente el estado que la regla 2
   -- dice que no puede existir.
@@ -3159,6 +3187,107 @@ BEGIN
     SET p_id_evolucion = LAST_INSERT_ID();
     COMMIT;
     SET p_mensaje = 'Evolucion registrada correctamente';
+  END IF;
+END$$
+
+
+-- ---------------------------------------------------------------------
+-- p_corregir_evolucion (2026-10-23, pruebas de usabilidad)
+--
+-- Una calificacion mal tocada no se podia arreglar: no habia ninguna puerta
+-- de escritura para cambiarla ni para quitarla, ni siquiera con el registro
+-- reabierto. Esta es esa puerta, con dos limites:
+--
+-- 1. Solo el terapeuta que atendio la sesion (misma autoria que al cargar).
+-- 2. Solo con el registro ABIERTO (sesion 'incompleta'). Una sesion
+--    terminada ('completa') se reabre primero: "Terminada" tiene que querer
+--    decir algo. La regla 2 (ausencia) y la 4 (objetivo archivado) las
+--    revalida trg_evoluciones_validar_update en la correccion.
+--
+-- p_quitar = 1 borra la calificacion (el objetivo vuelve a "sin calificar").
+-- ---------------------------------------------------------------------
+CREATE PROCEDURE p_corregir_evolucion (
+  IN  p_id_evolucion   INT UNSIGNED,
+  IN  p_id_terapeuta   INT UNSIGNED,
+  IN  p_valor          TINYINT UNSIGNED,
+  IN  p_observaciones  TEXT,
+  IN  p_quitar         BOOLEAN,
+  OUT p_corregida      TINYINT UNSIGNED,
+  OUT p_mensaje        VARCHAR(255)
+)
+BEGIN
+  DECLARE v_error       VARCHAR(255) DEFAULT '';
+  DECLARE v_id_sesion   INT UNSIGNED DEFAULT NULL;
+  DECLARE v_ter_sesion  INT UNSIGNED DEFAULT NULL;
+  DECLARE v_estado      VARCHAR(20)  DEFAULT NULL;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error = MESSAGE_TEXT;
+    ROLLBACK;
+    SET p_corregida = NULL;
+    SET p_mensaje = v_error;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLSTATE '40001'
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR 1205
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_corregida = NULL;
+    SET p_mensaje = 'No se pudo corregir la calificacion por un problema inesperado. Intente nuevamente.';
+  END;
+
+  SET p_corregida = NULL;
+
+  SELECT id_sesion INTO v_id_sesion FROM evoluciones WHERE id = p_id_evolucion;
+
+  IF v_id_sesion IS NULL THEN
+    SET p_mensaje = 'La calificacion indicada no existe';
+  ELSEIF NOT p_quitar AND (p_valor IS NULL OR p_valor < 1 OR p_valor > 5) THEN
+    SET p_mensaje = 'El valor de la evolucion debe estar entre 1 y 5';
+  ELSE
+    START TRANSACTION;
+
+    -- Mismo orden de locks que el resto: sesiones antes que evoluciones.
+    SELECT id_terapeuta, estado INTO v_ter_sesion, v_estado
+      FROM sesiones
+     WHERE id = v_id_sesion
+     FOR UPDATE;
+
+    IF p_id_terapeuta IS NULL OR p_id_terapeuta <> v_ter_sesion THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Solo el terapeuta que atendio la sesion puede corregir sus calificaciones';
+    END IF;
+
+    IF v_estado = 'completa' THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'La sesion ya fue terminada: reabra el registro para corregir una calificacion';
+    END IF;
+
+    IF p_quitar THEN
+      DELETE FROM evoluciones WHERE id = p_id_evolucion;
+      SET p_mensaje = 'Calificacion quitada';
+    ELSE
+      UPDATE evoluciones
+         SET valor = p_valor,
+             observaciones = p_observaciones
+       WHERE id = p_id_evolucion;
+      SET p_mensaje = 'Calificacion corregida';
+    END IF;
+
+    COMMIT;
+    SET p_corregida = 1;
   END IF;
 END$$
 

@@ -130,7 +130,12 @@ function EvolucionDe({ paciente }) {
   const [desde, setDesde] = useState(filtro.desde);
   const [hasta, setHasta] = useState(filtro.hasta);
   const [pestania, setPestania] = useEstadoEnUrl('vista', 'objetivos');
-  const rangoInvalido = Boolean(desde && hasta && desde > hasta);
+  // Fechas futuras escritas a mano: el `max` del campo no las frena y el
+  // servidor respondía con un error técnico y «Reintentar» (usabilidad, madre).
+  const hoyIso = aIsoLocal(new Date());
+  const desdeFutura = Boolean(desde && desde > hoyIso);
+  const hastaFutura = Boolean(hasta && hasta > hoyIso);
+  const rangoInvalido = Boolean((desde && hasta && desde > hasta) || desdeFutura || hastaFutura);
   const sinFechas = !desde && !hasta;
 
   const evolucion = usePeticion(
@@ -164,19 +169,21 @@ function EvolucionDe({ paciente }) {
         <TextField
           id="filtro-desde" label="Desde" type="date" size="small" value={desde} inputProps={{ max: aIsoLocal(new Date()) }}
           onChange={(e) => setDesde(e.target.value)} InputLabelProps={{ shrink: true }}
-          error={rangoInvalido} sx={{ flex: '1 1 150px' }}
+          error={desdeFutura || Boolean(desde && hasta && desde > hasta)} sx={{ flex: '1 1 150px' }}
           // Mismo hueco de ayuda que "Hasta": si no, quedan desalineados.
-          helperText=" "
+          helperText={desdeFutura ? 'No puede ser posterior a hoy.' : ' '}
         />
         <TextField
           id="filtro-hasta" label="Hasta" type="date" size="small" value={hasta} inputProps={{ max: aIsoLocal(new Date()) }}
           onChange={(e) => setHasta(e.target.value)} InputLabelProps={{ shrink: true }}
-          error={rangoInvalido} sx={{ flex: '1 1 150px' }}
-          helperText={rangoInvalido ? 'La fecha final no puede ser anterior a la inicial.' : ' '}
+          error={hastaFutura || Boolean(desde && hasta && desde > hasta)} sx={{ flex: '1 1 150px' }}
+          helperText={hastaFutura
+            ? 'No puede ser posterior a hoy.'
+            : desde && hasta && desde > hasta ? 'La fecha final no puede ser anterior a la inicial.' : ' '}
         />
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
           <Button variant="contained" onClick={aplicar} disabled={rangoInvalido || sinFechas}>Filtrar</Button>
-          <Button color="inherit" onClick={limpiar} disabled={!filtro.desde && !filtro.hasta && sinFechas}>
+          <Button variant="outlined" color="inherit" onClick={limpiar} disabled={!filtro.desde && !filtro.hasta && sinFechas}>
             Todo el tratamiento
           </Button>
           {ATAJOS.map((a) => (
@@ -214,7 +221,12 @@ function EvolucionDe({ paciente }) {
               descripcion={
                 datos.periodo.completo
                   ? `Todo lo cargado en el sistema${primeraSesion ? ` desde la primera sesión registrada, el ${formatearFecha(primeraSesion)},` : ''} hasta hoy. Cada objetivo es algo que se está trabajando en la terapia.`
-                  : `Del ${formatearFecha(datos.periodo.desde)} al ${formatearFecha(datos.periodo.hasta)}.`
+                  : `Del ${formatearFecha(datos.periodo.desde)} al ${formatearFecha(datos.periodo.hasta)}.${
+                    // Si todo lo registrado cae en el período, el gráfico no cambia
+                    // y parecía que el filtro no hacía nada (usabilidad, padre).
+                    primeraSesion && primeraSesion > datos.periodo.desde
+                      ? ` La primera sesión registrada en este período es del ${formatearFecha(primeraSesion)}.`
+                      : ''}`
               }
             >
               {datos.objetivos.length === 0 || datos.total_sesiones === 0 ? (

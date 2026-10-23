@@ -22,7 +22,7 @@ from sqlalchemy import or_, text
 
 from app import db
 from app.models import (
-    Asignacion, Informe, Ingreso, ObjetivoTerapeutico, Paciente, Sesion, Terapeuta, Usuario,
+    Asignacion, Evolucion, Informe, Ingreso, ObjetivoTerapeutico, Paciente, Sesion, Terapeuta, Usuario,
 )
 from app.services import informes_generador as generador
 from app.services.ingreso_service import obtener_ingreso
@@ -372,7 +372,7 @@ def control_mensual(mes=None):
     ids = [p.id for p in pacientes]
     por_paciente = {i: [] for i in ids}
     con_ingreso = set()
-    sesiones = {}
+    sesiones, ausencias_mes = {}, {}
     if ids:
         for informe in Informe.query.filter(
             Informe.id_paciente.in_(ids), Informe.estado.in_(('borrador', 'final')),
@@ -384,13 +384,23 @@ def control_mensual(mes=None):
         ).all():
             por_paciente[informe.id_paciente].append(informe)
         con_ingreso = {i for (i,) in db.session.query(Ingreso.id_paciente).filter(Ingreso.id_paciente.in_(ids)).all()}
+        # Mismo criterio que la asistencia del informe (informes_generador.
+        # recolectar): asistio = cerrada, o sin cerrar pero ya calificada.
+        # Antes el control contaba cerradas + ausencias y el informe otra
+        # cosa: «10» en la lista y «14 realizadas» en el texto (usabilidad).
+        con_evolucion = db.session.query(Evolucion.id).filter(Evolucion.id_sesion == Sesion.id).exists()
+        asistio = db.or_(Sesion.estado == 'completa', db.and_(Sesion.estado == 'incompleta', con_evolucion))
         filas = (
-            db.session.query(Sesion.id_paciente, db.func.count(Sesion.id))
-            .filter(Sesion.id_paciente.in_(ids), Sesion.fecha >= desde, Sesion.fecha <= hasta,
-                    Sesion.estado.in_(('completa', 'ausencia')))
+            db.session.query(
+                Sesion.id_paciente,
+                db.func.sum(db.case((asistio, 1), else_=0)),
+                db.func.sum(db.case((Sesion.estado == 'ausencia', 1), else_=0)),
+            )
+            .filter(Sesion.id_paciente.in_(ids), Sesion.fecha >= desde, Sesion.fecha <= min(hasta, dt.date.today()))
             .group_by(Sesion.id_paciente).all()
         )
-        sesiones = {i: n for i, n in filas}
+        sesiones = {i: int(n or 0) for i, n, _ in filas}
+        ausencias_mes = {i: int(a or 0) for i, _, a in filas}
 
     cierra_semestre = desde.month in (6, 12)
     filas_control = []
@@ -403,7 +413,7 @@ def control_mensual(mes=None):
         # Cuenta todo lo que sigue abierto (mensual, semestral, PTI y
         # correcciones de publicados), no solo el borrador mensual.
         resumen['en_borrador_total'] += sum(1 for i in propios if i.estado == 'borrador')
-        sin_actividad = (not p.activo) and int(sesiones.get(p.id, 0)) == 0
+        sin_actividad = (not p.activo) and int(sesiones.get(p.id, 0)) + int(ausencias_mes.get(p.id, 0)) == 0
         if mensual is None and sin_actividad:
             # De baja y sin sesiones en el mes: no hay nada que informar.
             mensual = {'estado': 'no_corresponde'}
@@ -426,6 +436,7 @@ def control_mensual(mes=None):
             'id_paciente': p.id,
             'paciente': p.nombre_completo,
             'sesiones_registradas': int(sesiones.get(p.id, 0)),
+            'ausencias': int(ausencias_mes.get(p.id, 0)),
             'mensual': mensual,
             'semestral': semestral,
             'pti': pti,

@@ -134,6 +134,8 @@ def obtener_texto_signal(error):
 # marcar un campo y no lo hace, que es como se encontro que
 # "El objetivo esta archivado..." no matcheaba con 'objetivo archivado'.
 CAMPO_POR_FRAGMENTO = (
+    # --- Sesiones ---
+    ('no se puede pasar a una fecha futura', 'fecha'),
     # --- Objetivos ---
     ('esta archivado: su descripcion quedo fija', 'descripcion'),
     ('objetivo activo con esa descripcion', 'descripcion'),

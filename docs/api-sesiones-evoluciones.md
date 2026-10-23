@@ -483,6 +483,7 @@ depende:
 | Superposición horaria | Cambia `fecha`, `hora_inicio` u `hora_fin` | Si el horario no se toca, no puede haber una superposición nueva |
 | Sesión posterior a la baja del paciente | Cambia `fecha` | El paciente no es editable; si la fecha no se mueve, la sesión sigue donde ya estaba validada |
 | Ausencia con evolución ya cargada | Cambia `estado` a `ausencia` | Es la única de las cuatro que corre **siempre**, sin guardia: no depende de qué otro campo se tocó |
+| Sesión ya registrada movida al futuro (2026-10-23) | Cambia `fecha` u `hora_inicio` a un momento posterior a ahora | Solo puede ir al futuro una sesión `incompleta` sin evoluciones ni renglones de registro: lo que ya ocurrió no se reprograma |
 | Consistencia `estado`/`ausencia_de` (2026-09-11) | Cambia `estado` o `ausencia_de` | Igual criterio que las otras dos guardadas: una fila de ausencia sembrada antes de esta columna, con `ausencia_de` en `NULL`, no se puede dejar congelada para cualquier edición que no toque ninguno de los dos campos |
 
 Una edición que solo cambia `notas` no dispara ninguna de las cuatro — y no
@@ -502,6 +503,7 @@ hace falta: ninguna depende de `notas`.
 | Fecha posterior a la baja del paciente | `400` | `El paciente no esta en tratamiento activo: solo se pueden cargar sesiones hasta el dia del cierre` |
 | **A `ausencia` con evoluciones cargadas** | `400` | `No se puede marcar la sesion como ausencia: ya tiene evoluciones cargadas` |
 | **`ausencia` sin `ausencia_de` (trigger)** | `400` | `No se puede marcar la sesion como ausencia sin declarar quien falto` |
+| **Sesión ya registrada a una fecha futura** | `400` (`campo: fecha`) | `Una sesion realizada o ausente no se puede pasar a una fecha futura` / `Una sesion con evoluciones o notas registradas no se puede pasar a una fecha futura` |
 | Sesión inexistente | `404` | `La sesion indicada no existe.` |
 
 Los del bloque de `trg_sesiones_solape_update` se propagan tal cual desde
@@ -568,6 +570,28 @@ propagan **tal cual**: son accionables y mostrables al usuario sin reescribir.
 | **Sesión de otro terapeuta** | `403` | `Solo el terapeuta que atendio la sesion puede cargarle evolucion.` |
 | Sesión inexistente | `404` | `La sesion indicada no existe.` |
 | Falta `id_sesion` o `id_objetivo` | `400` | `Faltan datos obligatorios: id_sesion, id_objetivo.` |
+
+---
+
+## `PUT /api/evoluciones/<id>` y `DELETE /api/evoluciones/<id>` (2026-10-23)
+
+Corrigen o quitan una calificación ya guardada (`p_corregir_evolucion`). Antes
+no había ninguna forma de arreglar una calificación mal tocada.
+
+- Solo el terapeuta que atendió la sesión.
+- Solo con el registro **abierto** (sesión `incompleta`). Una sesión terminada
+  se reabre primero (`PUT /api/sesiones/<id>` con `estado: incompleta`).
+- `PUT` recibe `{ "valor": 1..5, "observaciones": "texto o null" }`. Las reglas
+  2 y 4 las revalida `trg_evoluciones_validar_update`.
+- `DELETE` deja el objetivo sin calificar en esa sesión.
+
+| Caso | Status | `mensaje` |
+|---|---|---|
+| Corregida / quitada | `200` | `Calificación corregida` / `Calificación quitada` |
+| Valor fuera de escala | `400` (`campo: valor`) | `El valor de la evolución tiene que estar entre 1 y 5.` |
+| Sesión terminada | `400` | `La sesión ya fue terminada: reabra el registro para corregir una calificación` |
+| Otro terapeuta | `403` | `Solo el terapeuta que atendió la sesión puede corregir sus calificaciones` |
+| No existe | `404` | `La calificación indicada no existe` |
 
 ---
 

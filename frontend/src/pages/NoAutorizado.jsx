@@ -6,7 +6,7 @@ import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 
 import { RUTA_POR_ROL, useAuth } from '../context/AuthContext.jsx';
 
@@ -20,8 +20,12 @@ const NOMBRE_DE_ROL = {
 };
 
 export default function NoAutorizado() {
-  const { rol, logout } = useAuth();
+  const { rol, logout, autenticado, cargando } = useAuth();
   const navigate = useNavigate();
+
+  // Sin sesión no hay 403 que mostrar: después de cerrar sesión y usar Atrás
+  // quedaba «Su sesión es válida», que era falso (usabilidad, padre).
+  if (!cargando && !autenticado) return <Navigate to="/login" replace />;
 
   const rutaPropia = RUTA_POR_ROL[rol] ?? '/login';
 

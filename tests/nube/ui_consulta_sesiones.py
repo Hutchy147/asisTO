@@ -35,13 +35,13 @@ with sync_playwright() as p:
     pg.get_by_role('button', name='Anterior').click(); pg.wait_for_timeout(1000)
 
     # filtro por estado
-    pg.locator('#filtro-estado').click(); pg.get_by_role('option', name='Ausente').click(); pg.wait_for_timeout(1500)
+    pg.locator('#filtro-estado').click(); pg.get_by_role('option', name='Ausencias').click(); pg.wait_for_timeout(1500)
     chips = pg.locator('tbody tr').all_inner_texts()
     check(len(chips) > 0 and all('Ausente' in t for t in chips), 'el filtro de estado deja solo ausencias')
     pg.locator('#filtro-estado').click(); pg.get_by_role('option', name='Todos').click(); pg.wait_for_timeout(1000)
 
     # todas las terapeutas: aparece una sesion de otra terapeuta y se abre en solo lectura
-    pg.locator('#filtro-terapeuta').click(); pg.get_by_role('option', name='Todas las terapeutas').click(); pg.wait_for_timeout(1500)
+    pg.locator('#filtro-terapeuta').click(); pg.get_by_role('option', name='Todos los terapeutas').click(); pg.wait_for_timeout(1500)
     ajena = pg.locator('tbody tr', has_text='Moyano').first
     check(ajena.count() == 1, 'con "todas" se ven sesiones de otra terapeuta')
     ajena.click(); pg.wait_for_timeout(1500)

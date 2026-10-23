@@ -12,6 +12,7 @@
 
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
+import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
 
 import { ESCALA_VALORES, etiquetaDeValor } from '../../services/evolucionesService.js';
@@ -20,6 +21,8 @@ import { formatearFecha } from '../../utils/fechas.js';
 // Sistema de coordenadas interno del SVG. El viewBox lo escala solo, así
 // que estos números son proporciones, no píxeles en pantalla.
 const ANCHO = 720;
+const ANCHO_CELULAR = 360;
+const IZQUIERDA_CELULAR = 80;
 const MARGEN = { arriba: 14, derecha: 18, izquierda: 104 };
 const PASO_Y = 42; // separación entre los cinco escalones
 
@@ -123,6 +126,12 @@ function Conteo({ color, cantidad, texto, singular }) {
 export default function GraficoEvolucion({ serie, titulo }) {
   const tema = useTheme();
   const puntos = serie?.puntos ?? [];
+  // En el celular el SVG de 720 se achicaba a la mitad y los rótulos quedaban
+  // de 5 px (usabilidad, madre): con un lienzo angosto se ven a tamaño real.
+  const celular = useMediaQuery(tema.breakpoints.down('sm'));
+  const ancho = celular ? ANCHO_CELULAR : ANCHO;
+  const izquierda = celular ? IZQUIERDA_CELULAR : MARGEN.izquierda;
+  const derecha = MARGEN.derecha;
 
   if (puntos.length === 0) return null;
 
@@ -151,14 +160,14 @@ export default function GraficoEvolucion({ serie, titulo }) {
     ...tiempos,
     fechaArchivado ? tiempo(fechaArchivado) : -Infinity,
   );
-  const anchoUtil = ANCHO - MARGEN.izquierda - MARGEN.derecha;
+  const anchoUtil = ancho - izquierda - derecha;
 
   // Eje X de TIEMPO REAL, no de posición en la lista. Es lo que hace que
   // dos calificaciones separadas por una semana y por seis meses no se
   // vean igual. Con un solo punto no hay rango: se centra.
   const xDeFecha = (iso) => {
-    if (hasta === desde) return MARGEN.izquierda + anchoUtil / 2;
-    return MARGEN.izquierda + ((tiempo(iso) - desde) / (hasta - desde)) * anchoUtil;
+    if (hasta === desde) return izquierda + anchoUtil / 2;
+    return izquierda + ((tiempo(iso) - desde) / (hasta - desde)) * anchoUtil;
   };
 
   const calificados = puntos.filter((p) => p.valor !== null && p.valor !== undefined);
@@ -185,8 +194,8 @@ export default function GraficoEvolucion({ serie, titulo }) {
   const xArchivado = fechaArchivado ? xDeFecha(fechaArchivado) : null;
   const archivadoEnRango =
     xArchivado !== null
-    && xArchivado >= MARGEN.izquierda
-    && xArchivado <= ANCHO - MARGEN.derecha;
+    && xArchivado >= izquierda
+    && xArchivado <= ancho - derecha;
 
   // El resumen accesible describe LOS DATOS, no repite el texto del
   // objetivo: ese ya está como encabezado al lado del gráfico y meterlo
@@ -202,7 +211,7 @@ export default function GraficoEvolucion({ serie, titulo }) {
       {titulo}
       <Box
         component="svg"
-        viewBox={`0 0 ${ANCHO} ${ALTO}`}
+        viewBox={`0 0 ${ancho} ${ALTO}`}
         role="img"
         aria-label={resumen}
         sx={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}
@@ -214,15 +223,15 @@ export default function GraficoEvolucion({ serie, titulo }) {
         {ESCALA_VALORES.map((paso) => (
           <g key={paso.valor}>
             <line
-              x1={MARGEN.izquierda}
+              x1={izquierda}
               y1={yDeValor(paso.valor)}
-              x2={ANCHO - MARGEN.derecha}
+              x2={ancho - derecha}
               y2={yDeValor(paso.valor)}
               stroke={tema.palette.superficie.borde}
               strokeWidth="1"
             />
             <text
-              x={MARGEN.izquierda - 10}
+              x={izquierda - 10}
               y={yDeValor(paso.valor) + 4}
               textAnchor="end"
               fontSize="12"
@@ -282,9 +291,9 @@ export default function GraficoEvolucion({ serie, titulo }) {
 
         {/* Eje X, SEPARADO de la fila más baja de la escala */}
         <line
-          x1={MARGEN.izquierda}
+          x1={izquierda}
           y1={Y_EJE}
-          x2={ANCHO - MARGEN.derecha}
+          x2={ancho - derecha}
           y2={Y_EJE}
           stroke={tema.palette.superficie.bordeFuerte}
           strokeWidth="1"
@@ -327,7 +336,7 @@ export default function GraficoEvolucion({ serie, titulo }) {
             no agrega nada; la fecha exacta de cada punto está en su
             tooltip. */}
         <text
-          x={MARGEN.izquierda}
+          x={izquierda}
           y={ALTO - 4}
           fontSize="12"
           fill={tema.palette.text.secondary}
@@ -336,7 +345,7 @@ export default function GraficoEvolucion({ serie, titulo }) {
         </text>
         {hasta !== desde && (
           <text
-            x={ANCHO - MARGEN.derecha}
+            x={ancho - derecha}
             y={ALTO - 4}
             textAnchor="end"
             fontSize="12"
@@ -359,7 +368,7 @@ export default function GraficoEvolucion({ serie, titulo }) {
           flexWrap: 'wrap',
           gap: 2,
           mt: 0.5,
-          pl: `${(MARGEN.izquierda / ANCHO) * 100}%`,
+          pl: `${(izquierda / ancho) * 100}%`,
         }}
       >
         <Conteo

@@ -233,7 +233,7 @@ export default function ModalInforme({ idInforme, puedeEscribir, advertencia = '
         etiquetaConfirmar="Publicar" etiquetaProcesando="Publicando…" procesando={trabajando === 'publicar'}
         onConfirmar={publicar} onCancelar={() => setConfirmando(null)}
       >
-        Al publicarlo, el informe deja de ser editable y los familiares vinculados al paciente podrán leerlo y se les avisará. Si después hay que cambiar algo, se crea una corrección y el historial conserva ambas versiones.
+        Al publicarlo, el informe deja de ser editable y los familiares vinculados al paciente, si los tiene, podrán leerlo y recibirán un aviso. Si después hay que cambiar algo, se crea una corrección y el historial conserva ambas versiones.
       </DialogoConfirmacion>
       <DialogoConfirmacion
         abierto={confirmando === 'corregir'} titulo="Corregir el informe publicado"

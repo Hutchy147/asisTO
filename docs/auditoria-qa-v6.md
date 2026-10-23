@@ -129,3 +129,62 @@ Suite de API (`tests/nube/run.sh`) en verde con las pruebas nuevas
 pruebas de pantalla en verde (nuevas: `ui_correcciones_qa`, `ui_seguridad_web`);
 barrido de todas las rutas GET × 8 identidades sin 500 ni accesos indebidos;
 `pip-audit` limpio.
+
+## 5. Pruebas de usabilidad (23/10/2026)
+
+Doce personas simuladas, cada una con un subagente que **no podía leer el
+código ni la base**: solo veía la pantalla (navegador real, capturas) y hacía
+tres tareas de su rol. Cuatro roles (terapeuta, RRHH, padre, madre) por tres
+niveles de conocimiento de computación (sin, medio, mucho). Se corrigió entre
+una ola y la siguiente, así que cada ola probó la versión ya corregida.
+
+| Rol | Sin conocimiento | Medio | Mucho |
+|---|---|---|---|
+| Terapeuta | 6/10 | 7/10 | 6/10 |
+| RRHH | 6/10 | 7/10 | 8/10 |
+| Padre | 6/10 | 7/10 | 8/10 |
+| Madre | 5/10 (celular) | 7/10 | 7/10 |
+
+La nota es la que puso cada persona **antes** de las correcciones de su ola.
+La del terapeuta con mucho conocimiento baja porque probó casos borde que las
+otras no (reprogramar una sesión ya calificada, corregir una calificación).
+
+### Lo más importante que encontraron y se corrigió
+- **Datos equivocados:** una sesión futura figuraba «Falta la evolución»; el
+  informe mensual contaba como realizadas sesiones en registro (14 contra 10 de
+  la lista); una sesión calificada se podía reprogramar al futuro (ahora lo
+  rechaza la base: `trg_sesiones_solape_update`); la frase de tendencia del
+  portal contradecía el gráfico; la misma sesión tenía tres estados distintos
+  según la pantalla; la exportación de RRHH bajaba datos de otro período con
+  un rango de fechas inválido.
+- **Corregir lo que se cargó mal:** `PUT` y `DELETE /api/evoluciones/<id>`
+  (p_corregir_evolucion), solo con el registro abierto; una sesión terminada se
+  muestra en lectura y se reabre para cambiarla.
+- **Familias:** explicación de cada nivel, atajos de período, resumen de
+  asistencia, hora bien escrita, gráfico legible en el celular, avisos que
+  respetan la preferencia, el hijo elegido se conserva entre secciones.
+- **RRHH:** filtro «Mostrar» (solo ausencias, por quién faltó, sin cerrar),
+  «Mostrar más» en el listado, totales de la auditoría que cierran, hora con
+  segundos, aviso de filtros sin aplicar.
+- **Seguridad:** aviso al entrar de los intentos fallidos desde el ingreso
+  anterior, la clave nueva tiene que ser distinta de la actual, el 403 no
+  sobrevive al cierre de sesión (ni la caché de Atrás), aviso contra phishing
+  en la recuperación.
+
+### Lo que no se cambió
+- **Formato de fecha mm/dd/aaaa:** lo pone el navegador según su idioma. Con el
+  navegador en español sale dd/mm/aaaa (verificado). Las pruebas lo vieron en
+  inglés porque el Chromium de pruebas estaba en inglés.
+- **Editor del informe con «##» y «- »:** sigue siendo texto con marcas; un
+  editor con formato es trabajo nuevo.
+- **Campo «reposición» al agendar y vínculo con la ausencia:** funcionalidad
+  nueva, fuera de alcance.
+- **Dos ventanas para cargar evolución** (Registro del día y Cargar evolución):
+  se mantienen; la del Panel es la principal.
+- **Texto escrito sin «Agregar» se pierde al cerrar:** queda como mejora.
+- **Bloqueo a los 5 intentos y sin contador de intentos restantes:** decisión
+  de la sección 4 (F2).
+
+### Verificación
+`tests/nube/run.sh` (incluye `test_usabilidad_ola3`), `tests/backend` y las 21
+pruebas de pantalla (nuevas: `ui_usabilidad_ola2`, `ui_usabilidad_ola3`).

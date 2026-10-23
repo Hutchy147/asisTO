@@ -117,7 +117,7 @@ export default function ModalCargarEvolucion({ abierto, idSesion, onCerrar, onCa
         etiqueta="Observaciones"
         multilinea
         filas={3}
-        ayuda="Opcional. Lo que quieras que lea quien retome el tratamiento."
+        ayuda="Opcional. Lo que convenga que lea quien retome el tratamiento."
         valor={valores.observaciones}
         onChange={setCampo('observaciones')}
         error={errorDe('observaciones')}

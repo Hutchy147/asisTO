@@ -27,6 +27,14 @@ const mesDeHoy = () => {
   return `${h.getFullYear()}-${pad(h.getMonth() + 1)}`;
 };
 
+// El mensual se escribe sobre un mes cerrado: abrir en el mes en curso
+// mostraba un mes a medias (usabilidad, terapeuta).
+const mesAnterior = () => {
+  const h = new Date();
+  const d = new Date(h.getFullYear(), h.getMonth() - 1, 1);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+};
+
 const ESTADO = {
   publicado: { etiqueta: 'Publicado', color: 'success' },
   borrador: { etiqueta: 'Borrador', color: 'warning' },
@@ -60,7 +68,7 @@ function Celda({ celda, onAbrir, onGenerar }) {
 
 export default function ControlInformes() {
   // El mes va en la URL (?mes=2026-09): F5 vuelve al mismo mes.
-  const [mes, setMes] = useEstadoEnUrl('mes', mesDeHoy());
+  const [mes, setMes] = useEstadoEnUrl('mes', mesAnterior());
   const [generar, setGenerar] = useState(null); // { paciente, tipo, periodo, ia, borradores }
   const [abierto, setAbierto] = useState(null); // { id, puedeEscribir, advertencia }
   const [aviso, setAviso] = useState('');
@@ -89,7 +97,16 @@ export default function ControlInformes() {
 
   const columnas = useMemo(() => [
     { clave: 'paciente', etiqueta: 'Paciente', render: (f) => <span className="texto-libre">{f.paciente}</span> },
-    { clave: 'sesiones', etiqueta: 'Sesiones del mes', ancho: 140, render: (f) => <span className="tabular">{f.sesiones_registradas}</span> },
+    // Mismo criterio que la asistencia del informe: asistió y faltó.
+    {
+      clave: 'sesiones', etiqueta: 'Asistencia del mes', ancho: 170,
+      render: (f) => (
+        <span className="tabular">
+          {`Asistió a ${f.sesiones_registradas}`}
+          {f.ausencias ? ` · faltó a ${f.ausencias}` : ''}
+        </span>
+      ),
+    },
     { clave: 'mensual', etiqueta: 'Mensual', ancho: 230, render: (f) => (
       <Celda celda={f.mensual} onAbrir={(id) => setAbierto({ id, puedeEscribir: true, advertencia: '' })} onGenerar={() => abrirGenerar(f, 'mensual')} />
     ) },
@@ -125,14 +142,22 @@ export default function ControlInformes() {
       </Box>
 
       {error && <Typography color="error" sx={{ mb: 1 }}>{error}</Typography>}
-      {control.cargando && <Cargando texto="Cargando el control..." />}
+      {/* Al recargar después de generar o publicar se deja la tabla a la vista:
+          reemplazarla por «Cargando» dejaba la pantalla en blanco (usabilidad).
+          Solo se oculta si cambió el mes. */}
+      {control.cargando && (!datos || datos.mes !== mes) && <Cargando texto="Cargando el control..." />}
       {control.error && <EstadoError error={control.error} onReintentar={control.recargar} />}
-      {datos && !control.cargando && !control.error && (
+      {datos && datos.mes === mes && !control.error && (
         <>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+            {/* Los borradores cuentan todos los tipos (y las correcciones): no
+                son parte de la suma de mensuales, y ahora lo dice (usabilidad). */}
             <StatTile etiqueta="Mensuales publicados" valor={datos.resumen.publicados} />
-            <StatTile etiqueta="En borrador" valor={datos.resumen.en_borrador_total ?? datos.resumen.borradores} />
-            <StatTile etiqueta="Pendientes" valor={datos.resumen.pendientes} />
+            <StatTile etiqueta="Mensuales pendientes" valor={datos.resumen.pendientes} nota="Todavía sin generar" />
+            <StatTile
+              etiqueta="Borradores abiertos" valor={datos.resumen.en_borrador_total ?? datos.resumen.borradores}
+              nota="De cualquier tipo, incluidas las correcciones"
+            />
           </Box>
           {datos.pacientes.length === 0 ? (
             <EstadoVacio titulo="No tiene pacientes asignados en este mes" descripcion="Cuando tenga pacientes asignados, aparecerán aquí con el estado de sus informes." />

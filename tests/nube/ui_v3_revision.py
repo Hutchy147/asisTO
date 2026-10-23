@@ -39,7 +39,7 @@ with sync_playwright() as p:
     check(cajas.count() >= 3, f'un checkbox por objetivo activo ({cajas.count()})')
     cajas.nth(0).click(); pg.wait_for_timeout(1200)
     check(sql("SELECT COUNT(*) FROM sesion_objetivos so JOIN sesiones s ON s.id=so.id_sesion WHERE s.hora_inicio='00:10:00' AND s.id_paciente=1") == '1', 'marcar un objetivo lo guarda en el plan')
-    check(pg.get_by_text('planeado para hoy').count() == 1, 'el objetivo del plan se destaca en la evolucion')
+    check(pg.get_by_text('Planeado para hoy').count() == 1, 'el objetivo del plan se destaca en la evolucion')
     pg.screenshot(path='/tmp/claude-0/ui/doc/15_plan_objetivos.png')
     pg.get_by_role('button', name='Calificar').first.click(); pg.wait_for_timeout(500)
     pg.get_by_role('radio').nth(3).click()

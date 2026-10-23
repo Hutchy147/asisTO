@@ -394,10 +394,16 @@ def restablecer_contrasena(token, contrasena_nueva):
     # De quien es el enlace (si es valido): para la auditoria y para que la
     # clave nueva no contenga el email.
     dueno = db.session.execute(
-        text('SELECT id, email FROM usuarios WHERE token_recuperacion = :h'),
+        text('SELECT id, email, contrasena_hash FROM usuarios WHERE token_recuperacion = :h'),
         {'h': _hash_token(token)},
     ).first()
     _validar_contrasena_nueva(contrasena_nueva, dueno[1] if dueno else None)
+    # La misma clave que ya tenia no cuenta como cambio: si se pidio el enlace
+    # porque alguien mas la conoce, quedaria igual (usabilidad, padre).
+    if dueno is not None and dueno[2] and verificar_contrasena(contrasena_nueva, dueno[2]):
+        raise ErrorAplicacion(
+            'La contrasena nueva tiene que ser distinta de la actual.', campo='contrasena'
+        )
 
     db.session.execute(
         text(

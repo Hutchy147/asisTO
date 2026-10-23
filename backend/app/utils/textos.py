@@ -14,6 +14,7 @@ import re
 
 _TILDES = {
     'clinica': 'clínica', 'quedo': 'quedó', 'reabrala': 'reábrala',
+    'calificacion': 'calificación',
     'terapeutico': 'terapéutico', 'terapeutica': 'terapéutica',
     'tambien': 'también', 'minimo': 'mínimo', 'maximo': 'máximo',
     'sesion': 'sesión', 'asignacion': 'asignación', 'dia': 'día', 'dias': 'días',

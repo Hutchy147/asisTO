@@ -221,6 +221,13 @@ def recolectar(paciente, tipo, desde, hasta, pti=None):
     diarios = diarios_del_periodo(paciente.id, desde, hasta)
     completas = sum(1 for d in diarios if d['estado'] == 'completa' or (d['estado'] == 'incompleta' and d['objetivos']))
     ausencias = sum(1 for d in diarios if d['estado'] == 'ausencia')
+    # Ya ocurridas pero sin nada cargado: no se sabe si asistio. El borrador
+    # lo marca para que la terapeuta lo resuelva antes de publicar.
+    sin_registrar = sum(
+        1 for d in diarios
+        if d['estado'] == 'incompleta' and not d['objetivos'] and not d['registro']
+        and d['fecha'] < dt.date.today().isoformat()
+    )
     return {
         'tipo': tipo,
         'paciente': {
@@ -231,7 +238,7 @@ def recolectar(paciente, tipo, desde, hasta, pti=None):
             'edad': edad_texto(paciente.fecha_nacimiento),
         },
         'periodo': {'desde': desde, 'hasta': hasta},
-        'asistencia': {'sesiones': completas, 'ausencias': ausencias},
+        'asistencia': {'sesiones': completas, 'ausencias': ausencias, 'sin_registrar': sin_registrar},
         'objetivos': _tendencias(paciente.id, desde, hasta) if tipo != 'pti' else [],
         'diarios': diarios,
         'pti': pti,
@@ -254,17 +261,22 @@ def _encabezado(datos, etiqueta):
 
 def _frase_asistencia(datos):
     n, a = datos['asistencia']['sesiones'], datos['asistencia']['ausencias']
+    pendientes = datos['asistencia'].get('sin_registrar', 0)
     if n == 0 and a == 0:
-        return 'No se registraron sesiones en el período.'
-    partes = []
-    if n:
-        partes.append(f"{n} sesión realizada" if n == 1 else f"{n} sesiones realizadas")
-    if a:
-        partes.append(f"{a} ausencia" if a == 1 else f"{a} ausencias")
-    # Verbo concordado con lo que se cuenta: "Se registró 1 ausencia" pero
-    # "Se registraron 22 sesiones realizadas y 1 ausencia".
-    verbo = 'Se registró' if (n + a) == 1 else 'Se registraron'
-    return f"{verbo} " + ' y '.join(partes) + ' en el período.'
+        frase = 'No se registraron sesiones en el período.'
+    else:
+        # «Asistió a» y no «sesiones realizadas»: el control mensual cuenta
+        # lo mismo y la familia no distingue cerradas de en registro.
+        partes = []
+        if n:
+            partes.append('asistió a 1 sesión' if n == 1 else f'asistió a {n} sesiones')
+        if a:
+            partes.append('faltó a 1' if a == 1 else f'faltó a {a}')
+        frase = 'En el período ' + ' y '.join(partes) + '.'
+    if pendientes:
+        cuantas = 'hay 1 sesión' if pendientes == 1 else f'hay {pendientes} sesiones'
+        frase += f'\n\n{MARCA_COMPLETAR}: {cuantas} del período sin registrar; regístrelas o ajuste la asistencia]'
+    return frase
 
 
 _TEXTO_TENDENCIA = {'mejora': 'tendencia de mejora', 'se_mantiene': 'se mantiene estable', 'retrocede': 'requiere atención por un retroceso'}
@@ -323,7 +335,10 @@ def redactar_plantilla(datos):
         extra = len(observaciones) - len(mostradas)
         cuerpo = '\n'.join(mostradas)
         if extra > 0:
-            cuerpo += f'\n- (Hay {extra} observaciones más en los diarios del período.)'
+            # Marca y no texto suelto: antes llegaba a la familia «(Hay 1
+            # observaciones más en los diarios...)» (usabilidad, terapeuta).
+            cuantas = 'queda 1 observación' if extra == 1 else f'quedan {extra} observaciones'
+            cuerpo += f'\n\n{MARCA_COMPLETAR}: {cuantas} más en los diarios del período; incorpore lo que corresponda]'
         partes.append('## Observaciones de las sesiones\n' + cuerpo + '\n')
     else:
         partes.append('## Observaciones de las sesiones\nNo hay observaciones registradas en el período.\n')

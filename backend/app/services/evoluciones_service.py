@@ -288,3 +288,50 @@ def registrar_evolucion(datos):
     )
 
     return evolucion, mensaje
+
+
+@reintentar_en_deadlock()
+def corregir_evolucion(id_evolucion, datos, quitar=False):
+    """
+    Corrige el valor y las observaciones de una calificacion, o la quita
+    (p_corregir_evolucion). Solo el terapeuta de la sesion y solo con el
+    registro abierto: una sesion terminada se reabre primero.
+    """
+    valor = None
+    if not quitar:
+        try:
+            valor = int(datos.get('valor'))
+        except (TypeError, ValueError):
+            raise ErrorAplicacion(
+                f'El valor de la evolucion tiene que ser un numero entre {VALOR_MINIMO} y {VALOR_MAXIMO}.',
+                campo='valor',
+            )
+        if not VALOR_MINIMO <= valor <= VALOR_MAXIMO:
+            raise ErrorAplicacion(
+                f'El valor de la evolucion tiene que estar entre {VALOR_MINIMO} y {VALOR_MAXIMO}.',
+                campo='valor',
+            )
+
+    terapeuta = terapeuta_actual()
+    db.session.execute(
+        text(
+            'CALL p_corregir_evolucion(:id, :id_terapeuta, :valor, :observaciones, '
+            ':quitar, @p_corregida, @p_mensaje)'
+        ),
+        {
+            'id': id_evolucion,
+            'id_terapeuta': terapeuta.id,
+            'valor': valor,
+            'observaciones': (datos.get('observaciones') or None) if not quitar else None,
+            'quitar': bool(quitar),
+        },
+    )
+    corregida, mensaje = db.session.execute(text('SELECT @p_corregida, @p_mensaje')).first()
+    db.session.commit()
+
+    if corregida is None:
+        estado = 404 if mensaje and 'no existe' in mensaje else 403 if mensaje and 'Solo el terapeuta' in mensaje else 400
+        raise ErrorAplicacion(mensaje or 'No se pudo corregir la calificacion.', http_status=estado)
+
+    logger.info('Evolucion %s %s por terapeuta %s', id_evolucion, 'quitada' if quitar else 'corregida', terapeuta.id)
+    return mensaje

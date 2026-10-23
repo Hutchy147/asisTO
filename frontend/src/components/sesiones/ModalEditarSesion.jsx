@@ -31,7 +31,7 @@ import { ErrorApi } from '../../services/api.js';
 import {
   editarSesion, ESTADO_AUSENCIA, OPCIONES_AUSENCIA_DE, OPCIONES_ESTADO_SESION,
 } from '../../services/sesionesService.js';
-import { formatearFecha } from '../../utils/fechas.js';
+import { aIsoLocal, formatearFecha } from '../../utils/fechas.js';
 
 export default function ModalEditarSesion({ abierto, sesion, paciente, onCerrar, onGuardado }) {
   const formulario = useFormularioModal({
@@ -138,6 +138,10 @@ export default function ModalEditarSesion({ abierto, sesion, paciente, onCerrar,
           onChange={setCampo('fecha')}
           error={errorDe('fecha')}
           deshabilitado={guardando}
+          // Lo ya registrado no se reprograma al futuro (el servidor lo
+          // rechaza igual; el calendario del campo ni lo ofrece).
+          inputProps={sesion && (sesion.estado !== 'incompleta' || sesion.tiene_evolucion)
+            ? { max: aIsoLocal(new Date()) } : undefined}
         />
         <CampoTexto
           id="editar-sesion-inicio"
