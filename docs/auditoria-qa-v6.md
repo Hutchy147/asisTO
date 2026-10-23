@@ -186,5 +186,5 @@ otras no (reprogramar una sesión ya calificada, corregir una calificación).
   de la sección 4 (F2).
 
 ### Verificación
-`tests/nube/run.sh` (incluye `test_usabilidad_ola3`), `tests/backend` y las 21
+`tests/nube/run.sh` (incluye `test_usabilidad_ola3`), `tests/backend` y las 20
 pruebas de pantalla (nuevas: `ui_usabilidad_ola2`, `ui_usabilidad_ola3`).
