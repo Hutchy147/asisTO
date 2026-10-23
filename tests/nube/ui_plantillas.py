@@ -52,7 +52,7 @@ with sync_playwright() as p:
     # --- terapeuta ---
     pt = br.new_page(viewport={'width': 1400, 'height': 950})
     entrar(pt, 'laura.fernandez@asisto.local')
-    pt.goto(B + '/pacientes/4'); pt.wait_for_timeout(2500)
+    pt.goto(B + '/pacientes/13'); pt.wait_for_timeout(2500)
     pt.get_by_role('button', name='Nuevo objetivo').first.click(); pt.wait_for_timeout(900)
     pt.locator('#objetivo-area').click(); pt.get_by_role('option', name='Zz Prueba').click()
     pt.locator('#objetivo-plantilla').click(); pt.get_by_role('option', name='Zz Prueba: texto sugerido de ejemplo').click()
@@ -60,7 +60,7 @@ with sync_playwright() as p:
     pt.screenshot(path=V + '06_objetivo_desde_plantilla.png')
     pt.fill('#objetivo-descripcion', 'Zz Prueba: texto ajustado por la terapeuta')
     pt.get_by_role('button', name='Crear objetivo').click(); pt.wait_for_timeout(1800)
-    check(sql("SELECT COUNT(*) FROM objetivos_terapeuticos WHERE id_paciente=4 AND descripcion='Zz Prueba: texto ajustado por la terapeuta'") == '1', 'el objetivo se crea con el texto editado')
+    check(sql("SELECT COUNT(*) FROM objetivos_terapeuticos WHERE id_paciente=13 AND descripcion='Zz Prueba: texto ajustado por la terapeuta'") == '1', 'el objetivo se crea con el texto editado')
 
     # quitar la plantilla no toca el objetivo
     pg.reload(); pg.wait_for_timeout(1800)

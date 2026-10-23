@@ -121,8 +121,8 @@ export default function SesionesRegistradas() {
       <Box
         sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 1.5, mb: 2.5 }}
       >
-        <CampoTexto id="filtro-desde" etiqueta="Desde" tipo="date" tabular valor={filtros.desde} onChange={cambiar('desde')} />
-        <CampoTexto id="filtro-hasta" etiqueta="Hasta" tipo="date" tabular valor={filtros.hasta} onChange={cambiar('hasta')} />
+        <CampoTexto id="filtro-desde" etiqueta="Desde" tipo="date" tabular valor={filtros.desde} onChange={cambiar('desde')} inputProps={{ max: iso(new Date()) }} />
+        <CampoTexto id="filtro-hasta" etiqueta="Hasta" tipo="date" tabular valor={filtros.hasta} onChange={cambiar('hasta')} inputProps={{ max: iso(new Date()) }} />
         <CampoTexto id="filtro-paciente" etiqueta="Paciente" select valor={filtros.id_paciente} onChange={cambiar('id_paciente')}>
           <MenuItem value="">Todos</MenuItem>
           {opcionesPaciente.map((p) => (

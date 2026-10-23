@@ -67,31 +67,31 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- Los contrasena_hash son PLACEHOLDERS. Correr generar_hashes.py --todos.
 -- =====================================================================
 INSERT INTO usuarios (id, nombre, apellido, email, contrasena_hash, activo, rol) VALUES
-  (1,  'Laura',    'Fernandez', 'laura.fernandez@asisto.local', '$2b$12$PLACEHOLDER.terapeuta.uno', TRUE,  'terapeuta'),
+  (1,  'Laura',    CONVERT(0x4665726EC3A16E64657A USING utf8mb4), 'laura.fernandez@asisto.local', '$2b$12$PLACEHOLDER.terapeuta.uno', TRUE,  'terapeuta'),
   (2,  'Diego',    'Moyano',    'diego.moyano@asisto.local',    '$2b$12$PLACEHOLDER.terapeuta.dos', TRUE,  'terapeuta'),
   (3,  'Paula',    'Cabrera',   'paula.cabrera@asisto.local',   '$2b$12$PLACEHOLDER.terapeuta.tre', TRUE,  'terapeuta'),
   (4,  'Silvia',   'Quiroga',   'silvia.quiroga@asisto.local',  '$2b$12$PLACEHOLDER.rrhh.uno.....', TRUE,  'rrhh'),
   (5,  'Marta',    'Ledesma',   'marta.ledesma@asisto.local',   '$2b$12$PLACEHOLDER.familiar.uno.', TRUE,  'familiar'),
   (6,  'Jorge',    'Bustos',    'jorge.bustos@asisto.local',    '$2b$12$PLACEHOLDER.familiar.dos.', TRUE,  'familiar'),
   (7,  'Rosa',     'Aguilar',   'rosa.aguilar@asisto.local',    '$2b$12$PLACEHOLDER.familiar.tres', TRUE,  'familiar'),
-  (8,  'Hector',   'Nunez',     'hector.nunez@asisto.local',    '$2b$12$PLACEHOLDER.familiar.cuat', TRUE,  'familiar'),
-  (9,  'Camila',   'Rios',      'camila.rios@asisto.local',     '$2b$12$PLACEHOLDER.paciente.uno.', TRUE,  'paciente'),
-  (10, 'Nicolas',  'Ferreyra',  'nicolas.ferreyra@asisto.local','$2b$12$PLACEHOLDER.paciente.dos.', TRUE,  'paciente'),
+  (8,  CONVERT(0x48C3A963746F72 USING utf8mb4),   CONVERT(0x4EC3BAC3B1657A USING utf8mb4),     'hector.nunez@asisto.local',    '$2b$12$PLACEHOLDER.familiar.cuat', TRUE,  'familiar'),
+  (9,  'Camila',   CONVERT(0x52C3AD6F73 USING utf8mb4),      'camila.rios@asisto.local',     '$2b$12$PLACEHOLDER.paciente.uno.', TRUE,  'paciente'),
+  (10, CONVERT(0x4E69636F6CC3A173 USING utf8mb4),  'Ferreyra',  'nicolas.ferreyra@asisto.local','$2b$12$PLACEHOLDER.paciente.dos.', TRUE,  'paciente'),
   (11, 'Julieta',  'Vega',      'julieta.vega@asisto.local',    '$2b$12$PLACEHOLDER.paciente.tres', TRUE,  'paciente'),
-  (12, 'Matias',   'Ojeda',     'matias.ojeda@asisto.local',    '$2b$12$PLACEHOLDER.paciente.cuat', TRUE,  'paciente'),
+  (12, CONVERT(0x4D6174C3AD6173 USING utf8mb4),   'Ojeda',     'matias.ojeda@asisto.local',    '$2b$12$PLACEHOLDER.paciente.cuat', TRUE,  'paciente'),
   -- Cuenta DESHABILITADA a proposito: sirve para probar que un usuario
   -- inactivo no puede loguear, sin tener que tocar la base a mano.
-  (13, 'Andrea',   'Suarez',    'andrea.suarez@asisto.local',   '$2b$12$PLACEHOLDER.paciente.cinc', FALSE, 'paciente'),
+  (13, 'Andrea',   CONVERT(0x5375C3A172657A USING utf8mb4),    'andrea.suarez@asisto.local',   '$2b$12$PLACEHOLDER.paciente.cinc', FALSE, 'paciente'),
   -- Administrador: asigna terapeutas a pacientes. No tiene perfil clinico.
   (14, 'Ramiro',   'Acosta',    'admin@asisto.local',           '$2b$12$PLACEHOLDER.admin.uno....', TRUE,  'admin');
 
 INSERT INTO terapeutas (id, id_usuario, matricula, especialidad, nro_licencia) VALUES
-  (1, 1, 'MP-14523', 'Integracion sensorial infantil', 'LIC-2019-0087'),
-  (2, 2, 'MP-16890', 'Rehabilitacion neurologica',     'LIC-2021-0154'),
+  (1, 1, 'MP-14523', CONVERT(0x496E74656772616369C3B36E2073656E736F7269616C20696E66616E74696C USING utf8mb4), 'LIC-2019-0087'),
+  (2, 2, 'MP-16890', CONVERT(0x5265686162696C6974616369C3B36E206E6575726F6CC3B367696361 USING utf8mb4),     'LIC-2021-0154'),
   (3, 3, 'MP-17402', 'Terapia de la mano',             'LIC-2022-0311');
 
 INSERT INTO rrhh (id, id_usuario, sector, nro_legajo) VALUES
-  (1, 4, 'Administracion de personal', 'LEG-00231');
+  (1, 4, CONVERT(0x41646D696E69737472616369C3B36E20646520706572736F6E616C USING utf8mb4), 'LEG-00231');
 
 INSERT INTO familiares (id, id_usuario, parentesco, telefono) VALUES
   (1, 5, 'Madre', '+54 261 4155023'),
@@ -108,21 +108,21 @@ INSERT INTO familiares (id, id_usuario, parentesco, telefono) VALUES
 -- =====================================================================
 INSERT INTO pacientes
   (id, id_usuario, nombre, apellido, fecha_nacimiento, diagnostico, nro_historia, activo, fecha_alta) VALUES
-  (1,  NULL, 'Tomas',     'Aguirre',   '2015-03-12', 'Trastorno del procesamiento sensorial. Dificultades en motricidad fina.', 'HC-0001', TRUE, '2026-03-02'),
+  (1,  NULL, CONVERT(0x546F6DC3A173 USING utf8mb4),     'Aguirre',   '2015-03-12', 'Trastorno del procesamiento sensorial. Dificultades en motricidad fina.', 'HC-0001', TRUE, '2026-03-02'),
   (2,  NULL, 'Valentina', 'Sosa',      '2017-08-25', 'Retraso madurativo leve. Hipersensibilidad auditiva.',                    'HC-0002', TRUE, '2026-03-16'),
-  (3,  9,    'Camila',    'Rios',      '1998-11-05', 'Lesion de muneca derecha. Rehabilitacion funcional post quirurgica.',     'HC-0003', TRUE, '2026-04-06'),
-  (4,  NULL, 'Bruno',     'Peralta',   '2014-09-01', 'Dificultades de coordinacion motora gruesa.',                             'HC-0004', TRUE, '2026-03-09'),
-  (5,  NULL, 'Mia',       'Cardozo',   '2016-01-20', 'Trastorno del espectro autista. Nivel 1 de apoyo.',                       'HC-0005', TRUE, '2026-03-23'),
-  (6,  10,   'Nicolas',   'Ferreyra',  '2001-06-14', 'Lesion medular incompleta. Reeducacion de actividades diarias.',          'HC-0006', TRUE, '2026-04-13'),
-  (7,  NULL, 'Lucia',     'Molina',    '2018-04-03', 'Retraso en el desarrollo del lenguaje y la motricidad.',                  'HC-0007', TRUE, '2026-04-20'),
-  (8,  NULL, 'Thiago',    'Ramirez',   '2013-12-11', 'Trastorno por deficit de atencion. Dificultades grafomotoras.',           'HC-0008', TRUE, '2026-03-30'),
-  (9,  11,   'Julieta',   'Vega',      '1995-02-28', 'Sindrome del tunel carpiano bilateral. Post operatorio.',                 'HC-0009', TRUE, '2026-04-27'),
+  (3,  9,    'Camila',    CONVERT(0x52C3AD6F73 USING utf8mb4),      '1998-11-05', CONVERT(0x4C657369C3B36E206465206D75C3B165636120646572656368612E205265686162696C6974616369C3B36E2066756E63696F6E616C20706F73742071756972C3BA72676963612E USING utf8mb4),     'HC-0003', TRUE, '2026-04-06'),
+  (4,  NULL, 'Bruno',     'Peralta',   '2014-09-01', CONVERT(0x4469666963756C746164657320646520636F6F7264696E616369C3B36E206D6F746F7261206772756573612E USING utf8mb4),                             'HC-0004', TRUE, '2026-03-09'),
+  (5,  NULL, CONVERT(0x4DC3AD61 USING utf8mb4),       'Cardozo',   '2016-01-20', 'Trastorno del espectro autista. Nivel 1 de apoyo.',                       'HC-0005', TRUE, '2026-03-23'),
+  (6,  10,   CONVERT(0x4E69636F6CC3A173 USING utf8mb4),   'Ferreyra',  '2001-06-14', CONVERT(0x4C657369C3B36E206D6564756C617220696E636F6D706C6574612E20526565647563616369C3B36E20646520616374697669646164657320646961726961732E USING utf8mb4),          'HC-0006', TRUE, '2026-04-13'),
+  (7,  NULL, CONVERT(0x4C7563C3AD61 USING utf8mb4),     'Molina',    '2018-04-03', 'Retraso en el desarrollo del lenguaje y la motricidad.',                  'HC-0007', TRUE, '2026-04-20'),
+  (8,  NULL, 'Thiago',    CONVERT(0x52616DC3AD72657A USING utf8mb4),   '2013-12-11', CONVERT(0x54726173746F726E6F20706F722064C3A96669636974206465206174656E6369C3B36E2E204469666963756C746164657320677261666F6D6F746F7261732E USING utf8mb4),           'HC-0008', TRUE, '2026-03-30'),
+  (9,  11,   'Julieta',   'Vega',      '1995-02-28', CONVERT(0x53C3AD6E64726F6D652064656C2074C3BA6E656C206361727069616E6F2062696C61746572616C2E20506F7374206F70657261746F72696F2E USING utf8mb4),                 'HC-0009', TRUE, '2026-04-27'),
   (10, NULL, 'Benicio',   'Herrera',   '2019-07-19', 'Prematurez. Seguimiento del desarrollo psicomotor.',                      'HC-0010', TRUE, '2026-05-04'),
-  (11, NULL, 'Renata',    'Godoy',     '2015-10-08', 'Disgrafia. Dificultades en la organizacion espacial.',                    'HC-0011', TRUE, '2026-05-11'),
-  (12, 12,   'Matias',    'Ojeda',     '2003-05-22', 'Traumatismo de mano izquierda. Rehabilitacion funcional.',                'HC-0012', TRUE, '2026-05-18'),
-  (13, NULL, 'Emilia',    'Paz',       '2017-03-30', 'Hipotonia leve. Trabajo de fuerza y estabilidad postural.',               'HC-0013', TRUE, '2026-05-25'),
-  (14, NULL, 'Ciro',      'Maldonado', '2012-08-17', 'Trastorno del desarrollo de la coordinacion.',                            'HC-0014', TRUE, '2026-06-01'),
-  (15, 13,   'Andrea',    'Suarez',    '1988-12-02', 'Artritis reumatoidea. Proteccion articular y adaptaciones.',              'HC-0015', TRUE, '2026-06-08'),
+  (11, NULL, 'Renata',    'Godoy',     '2015-10-08', CONVERT(0x4469736772616669612E204469666963756C746164657320656E206C61206F7267616E697A616369C3B36E20657370616369616C2E USING utf8mb4),                    'HC-0011', TRUE, '2026-05-11'),
+  (12, 12,   CONVERT(0x4D6174C3AD6173 USING utf8mb4),    'Ojeda',     '2003-05-22', CONVERT(0x547261756D617469736D6F206465206D616E6F20697A717569657264612E205265686162696C6974616369C3B36E2066756E63696F6E616C2E USING utf8mb4),                'HC-0012', TRUE, '2026-05-18'),
+  (13, NULL, 'Emilia',    'Paz',       '2017-03-30', CONVERT(0x4869706F746F6EC3AD61206C6576652E2054726162616A6F20646520667565727A612079206573746162696C6964616420706F73747572616C2E USING utf8mb4),               'HC-0013', TRUE, '2026-05-25'),
+  (14, NULL, 'Ciro',      'Maldonado', '2012-08-17', CONVERT(0x54726173746F726E6F2064656C206465736172726F6C6C6F206465206C6120636F6F7264696E616369C3B36E2E USING utf8mb4),                            'HC-0014', TRUE, '2026-06-01'),
+  (15, 13,   'Andrea',    CONVERT(0x5375C3A172657A USING utf8mb4),    '1988-12-02', CONVERT(0x4172747269746973207265756D61746F696465612E2050726F7465636369C3B36E206172746963756C617220792061646170746163696F6E65732E USING utf8mb4),              'HC-0015', TRUE, '2026-06-08'),
   -- Paciente DADO DE BAJA, y CON HISTORIA: sesiones, evoluciones, objetivos
   -- archivados y una asignacion cerrada. Ver el bloque "HISTORIA DEL
   -- PACIENTE 16" mas abajo.
@@ -141,7 +141,7 @@ INSERT INTO pacientes
   -- Paciente RECIEN INGRESADO, con objetivos en FORMATO REAL DE TO.
   -- Ver el bloque "OBJETIVOS DEL PACIENTE 17" mas abajo, que explica de
   -- donde sale y por que la identidad esta cambiada.
-  (17, NULL, 'Damian',    'Bustos',    '2009-06-30', 'Discapacidad intelectual leve. Planificacion motora, motricidad fina y autonomia en el vestido.', 'HC-0017', TRUE,
+  (17, NULL, CONVERT(0x44616D69C3A16E USING utf8mb4),    'Bustos',    '2009-06-30', CONVERT(0x44697363617061636964616420696E74656C65637475616C206C6576652E20506C616E69666963616369C3B36E206D6F746F72612C206D6F74726963696461642066696E612079206175746F6E6F6DC3AD6120656E20656C207665737469646F2E USING utf8mb4), 'HC-0017', TRUE,
    DATE_SUB(CURDATE(), INTERVAL 4 DAY));
 
 
@@ -150,11 +150,11 @@ INSERT INTO pacientes
 -- =====================================================================
 INSERT INTO etiquetas (id, nombre, color_hex) VALUES
   (1, 'Motricidad fina',              '#3E8E7E'),
-  (2, 'Integracion sensorial',        '#1B3B5C'),
+  (2, CONVERT(0x496E74656772616369C3B36E2073656E736F7269616C USING utf8mb4),        '#1B3B5C'),
   (3, 'Actividades de la vida diaria','#C97B5A'),
   (4, 'Trabajo con familia',          '#7FA99B'),
   (5, 'Requiere seguimiento',         '#D9A441'),
-  (6, 'Sesion reprogramada',          '#B5544C');
+  (6, CONVERT(0x53657369C3B36E20726570726F6772616D616461 USING utf8mb4),          '#B5544C');
 
 
 -- =====================================================================
@@ -263,21 +263,24 @@ BEGIN
   SET v_fin = CURDATE();
   SET v_dia = DATE_SUB(v_fin, INTERVAL 48 DAY);
 
-  -- --- Objetivos: entre 2 y 4 activos por paciente ---
+  -- --- Objetivos: 3 o 4 activos por paciente (minimo del sistema: 3) ---
   -- Creados un mes antes de la primera sesion, para que toda la agenda
   -- los cuente en el denominador de "objetivos calificados".
+  -- Antes era 2 + (pac MOD 3): los pacientes 3, 6, 9, 12 y 15 quedaban con
+  -- 2, debajo del minimo que la propia pantalla exige (QA, H28). El 1 queda
+  -- con 3 porque mas abajo recibe un cuarto en formato real.
   WHILE v_pac <= 15 DO
-    SET v_cant = 2 + (v_pac MOD 3);
+    SET v_cant = 3 + ((v_pac + 1) MOD 2);
     SET v_num = 1;
     WHILE v_num <= v_cant DO
       INSERT INTO objetivos_terapeuticos (id_paciente, descripcion, activo, fecha_creacion)
       VALUES (
         v_pac,
         CASE v_num
-          WHEN 1 THEN 'Mejorar la precision en actividades de motricidad fina'
-          WHEN 2 THEN 'Tolerar estimulos sensoriales nuevos sin rechazo'
-          WHEN 3 THEN 'Sostener la atencion en tareas de diez minutos'
-          ELSE        'Realizar actividades de la vida diaria de forma autonoma'
+          WHEN 1 THEN CONVERT(0x4D656A6F726172206C612070726563697369C3B36E20656E206163746976696461646573206465206D6F74726963696461642066696E61 USING utf8mb4)
+          WHEN 2 THEN CONVERT(0x546F6C6572617220657374C3AD6D756C6F732073656E736F7269616C6573206E7565766F732073696E2072656368617A6F USING utf8mb4)
+          WHEN 3 THEN CONVERT(0x536F7374656E6572206C61206174656E6369C3B36E20656E20746172656173206465206469657A206D696E75746F73 USING utf8mb4)
+          ELSE        CONVERT(0x5265616C697A6172206163746976696461646573206465206C6120766964612064696172696120646520666F726D6120617574C3B36E6F6D61 USING utf8mb4)
         END,
         TRUE,
         TIMESTAMP(DATE_SUB(v_dia, INTERVAL 30 DAY), SEC_TO_TIME(v_num * 900))
@@ -309,12 +312,7 @@ BEGIN
   INSERT INTO objetivos_terapeuticos (id_paciente, descripcion, activo, fecha_creacion)
   VALUES (
     1,
-    'Que Tomas logre sostener el trazo dentro del renglon al copiar palabras '
-    'de cinco letras en letra cursiva, con apoyo verbal intermitente y sin '
-    'sujecion fisica de la mano, alcanzando cuatro de cada cinco intentos '
-    'correctos en dos evaluaciones consecutivas realizadas en semanas '
-    'distintas, en el consultorio y en el cuaderno de tareas de la escuela, '
-    'dos veces por semana durante el segundo semestre del 2026.',
+    CONVERT(0x51756520546F6DC3A173206C6F67726520736F7374656E657220656C207472617A6F2064656E74726F2064656C2072656E676CC3B36E20616C20636F706961722070616C61627261732064652063696E636F206C657472617320656E206C6574726120637572736976612C20636F6E2061706F796F2076657262616C20696E7465726D6974656E746520792073696E2073756A656369C3B36E2066C3AD73696361206465206C61206D616E6F2C20616C63616E7A616E646F2063756174726F20646520636164612063696E636F20696E74656E746F7320636F72726563746F7320656E20646F73206576616C756163696F6E657320636F6E736563757469766173207265616C697A6164617320656E2073656D616E61732064697374696E7461732C20656E20656C20636F6E73756C746F72696F207920656E20656C206375616465726E6F20646520746172656173206465206C612065736375656C612C20646F7320766563657320706F722073656D616E6120647572616E746520656C20736567756E646F2073656D65737472652064656C20323032362E USING utf8mb4),
     TRUE,
     TIMESTAMP(DATE_SUB(v_dia, INTERVAL 30 DAY), SEC_TO_TIME(4 * 900))
   );
@@ -375,11 +373,11 @@ BEGIN
             CASE v_estado
               WHEN 'ausencia' THEN
                 CASE v_ausencia_de
-                  WHEN 'terapeuta' THEN 'El terapeuta debio reprogramar por una urgencia.'
-                  ELSE                  'No asistio. Se aviso a la familia.'
+                  WHEN 'terapeuta' THEN CONVERT(0x456C207465726170657574612064656269C3B320726570726F6772616D617220706F7220756E6120757267656E6369612E USING utf8mb4)
+                  ELSE                  CONVERT(0x4E6F20617369737469C3B32E2053652061766973C3B32061206C612066616D696C69612E USING utf8mb4)
                 END
-              WHEN 'incompleta' THEN 'Se trabajo parcialmente, la sesion se corto antes.'
-              ELSE                   'Sesion trabajada segun el plan previsto.'
+              WHEN 'incompleta' THEN CONVERT(0x53652074726162616A6F207061726369616C6D656E74652C206C612073657369C3B36E20736520636F72746F20616E7465732E USING utf8mb4)
+              ELSE                   CONVERT(0x53657369C3B36E2074726162616A61646120736567C3BA6E20656C20706C616E20707265766973746F2E USING utf8mb4)
             END
           );
           SET v_id_sesion = LAST_INSERT_ID();
@@ -417,7 +415,7 @@ BEGIN
                 v_id_sesion, v_id_obj, 1 + (v_contador MOD 5),
                 CASE v_contador MOD 4
                   WHEN 0 THEN 'Buena disposicion durante toda la actividad.'
-                  WHEN 1 THEN 'Necesito apoyo verbal en la segunda mitad.'
+                  WHEN 1 THEN CONVERT(0x4E656365736974C3B32061706F796F2076657262616C20656E206C6120736567756E6461206D697461642E USING utf8mb4)
                   WHEN 2 THEN 'Avance respecto de la semana anterior.'
                   ELSE        'Sostuvo la consigna con ayuda puntual.'
                 END
@@ -567,11 +565,11 @@ INSERT INTO agenda_recurrente (id_terapeuta, id_paciente, dia_semana, hora_inici
 
 -- 1. Tres objetivos, creados poco despues del alta.
 INSERT INTO objetivos_terapeuticos (id_paciente, descripcion, activo, fecha_creacion) VALUES
-  (16, 'Recuperar la fuerza de prension en la mano derecha', TRUE,
+  (16, CONVERT(0x526563757065726172206C6120667565727A61206465207072656E7369C3B36E20656E206C61206D616E6F2064657265636861 USING utf8mb4), TRUE,
    TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 145 DAY), '09:00:00')),
   (16, 'Retomar la escritura sostenida durante quince minutos', TRUE,
    TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 145 DAY), '09:15:00')),
-  (16, 'Vestirse y calzarse de forma autonoma antes de salir', TRUE,
+  (16, CONVERT(0x566573746972736520792063616C7A6172736520646520666F726D6120617574C3B36E6F6D6120616E7465732064652073616C6972 USING utf8mb4), TRUE,
    TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 145 DAY), '09:30:00'));
 
 -- 2. Asignacion con la terapeuta 2, ABIERTA por ahora (se cierra en el paso
@@ -593,26 +591,26 @@ INSERT INTO asignaciones (id_terapeuta, id_paciente, fecha_desde, fecha_hasta) V
 -- variedad (esa es la del generador de arriba).
 INSERT INTO sesiones (id_terapeuta, id_paciente, fecha, hora_inicio, hora_fin, estado, ausencia_de, notas) VALUES
   (2, 16, DATE_SUB(CURDATE(), INTERVAL 140 DAY), '17:00:00', '18:00:00', 'completa', NULL,
-   'Primera sesion. Se toma linea de base de fuerza y escritura.'),
+   CONVERT(0x5072696D6572612073657369C3B36E2E20536520746F6D61206CC3AD6E6561206465206261736520646520667565727A612079206573637269747572612E USING utf8mb4)),
   (2, 16, DATE_SUB(CURDATE(), INTERVAL 140 DAY), '18:00:00', '19:00:00', 'incompleta', NULL,
-   'Segundo turno del mismo dia. Se corto antes por cansancio.'),
+   CONVERT(0x536567756E646F207475726E6F2064656C206D69736D6F2064C3AD612E20536520636F72746F20616E74657320706F722063616E73616E63696F2E USING utf8mb4)),
   (2, 16, DATE_SUB(CURDATE(), INTERVAL 133 DAY), '17:00:00', '18:00:00', 'completa', NULL,
-   'Trabajo de prension con masa y pinzas.'),
+   CONVERT(0x54726162616A6F206465207072656E7369C3B36E20636F6E206D61736120792070696E7A61732E USING utf8mb4)),
   -- Este dia tiene DOS sesiones y una es ausencia: es el caso que hace
   -- visible por que las marcas se apilan. Si se superpusieran, el ambar de
   -- la sesion trabajada taparia el ladrillo de la ausencia —o al reves— y
   -- una ausencia desapareceria del grafico. Eso es informacion clinica
   -- oculta, no una molestia de densidad.
   (2, 16, DATE_SUB(CURDATE(), INTERVAL 126 DAY), '17:00:00', '18:00:00', 'ausencia', 'paciente',
-   'La familia aviso el dia anterior.'),
+   CONVERT(0x4C612066616D696C696120617669736F20656C2064C3AD6120616E746572696F722E USING utf8mb4)),
   (2, 16, DATE_SUB(CURDATE(), INTERVAL 126 DAY), '18:00:00', '19:00:00', 'completa', NULL,
-   'Se recupero el turno mas tarde. No se llego a calificar.'),
+   CONVERT(0x53652072656375706572C3B320656C207475726E6F206DC3A1732074617264652E204E6F207365206C6C6567C3B320612063616C6966696361722E USING utf8mb4)),
   (2, 16, DATE_SUB(CURDATE(), INTERVAL 119 DAY), '17:00:00', '18:00:00', 'completa', NULL,
    'Retoma el trazo con apoyo verbal.'),
   (2, 16, DATE_SUB(CURDATE(), INTERVAL 112 DAY), '17:00:00', '18:00:00', 'completa', NULL,
-   'Practica de vestido con prendas propias.'),
+   CONVERT(0x5072C3A16374696361206465207665737469646F20636F6E207072656E6461732070726F706961732E USING utf8mb4)),
   (2, 16, DATE_SUB(CURDATE(), INTERVAL 105 DAY), '17:00:00', '18:00:00', 'ausencia', 'paciente',
-   'No asistio, sin aviso.'),
+   CONVERT(0x4E6F20617369737469C3B32C2073696E20617669736F2E USING utf8mb4)),
   (2, 16, DATE_SUB(CURDATE(), INTERVAL  98 DAY), '17:00:00', '18:00:00', 'completa', NULL,
    'Escritura sostenida sin recordatorios.'),
   (2, 16, DATE_SUB(CURDATE(), INTERVAL  91 DAY), '17:00:00', '18:00:00', 'completa', NULL,
@@ -626,16 +624,16 @@ INSERT INTO evoluciones (id_sesion, id_objetivo, valor, observaciones)
 SELECT s.id, o.id, x.valor, x.obs
   FROM (
     SELECT 140 AS dias, '17:00:00' AS hora, 1 AS n_obj, 1 AS valor,
-           'Prension debil, sin sostener el agarre.' AS obs
-    UNION ALL SELECT 140, '17:00:00', 2, 1, 'No sostiene el trazo mas de dos minutos.'
+           CONVERT(0x5072656E7369C3B36E2064C3A962696C2C2073696E20736F7374656E657220656C206167617272652E USING utf8mb4) AS obs
+    UNION ALL SELECT 140, '17:00:00', 2, 1, CONVERT(0x4E6F20736F737469656E6520656C207472617A6F206DC3A17320646520646F73206D696E75746F732E USING utf8mb4)
     UNION ALL SELECT 133, '17:00:00', 1, 2, 'Sostiene el agarre con apoyo.'
-    UNION ALL SELECT 119, '17:00:00', 2, 2, 'Trazo mas firme, con recordatorios.'
+    UNION ALL SELECT 119, '17:00:00', 2, 2, CONVERT(0x5472617A6F206DC3A173206669726D652C20636F6E207265636F726461746F72696F732E USING utf8mb4)
     UNION ALL SELECT 112, '17:00:00', 3, 2, 'Se calza solo, con ayuda para el cierre.'
-    UNION ALL SELECT  98, '17:00:00', 1, 4, 'Prension funcional en actividades largas.'
+    UNION ALL SELECT  98, '17:00:00', 1, 4, CONVERT(0x5072656E7369C3B36E2066756E63696F6E616C20656E206163746976696461646573206C61726761732E USING utf8mb4)
     UNION ALL SELECT  98, '17:00:00', 2, 4, 'Quince minutos sostenidos sin recordatorio.'
     UNION ALL SELECT  91, '17:00:00', 1, 5, 'Objetivo alcanzado.'
     UNION ALL SELECT  91, '17:00:00', 2, 5, 'Objetivo alcanzado.'
-    UNION ALL SELECT  91, '17:00:00', 3, 4, 'Autonomo salvo cordones.'
+    UNION ALL SELECT  91, '17:00:00', 3, 4, CONVERT(0x417574C3B36E6F6D6F2073616C766F20636F72646F6E65732E USING utf8mb4)
   ) AS x
   JOIN sesiones s
     ON s.id_paciente = 16
@@ -716,20 +714,13 @@ UPDATE objetivos_terapeuticos
 -- =====================================================================
 INSERT INTO objetivos_terapeuticos (id_paciente, descripcion, activo, fecha_creacion) VALUES
   (17,
-   'Que Damian logre subir y bajar escaleras alternando los pies, con '
-   'supervision cercana del terapeuta a cargo, durante el primer semestre '
-   'del 2026.',
+   CONVERT(0x5175652044616D69C3A16E206C6F67726520737562697220792062616A617220657363616C6572617320616C7465726E616E646F206C6F7320706965732C20636F6E20737570657276697369C3B36E2063657263616E612064656C20746572617065757461206120636172676F2C20647572616E746520656C207072696D65722073656D65737472652064656C20323032362E USING utf8mb4),
    TRUE, TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 4 DAY), '22:14:00')),
   (17,
-   'Que Damian logre abrochar botones medianos en prendas cotidianas '
-   '(camisa y campera), con asistencia fisica y verbal, en 2 de 3 '
-   'oportunidades, en el contexto del consultorio, durante el primer '
-   'semestre del 2026.',
+   CONVERT(0x5175652044616D69C3A16E206C6F677265206162726F6368617220626F746F6E6573206D656469616E6F7320656E207072656E64617320636F74696469616E6173202863616D69736120792063616D70657261292C20636F6E206173697374656E6369612066C3AD7369636120792076657262616C2C20656E20322064652033206F706F7274756E6964616465732C20656E20656C20636F6E746578746F2064656C20636F6E73756C746F72696F2C20647572616E746520656C207072696D65722073656D65737472652064656C20323032362E USING utf8mb4),
    TRUE, TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 4 DAY), '22:16:00')),
   (17,
-   'Que Damian logre servirse agua de una jarra liviana sin derramar sobre '
-   'la mesada, con asistencia moderada del terapeuta, en 2 de 5 '
-   'oportunidades, durante el primer semestre del 2026.',
+   CONVERT(0x5175652044616D69C3A16E206C6F677265207365727669727365206167756120646520756E61206A61727261206C697669616E612073696E2064657272616D617220736F627265206C61206D65736164612C20636F6E206173697374656E636961206D6F6465726164612064656C207465726170657574612C20656E20322064652035206F706F7274756E6964616465732C20647572616E746520656C207072696D65722073656D65737472652064656C20323032362E USING utf8mb4),
    TRUE, TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 4 DAY), '22:20:00'));
 
 -- ASIGNACION DEL PACIENTE 17 (2026-09-28, regla 8 — asignacion vigente a la
@@ -760,95 +751,68 @@ INSERT INTO familiares_pacientes (id_familiar, id_paciente, fecha_vinculo) VALUE
   (4, 8, '2026-03-30'), (4, 11, '2026-05-11');
 
 INSERT INTO preferencias_notificacion (id_familiar, tipo, habilitada) VALUES
-  (1, 'nueva_sesion', TRUE),  (1, 'informe_generado', TRUE),  (1, 'cambio_objetivo', TRUE),
-  (2, 'nueva_sesion', TRUE),  (2, 'informe_generado', TRUE),  (2, 'cambio_objetivo', FALSE),
-  (3, 'nueva_sesion', FALSE), (3, 'informe_generado', TRUE),  (3, 'cambio_objetivo', TRUE),
-  (4, 'nueva_sesion', TRUE),  (4, 'informe_generado', FALSE), (4, 'cambio_objetivo', TRUE);
+  (1, CONVERT(0x6E756576615F73657369C3B36E USING utf8mb4), TRUE),  (1, 'informe_generado', TRUE),  (1, 'cambio_objetivo', TRUE),
+  (2, CONVERT(0x6E756576615F73657369C3B36E USING utf8mb4), TRUE),  (2, 'informe_generado', TRUE),  (2, 'cambio_objetivo', FALSE),
+  (3, CONVERT(0x6E756576615F73657369C3B36E USING utf8mb4), FALSE), (3, 'informe_generado', TRUE),  (3, 'cambio_objetivo', TRUE),
+  (4, CONVERT(0x6E756576615F73657369C3B36E USING utf8mb4), TRUE),  (4, 'informe_generado', FALSE), (4, 'cambio_objetivo', TRUE);
 
 -- Los textos llevan tildes pero el archivo es ASCII: se escriben como bytes
 -- UTF-8 en hexadecimal y se convierten (Windows carga este archivo sin
 -- depender de la codificacion de consola).
-INSERT INTO notificaciones (id_familiar, id_paciente, tipo, mensaje, leida, fecha) VALUES
-  (1, 1, 'nueva_sesion', CONVERT(0x53652072656769737472C3B3206C612073657369C3B36E2064656C2030322F30362F3230323620646520546F6D61732E USING utf8mb4), TRUE, '2026-06-02 10:05:00'),
-  (1, 1, 'cambio_objetivo', CONVERT(0x536520617263686976C3B320756E206F626A657469766F2064656C20706C616E20646520546F6D61733A20536F7374656E6572206C61206174656E6369C3B36E20656E207461726561732064652063696E636F206D696E75746F732E USING utf8mb4), TRUE, '2026-06-20 11:05:00'),
-  (1, 5, 'informe_generado', CONVERT(0x596120657374C3A120646973706F6E69626C6520756E20696E666F726D65206E7565766F206465204D69612E USING utf8mb4), FALSE, '2026-07-01 09:00:00'),
-  (2, 2, 'nueva_sesion', CONVERT(0x53652072656769737472C3B3206C612073657369C3B36E2064656C2030332F30362F323032362064652056616C656E74696E612E USING utf8mb4), FALSE, '2026-06-10 12:05:00'),
-  (3, 7, 'nueva_sesion', CONVERT(0x53652072656769737472C3B3206C612073657369C3B36E2064656C2030342F30362F32303236206465204C7563C3AD612E USING utf8mb4), FALSE, '2026-06-11 09:30:00'),
-  (3, 10, 'informe_generado', CONVERT(0x596120657374C3A120646973706F6E69626C6520756E20696E666F726D65206E7565766F2064652042656E6963696F2E USING utf8mb4), FALSE, '2026-07-01 09:10:00'),
-  (4, 8, 'cambio_objetivo', CONVERT(0x5365206167726567C3B320756E206F626A657469766F20616C20706C616E2064652054686961676F3A205265636F6E6F6365722079206E6F6D627261722063756174726F20656D6F63696F6E65732062C3A173696361732E USING utf8mb4), TRUE, '2026-06-15 16:20:00'),
-  (4, 11, 'nueva_sesion', CONVERT(0x53652072656769737472C3B3206C612073657369C3B36E2064656C2031372F30362F323032362064652052656E6174612E USING utf8mb4), FALSE, '2026-06-18 11:00:00');
+--
+-- Los avisos salen de los datos que existen (QA, H24): antes eran fijos de
+-- junio y nombraban sesiones e informes que el seed no tiene. Mismo texto
+-- que emite notificaciones_service.
+-- Avisos de sesion: las dos ultimas realizadas de cada paciente vinculado.
+INSERT INTO notificaciones (id_familiar, id_paciente, tipo, mensaje, leida, fecha)
+SELECT fp.id_familiar, s.id_paciente, CONVERT(0x6E756576615F73657369C3B36E USING utf8mb4),
+       CONCAT(CONVERT(0x53652072656769737472C3B3206C612073657369C3B36E2064656C20 USING utf8mb4), DATE_FORMAT(s.fecha, '%d/%m/%Y'), ' a las ',
+              TIME_FORMAT(s.hora_inicio, '%H:%i'), ' de ', p.nombre, '.'),
+       s.fecha < DATE_SUB(CURDATE(), INTERVAL 3 DAY),
+       TIMESTAMP(s.fecha, ADDTIME(s.hora_inicio, '01:00:00'))
+  FROM familiares_pacientes fp
+  JOIN pacientes p ON p.id = fp.id_paciente
+  JOIN sesiones s ON s.id_paciente = fp.id_paciente AND s.estado = 'completa'
+ WHERE (SELECT COUNT(*) FROM sesiones s2
+         WHERE s2.id_paciente = s.id_paciente AND s2.estado = 'completa'
+           AND (s2.fecha > s.fecha OR (s2.fecha = s.fecha AND s2.hora_inicio > s.hora_inicio))) < 2;
+
+-- Aviso de objetivo: el plan inicial de cada paciente vinculado.
+INSERT INTO notificaciones (id_familiar, id_paciente, tipo, mensaje, leida, fecha)
+SELECT fp.id_familiar, o.id_paciente, 'cambio_objetivo',
+       CONCAT(CONVERT(0x5365206167726567C3B320756E206F626A657469766F20616C20706C616E20646520 USING utf8mb4), p.nombre, ': ', LEFT(o.descripcion, 280)),
+       TRUE, o.fecha_creacion
+  FROM familiares_pacientes fp
+  JOIN pacientes p ON p.id = fp.id_paciente
+  JOIN objetivos_terapeuticos o ON o.id_paciente = fp.id_paciente
+ WHERE o.id = (SELECT MIN(o2.id) FROM objetivos_terapeuticos o2 WHERE o2.id_paciente = o.id_paciente);
 
 -- Observaciones tecnicas de RRHH sobre las primeras ausencias registradas
 INSERT INTO observaciones_rrhh (id_sesion, id_rrhh, texto)
-SELECT id, 1, 'Ausencia registrada. Se notifico a coordinacion.'
+SELECT id, 1, CONVERT(0x417573656E63696120726567697374726164612E205365206E6F7469666963C3B3206120636F6F7264696E616369C3B36E2E USING utf8mb4)
   FROM sesiones WHERE estado = 'ausencia' ORDER BY id LIMIT 12;
 
 INSERT INTO informes
   (id_paciente, id_terapeuta, tipo, periodo, fecha_desde, fecha_hasta, version, contenido, contenido_original, generado_con, estado, fecha_generacion, fecha_publicacion) VALUES
-  (1, 1, 'mensual', '2026-09', '2026-09-01', '2026-09-30', 1, '## Datos del paciente
-Tomas Aguirre.
-
-## Periodo
-Septiembre de 2026.
-
-## Asistencia
-Se realizaron 17 sesiones en el mes, sin ausencias.
-
-## Objetivos trabajados
-- Sostener la escritura con agarre tripode: Avanzado. Se mantiene en un nivel alto durante todo el mes.
-- Tolerar texturas nuevas en la alimentacion: En proceso. Mejora respecto del mes anterior.
-
-## Observaciones de las sesiones
-Se observa mejor tolerancia a estimulos nuevos y mayor persistencia en la tarea.
-
-## Cierre
-Se continua con el plan vigente.', 'Septiembre de 2026. Se realizaron 17 sesiones. Objetivos: escritura con agarre tripode (Avanzado) y texturas nuevas (En proceso).
-
-[COMPLETAR: observaciones y cierre]', 'plantilla', 'final', '2026-10-01 08:30:00', '2026-10-01 09:00:00'),
-  (1, 1, 'semestral', '2026-S1', '2026-01-01', '2026-06-30', 1, '## Datos del paciente
-Tomas Aguirre.
-
-## Periodo
-Primer semestre de 2026 (de enero a junio).
-
-## Evolucion general
-Durante el semestre se observaron avances sostenidos en motricidad fina y en tolerancia a estimulos nuevos. Se archivo el objetivo de vestido autonomo por cumplimiento.
-
-## Proximos pasos
-Se sostiene la frecuencia semanal y se revisan los objetivos al inicio del segundo semestre.', 'Durante el semestre hubo avances en motricidad fina.
-
-[COMPLETAR: proximos pasos]', 'plantilla', 'final', '2026-07-01 08:30:00', '2026-07-01 09:00:00'),
-  (5, 2, 'mensual', '2026-09', '2026-09-01', '2026-09-30', 1, NULL, '## Datos del paciente
-Mia Cardozo.
-
-## Periodo
-Septiembre de 2026.
-
-## Asistencia
-Registro de asistencia regular.
-
-## Objetivos trabajados
-- Avances parciales en autonomia.
-
-## Cierre
-[COMPLETAR: cierre y recomendaciones]', 'plantilla', 'borrador', '2026-10-01 08:45:00', NULL),
-  (7, 1, 'mensual', '2026-09', '2026-09-01', '2026-09-30', 1, NULL, '## Datos del paciente
-Lucia Molina.
-
-## Periodo
-Septiembre de 2026.
-
-## Asistencia
-Registro de asistencia regular.
-
-## Objetivos trabajados
-- Avances parciales en autonomia.
-
-## Cierre
-[COMPLETAR: cierre y recomendaciones]', 'plantilla', 'borrador', '2026-10-02 10:15:00', NULL);
+  (1, 1, 'mensual', '2026-09', '2026-09-01', '2026-09-30', 1, CONVERT(0x2323204461746F732064656C2070616369656E74650A546F6DC3A17320416775697272652E0A0A232320506572C3AD6F646F0A5365707469656D62726520646520323032362E0A0A2323204173697374656E6369610A5365207265616C697A61726F6E20313720736573696F6E657320656E20656C206D65732C2073696E20617573656E636961732E0A0A2323204F626A657469766F732074726162616A61646F730A2D20536F7374656E6572206C612065736372697475726120636F6E20616761727265207472C3AD706F64653A204176616E7A61646F2E205365206D616E7469656E6520656E20756E206E6976656C20616C746F20647572616E746520746F646F20656C206D65732E0A2D20546F6C65726172207465787475726173206E756576617320656E206C6120616C696D656E74616369C3B36E3A20456E2070726F6365736F2E204D656A6F726120726573706563746F2064656C206D657320616E746572696F722E0A0A2323204F62736572766163696F6E6573206465206C617320736573696F6E65730A5365206F627365727661206D656A6F7220746F6C6572616E636961206120657374C3AD6D756C6F73206E7565766F732079206D61796F722070657273697374656E63696120656E206C612074617265612E0A0A2323204369657272650A536520636F6E74696EC3BA6120636F6E20656C20706C616E20766967656E74652E USING utf8mb4), CONVERT(0x5365707469656D62726520646520323032362E205365207265616C697A61726F6E20313720736573696F6E65732E204F626A657469766F733A2065736372697475726120636F6E20616761727265207472C3AD706F646520284176616E7A61646F292079207465787475726173206E75657661732028456E2070726F6365736F292E0A0A5B434F4D504C455441523A206F62736572766163696F6E65732079206369657272655D USING utf8mb4), 'plantilla', 'final', '2026-10-01 08:30:00', '2026-10-01 09:00:00'),
+  (1, 1, 'semestral', '2026-S1', '2026-01-01', '2026-06-30', 1, CONVERT(0x2323204461746F732064656C2070616369656E74650A546F6DC3A17320416775697272652E0A0A232320506572C3AD6F646F0A5072696D65722073656D657374726520646520323032362028646520656E65726F2061206A756E696F292E0A0A23232045766F6C756369C3B36E2067656E6572616C0A447572616E746520656C2073656D6573747265207365206F627365727661726F6E206176616E63657320736F7374656E69646F7320656E206D6F74726963696461642066696E61207920656E20746F6C6572616E636961206120657374C3AD6D756C6F73206E7565766F732E20536520617263686976C3B320656C206F626A657469766F206465207665737469646F20617574C3B36E6F6D6F20706F722063756D706C696D69656E746F2E0A0A2323205072C3B378696D6F73207061736F730A536520736F737469656E65206C61206672656375656E6369612073656D616E616C2079207365207265766973616E206C6F73206F626A657469766F7320616C20696E6963696F2064656C20736567756E646F2073656D65737472652E USING utf8mb4), CONVERT(0x447572616E746520656C2073656D6573747265206875626F206176616E63657320656E206D6F74726963696461642066696E612E0A0A5B434F4D504C455441523A207072C3B378696D6F73207061736F735D USING utf8mb4), 'plantilla', 'final', '2026-07-01 08:30:00', '2026-07-01 09:00:00'),
+  (5, 2, 'mensual', '2026-09', '2026-09-01', '2026-09-30', 1, NULL, CONVERT(0x2323204461746F732064656C2070616369656E74650A4DC3AD6120436172646F7A6F2E0A0A232320506572C3AD6F646F0A5365707469656D62726520646520323032362E0A0A2323204173697374656E6369610A526567697374726F206465206173697374656E63696120726567756C61722E0A0A2323204F626A657469766F732074726162616A61646F730A2D204176616E636573207061726369616C657320656E206175746F6E6F6DC3AD612E0A0A2323204369657272650A5B434F4D504C455441523A206369657272652079207265636F6D656E646163696F6E65735D USING utf8mb4), 'plantilla', 'borrador', '2026-10-01 08:45:00', NULL),
+  (7, 1, 'mensual', '2026-09', '2026-09-01', '2026-09-30', 1, NULL, CONVERT(0x2323204461746F732064656C2070616369656E74650A4C7563C3AD61204D6F6C696E612E0A0A232320506572C3AD6F646F0A5365707469656D62726520646520323032362E0A0A2323204173697374656E6369610A526567697374726F206465206173697374656E63696120726567756C61722E0A0A2323204F626A657469766F732074726162616A61646F730A2D204176616E636573207061726369616C657320656E206175746F6E6F6DC3AD612E0A0A2323204369657272650A5B434F4D504C455441523A206369657272652079207265636F6D656E646163696F6E65735D USING utf8mb4), 'plantilla', 'borrador', '2026-10-02 10:15:00', NULL);
 
 -- Un borrador recien generado todavia no fue editado: su contenido es el original.
 UPDATE informes SET contenido = contenido_original WHERE contenido IS NULL;
+
+-- Aviso de informe: solo los publicados y para quien lo tiene encendido.
+INSERT INTO notificaciones (id_familiar, id_paciente, tipo, mensaje, leida, fecha)
+SELECT fp.id_familiar, i.id_paciente, 'informe_generado',
+       CONCAT(CONVERT(0x596120657374C3A120646973706F6E69626C6520756E20696E666F726D65206E7565766F20646520 USING utf8mb4), p.nombre, '.'),
+       TRUE, i.fecha_publicacion
+  FROM informes i
+  JOIN pacientes p ON p.id = i.id_paciente
+  JOIN familiares_pacientes fp ON fp.id_paciente = i.id_paciente
+  JOIN preferencias_notificacion pn
+    ON pn.id_familiar = fp.id_familiar AND pn.tipo = 'informe_generado' AND pn.habilitada = TRUE
+ WHERE i.estado = 'final';
 
 INSERT INTO plantillas_objetivos (area, descripcion) VALUES
   ('Motricidad fina', CONVERT(0x4d656a6f726172206c612070696e7a612066696e612070617261206c61206573637269747572612c20736f7374656e69656e646f20656c206cc3a170697a20636f6e20616761727265207472c3ad706f646520647572616e7465203130206d696e75746f732c20636f6e2061797564612076657262616c206dc3ad6e696d61 USING utf8mb4)),
@@ -879,7 +843,7 @@ INSERT INTO auditoria_accesos (id_usuario, email, resultado, ip, fecha) VALUES
 -- =====================================================================
 -- RESUMEN
 -- =====================================================================
-SELECT 'Datos de demostracion cargados' AS resultado;
+SELECT CONVERT(0x4461746F732064652064656D6F737472616369C3B36E206361726761646F73 USING utf8mb4) AS resultado;
 
 SELECT
   (SELECT COUNT(*) FROM usuarios)                                        AS usuarios,
@@ -893,10 +857,10 @@ SELECT
 
 SELECT estado, COUNT(*) AS cantidad FROM sesiones GROUP BY estado ORDER BY cantidad DESC;
 
-SELECT 'Sesiones sin evolucion (pendientes)' AS detalle, COUNT(*) AS cantidad
+SELECT CONVERT(0x536573696F6E65732073696E2065766F6C756369C3B36E202870656E6469656E74657329 USING utf8mb4) AS detalle, COUNT(*) AS cantidad
   FROM sesiones s
  WHERE s.estado <> 'ausencia'
    AND NOT EXISTS (SELECT 1 FROM evoluciones e WHERE e.id_sesion = s.id);
 
-SELECT 'Dia mas cargado' AS detalle, fecha, id_terapeuta, COUNT(*) AS sesiones
+SELECT CONVERT(0x44C3AD61206DC3A173206361726761646F USING utf8mb4) AS detalle, fecha, id_terapeuta, COUNT(*) AS sesiones
   FROM sesiones GROUP BY fecha, id_terapeuta ORDER BY sesiones DESC, fecha LIMIT 1;

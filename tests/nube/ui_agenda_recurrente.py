@@ -39,7 +39,7 @@ with sync_playwright() as p:
         pg.fill('#turno-inicio', hora); pg.fill('#turno-fin', fin)
         pg.get_by_role('button', name='Guardar turno').click(); pg.wait_for_timeout(1800)
 
-    agregar('Tomas Aguirre', 'Lunes', '06:00', '06:45')
+    agregar('Tomás Aguirre', 'Lunes', '06:00', '06:45')
     check(pg.get_by_text('Turno guardado').count() >= 1, 'avisa que guardo el turno')
     n = int(sql("SELECT COUNT(*) FROM sesiones WHERE hora_inicio='06:00:00' AND fecha>=CURDATE() AND estado='incompleta'"))
     check(n >= 3, f'el turno genero sesiones agendadas para las proximas semanas ({n})')

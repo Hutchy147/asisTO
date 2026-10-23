@@ -133,9 +133,10 @@ function BloqueSesion({ sesion, onAbrir }) {
 
 function Leyenda() {
   const items = [
-    { clave: 'completa', etiqueta: 'Completa' },
-    { clave: 'incompleta', etiqueta: 'Incompleta' },
-    { clave: 'ausencia', etiqueta: 'Ausencia' },
+    // Mismas palabras que los bloques de la grilla (Realizada / En registro / Ausente).
+    { clave: 'completa', etiqueta: ETIQUETA_ESTADO.completa },
+    { clave: 'incompleta', etiqueta: ETIQUETA_ESTADO.incompleta },
+    { clave: 'ausencia', etiqueta: ETIQUETA_ESTADO.ausencia },
   ];
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>

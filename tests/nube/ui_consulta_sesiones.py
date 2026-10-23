@@ -35,9 +35,9 @@ with sync_playwright() as p:
     pg.get_by_role('button', name='Anterior').click(); pg.wait_for_timeout(1000)
 
     # filtro por estado
-    pg.locator('#filtro-estado').click(); pg.get_by_role('option', name='Ausencia').click(); pg.wait_for_timeout(1500)
+    pg.locator('#filtro-estado').click(); pg.get_by_role('option', name='Ausente').click(); pg.wait_for_timeout(1500)
     chips = pg.locator('tbody tr').all_inner_texts()
-    check(len(chips) > 0 and all('Ausencia' in t for t in chips), 'el filtro de estado deja solo ausencias')
+    check(len(chips) > 0 and all('Ausente' in t for t in chips), 'el filtro de estado deja solo ausencias')
     pg.locator('#filtro-estado').click(); pg.get_by_role('option', name='Todos').click(); pg.wait_for_timeout(1000)
 
     # todas las terapeutas: aparece una sesion de otra terapeuta y se abre en solo lectura
@@ -64,7 +64,7 @@ with sync_playwright() as p:
     check('%' not in texto, 'no muestra porcentajes')
     pg.screenshot(path=V + '08_tendencia_progreso.png')
     pg.locator('#tendencia-dias').click(); pg.get_by_role('option', name='Últimos 90 días').click(); pg.wait_for_timeout(1500)
-    check(pg.get_by_test_id('tendencias').get_by_text('Sin datos para comparar').count() >= 1, 'un periodo sin historia previa dice que faltan datos')
+    check(pg.get_by_test_id('tendencias').get_by_text('Sin datos suficientes').count() >= 1, 'un periodo sin historia previa dice que faltan datos')
 
     # roles
     for email in ('rrhh', ):

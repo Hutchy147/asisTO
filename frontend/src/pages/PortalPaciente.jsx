@@ -24,7 +24,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { usePeticion } from '../hooks/usePeticion.js';
 import { etiquetaDeValor } from '../services/evolucionesService.js';
 import { obtenerMiProgreso } from '../services/portalPacienteService.js';
-import { formatearFecha } from '../utils/fechas.js';
+import { aIsoLocal, formatearFecha } from '../utils/fechas.js';
 
 export default function PortalPaciente() {
   const { usuario, logout } = useAuth();
@@ -87,10 +87,10 @@ export default function PortalPaciente() {
                 borderRadius: `${t.formas.md}px`,
               })}
             >
-              <TextField id="filtro-desde" label="Desde" type="date" size="small" value={desde}
+              <TextField id="filtro-desde" label="Desde" type="date" size="small" value={desde} inputProps={{ max: aIsoLocal(new Date()) }}
                 onChange={(e) => setDesde(e.target.value)} InputLabelProps={{ shrink: true }} error={rangoInvalido}
                 helperText=" " />
-              <TextField id="filtro-hasta" label="Hasta" type="date" size="small" value={hasta}
+              <TextField id="filtro-hasta" label="Hasta" type="date" size="small" value={hasta} inputProps={{ max: aIsoLocal(new Date()) }}
                 onChange={(e) => setHasta(e.target.value)} InputLabelProps={{ shrink: true }} error={rangoInvalido}
                 helperText={rangoInvalido ? 'La fecha final no puede ser anterior a la inicial.' : ' '} />
               <Box sx={{ display: 'flex', gap: 1, mb: 2.75 }}>

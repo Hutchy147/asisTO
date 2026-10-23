@@ -21,7 +21,7 @@ with sync_playwright() as p:
     check(pg.url.endswith('/paciente'), f'Camila entra a /paciente ({pg.url})')
     pg.wait_for_timeout(1500)
     check(pg.get_by_text('Mi seguimiento').count() >= 1, 'barra del portal del paciente')
-    check(pg.get_by_text('Camila Rios').count() >= 1, 'muestra su nombre')
+    check(pg.get_by_text('Camila Ríos').count() >= 1, 'muestra su nombre')
     check(pg.get_by_text('Mis objetivos').count() >= 1, 'lista sus objetivos')
     check(pg.get_by_text('Última calificación').count() >= 1, 'muestra la ultima calificacion en palabras')
     cuerpo = pg.inner_text('body')
@@ -30,7 +30,7 @@ with sync_playwright() as p:
     check('Todavía no hay una pantalla' not in cuerpo and 'módulo' not in cuerpo.lower(), 'ya no es el tablero generico')
     if SHOTS: pg.screenshot(path=f'{SHOTS}/09_portal_paciente.png', full_page=True)
     # filtro por fechas
-    pg.fill('#filtro-desde', '2030-01-01'); pg.fill('#filtro-hasta', '2030-02-01')
+    pg.fill('#filtro-desde', '2020-01-01'); pg.fill('#filtro-hasta', '2020-02-01')
     pg.get_by_role('button', name='Filtrar').click(); pg.wait_for_timeout(1500)
     check(pg.get_by_text('No hay objetivos en este período').count() == 1, 'un rango sin datos lo dice, no afirma que no tiene objetivos')
     pg.get_by_role('button', name='Todo el tratamiento').click(); pg.wait_for_timeout(1500)

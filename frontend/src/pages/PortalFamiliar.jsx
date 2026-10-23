@@ -27,7 +27,7 @@ import { useEstadoEnUrl } from '../hooks/useEstadoEnUrl.js';
 import { contarNoLeidas } from '../services/notificacionesService.js';
 import { obtenerEvolucionVinculada, listarPacientesVinculados } from '../services/portalFamiliarService.js';
 import { etiquetaDeValor } from '../services/evolucionesService.js';
-import { formatearFecha, textoEdad } from '../utils/fechas.js';
+import { aIsoLocal, formatearFecha, textoEdad } from '../utils/fechas.js';
 
 const ESTADOS_PACIENTE = {
   en_tratamiento: 'En tratamiento',
@@ -104,14 +104,14 @@ function EvolucionDe({ paciente }) {
         })}
       >
         <TextField
-          id="filtro-desde" label="Desde" type="date" size="small" value={desde}
+          id="filtro-desde" label="Desde" type="date" size="small" value={desde} inputProps={{ max: aIsoLocal(new Date()) }}
           onChange={(e) => setDesde(e.target.value)} InputLabelProps={{ shrink: true }}
           error={rangoInvalido}
           // Mismo hueco de ayuda que "Hasta": si no, quedan desalineados.
           helperText=" "
         />
         <TextField
-          id="filtro-hasta" label="Hasta" type="date" size="small" value={hasta}
+          id="filtro-hasta" label="Hasta" type="date" size="small" value={hasta} inputProps={{ max: aIsoLocal(new Date()) }}
           onChange={(e) => setHasta(e.target.value)} InputLabelProps={{ shrink: true }}
           error={rangoInvalido}
           helperText={rangoInvalido ? 'La fecha final no puede ser anterior a la inicial.' : ' '}

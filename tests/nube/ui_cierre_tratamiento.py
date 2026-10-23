@@ -37,7 +37,7 @@ try:
         pg.get_by_role('button', name='Pausar tratamiento').click(); pg.wait_for_timeout(500)
         check(pg.get_by_role('button', name='Pausar', exact=True).is_disabled(), 'Pausar deshabilitado sin motivo')
         pg.screenshot(path='/tmp/claude-0/ui/doc/12_pausar_tratamiento.png')
-        pg.get_by_label('Motivo de la baja').fill('Viaje familiar de dos semanas')
+        pg.get_by_label('Motivo de la pausa').fill('Viaje familiar de dos semanas')
         pg.get_by_role('button', name='Pausar', exact=True).click(); pg.wait_for_timeout(1500)
         check(pg.get_by_text('Tratamiento en pausa').count() == 1, 'banner de pausa')
         check(pg.get_by_text('Viaje familiar de dos semanas').count() >= 1, 'muestra el motivo')

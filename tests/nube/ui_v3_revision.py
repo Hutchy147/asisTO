@@ -65,7 +65,7 @@ with sync_playwright() as p:
     # administrador
     entrar(pg, 'admin@asisto.local')
     check('/admin' in pg.url and pg.get_by_text('Asignación de terapeutas').count() == 1, 'admin: aterriza en /admin')
-    check(pg.get_by_text('Tomas Aguirre').count() >= 1, 'admin: ve la lista de pacientes')
+    check(pg.get_by_text('Tomás Aguirre').count() >= 1, 'admin: ve la lista de pacientes')
     pg.screenshot(path='/tmp/claude-0/ui/doc/17_admin.png')
     pg.locator('tr', has_text='Bruno Peralta').get_by_role('button', name='Asignar').click(); pg.wait_for_timeout(600)
     pg.locator('#asignacion-terapeuta').click(); pg.get_by_role('option', name='Diego Moyano').click()

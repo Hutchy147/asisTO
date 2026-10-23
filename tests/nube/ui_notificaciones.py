@@ -5,6 +5,7 @@ Cruza dos roles: la terapeuta registra una sesion por la API y la familiar
 ve el aviso en pantalla.
 Uso: python3 tests/nube/ui_notificaciones.py [salida_png_dir]
 """
+import re
 import datetime as dt, json, os, sys, urllib.request
 from playwright.sync_api import sync_playwright
 
@@ -59,7 +60,9 @@ with sync_playwright() as p:
     check(inicial >= 3, f'historial con avisos ({inicial})')
     cuerpo = page.locator('body').inner_text()
     check('trimestr' not in cuerpo.lower(), 'ningun aviso habla de trimestres')
-    check('Se registró la sesión del 02/06/2026 de Tomas.' in cuerpo, 'tildes correctas en los avisos de demostracion')
+    # Los avisos del seed salen de las sesiones reales: fecha y hora variables.
+    check(re.search(r'Se registró la sesión del \d{2}/\d{2}/\d{4} a las \d{2}:\d{2} de Tomás\.', cuerpo) is not None,
+          'tildes correctas en los avisos de demostracion')
     page.screenshot(path=f'{SALIDA}/avisos_historial.png', full_page=True)
 
     # preferencias: apagar "Nueva sesión registrada" y comprobar que no llega
@@ -99,7 +102,7 @@ with sync_playwright() as p:
     page.get_by_role('button', name='Cerrar sesión').click(); page.wait_for_timeout(800)
     login(page, 'jorge.bustos@asisto.local')
     page.goto(BASE + '/familiar/notificaciones'); page.wait_for_timeout(1200)
-    check(page.get_by_text('de Tomas').count() == 0, 'otro familiar no ve avisos de un paciente ajeno')
+    check(page.get_by_text('de Tomás').count() == 0, 'otro familiar no ve avisos de un paciente ajeno')
 
     check(not [c for c in consola if 'Failed' not in c and '401' not in c], f'sin errores de consola {consola[:2]}')
     b.close()
