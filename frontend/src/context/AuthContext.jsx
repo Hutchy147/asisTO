@@ -5,11 +5,11 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 import {
   getMe,
-  getToken,
+  haySesionGuardada,
   login as loginRequest,
   logout as logoutRequest,
   registrarManejadorDeSesion,
-  setToken,
+  marcarSesion,
 } from '../services/api.js';
 
 const AuthContext = createContext(null);
@@ -34,7 +34,7 @@ export function AuthProvider({ children }) {
   const [avisoSesion, setAvisoSesion] = useState('');
 
   const limpiarSesion = useCallback(() => {
-    setToken(null);
+    marcarSesion(false);
     setUsuario(null);
     setPerfil(null);
   }, []);
@@ -53,14 +53,13 @@ export function AuthProvider({ children }) {
     });
   }, [limpiarSesion]);
 
-  // Al montar: si hay token guardado se revalida contra el backend. Un
-  // token puede estar vencido o pertenecer a un usuario dado de baja, asi
-  // que no alcanza con que exista en localStorage.
+  // Al montar: si quedo una sesion abierta se revalida contra el backend (la
+  // cookie puede estar vencida, revocada o ser de un usuario dado de baja).
   useEffect(() => {
     let cancelado = false;
 
     async function restaurarSesion() {
-      if (!getToken()) {
+      if (!haySesionGuardada()) {
         setCargando(false);
         return;
       }
@@ -87,7 +86,8 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (email, contrasena) => {
     const datos = await loginRequest(email, contrasena);
-    setToken(datos.token);
+    // El token NO se guarda: el backend dejó la cookie HttpOnly.
+    marcarSesion(true);
     setUsuario(datos.usuario);
     setPerfil(datos.perfil);
     setAvisoSesion('');

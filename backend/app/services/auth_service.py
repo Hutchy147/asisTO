@@ -320,7 +320,17 @@ def enlace_de_recuperacion_vigente(token):
     return bool(vigente)
 
 
-def _validar_contrasena_nueva(contrasena):
+# Claves que aparecen primero en cualquier diccionario de ataque. La lista es
+# corta a proposito: frena lo obvio sin volver imposible elegir una clave.
+CONTRASENAS_COMUNES = {
+    '12345678', '123456789', '1234567890', '12345678a', 'a12345678', 'password1',
+    'password123', 'contrasena1', 'contrasena123', 'qwerty123', 'qwerty1234',
+    'abc12345', 'abcd1234', 'asd12345', 'asisto123', 'asisto2025', 'terapia123',
+    'mendoza123', 'argentina1', 'boca12345', 'river1234', 'admin1234', 'usuario123',
+}
+
+
+def _validar_contrasena_nueva(contrasena, email=None):
     if not contrasena or len(contrasena) < LARGO_MINIMO_CONTRASENA:
         raise ErrorAplicacion(
             f'La contrasena tiene que tener al menos {LARGO_MINIMO_CONTRASENA} caracteres.',
@@ -336,6 +346,17 @@ def _validar_contrasena_nueva(contrasena):
             'La contrasena tiene que combinar letras y numeros.',
             campo='contrasena_nueva',
         )
+    if contrasena.lower() in CONTRASENAS_COMUNES:
+        raise ErrorAplicacion(
+            'Esa contrasena es demasiado comun y se adivina facilmente. Elija otra.',
+            campo='contrasena_nueva',
+        )
+    usuario_email = (email or '').split('@')[0].lower()
+    if len(usuario_email) >= 4 and usuario_email in contrasena.lower():
+        raise ErrorAplicacion(
+            'La contrasena no puede contener su email. Elija otra.',
+            campo='contrasena_nueva',
+        )
 
 
 @reintentar_en_deadlock()
@@ -345,13 +366,13 @@ def restablecer_contrasena(token, contrasena_nueva):
         raise ErrorAplicacion(
             'El enlace de recuperacion no es valido o ya vencio', campo='token'
         )
-    _validar_contrasena_nueva(contrasena_nueva)
-
-    # Para la auditoria: de quien es el enlace (si es valido).
+    # De quien es el enlace (si es valido): para la auditoria y para que la
+    # clave nueva no contenga el email.
     dueno = db.session.execute(
         text('SELECT id, email FROM usuarios WHERE token_recuperacion = :h'),
         {'h': _hash_token(token)},
     ).first()
+    _validar_contrasena_nueva(contrasena_nueva, dueno[1] if dueno else None)
 
     db.session.execute(
         text(

@@ -4,7 +4,20 @@
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
 
-const CLAVE_TOKEN = 'asisto_token';
+// LA SESION VIAJA EN UNA COOKIE HttpOnly que pone el backend al iniciar
+// sesion: el JavaScript de la pagina no puede leerla, asi que un XSS no se
+// lleva la sesion. Antes el JWT vivia en localStorage, al alcance de
+// cualquier script. Aca solo queda una MARCA sin valor (si hay sesion
+// abierta), para no consultar /auth/me al abrir la pantalla de login.
+const CLAVE_SESION = 'asisto_sesion_abierta';
+try {
+  // Limpieza del esquema anterior: el token ya no se guarda en el navegador.
+  localStorage.removeItem('asisto_token');
+} catch { /* almacenamiento bloqueado: nada que limpiar */ }
+
+// Cabecera propia del frontend: la defensa contra CSRF del backend la exige
+// en todo pedido que modifica datos con la sesion en cookie.
+const CABECERAS_CLIENTE = { 'X-AsisTO': '1' };
 
 // Codigos que el backend devuelve cuando la sesion ya no sirve. Se
 // comparan por codigo y no por texto del mensaje: el texto puede cambiar.
@@ -72,13 +85,16 @@ export function registrarManejadorDeSesion(callback) {
   alPerderSesion = callback;
 }
 
-export function getToken() {
-  return localStorage.getItem(CLAVE_TOKEN);
+/** ¿Quedó una sesión abierta en este navegador? (la cookie la valida el servidor) */
+export function haySesionGuardada() {
+  try { return localStorage.getItem(CLAVE_SESION) === '1'; } catch { return false; }
 }
 
-export function setToken(token) {
-  if (token) localStorage.setItem(CLAVE_TOKEN, token);
-  else localStorage.removeItem(CLAVE_TOKEN);
+export function marcarSesion(abierta) {
+  try {
+    if (abierta) localStorage.setItem(CLAVE_SESION, '1');
+    else localStorage.removeItem(CLAVE_SESION);
+  } catch { /* almacenamiento bloqueado: se consulta al servidor igual */ }
 }
 
 /** Arma la query string ignorando los parametros vacios o nulos. */
@@ -100,16 +116,12 @@ export function construirQuery(parametros = {}) {
 export async function request(path, options = {}) {
   const { omitirAuth = false, ...resto } = options;
 
-  const headers = { 'Content-Type': 'application/json', ...resto.headers };
-
-  const token = getToken();
-  if (token && !omitirAuth) {
-    headers.Authorization = `Bearer ${token}`;
-  }
+  const headers = { 'Content-Type': 'application/json', ...CABECERAS_CLIENTE, ...resto.headers };
 
   let response;
   try {
-    response = await fetch(`${BASE_URL}${path}`, { ...resto, headers });
+    // include: la cookie de sesión viaja también si la API está en otro origen.
+    response = await fetch(`${BASE_URL}${path}`, { ...resto, headers, credentials: 'include' });
   } catch (fallo) {
     // fetch solo rechaza por fallo de red, no por status de error
     throw new ErrorApi(
@@ -137,7 +149,7 @@ export async function request(path, options = {}) {
     // avisar "sesion expirada" dispararia una redireccion sobre la
     // pantalla en la que ya estamos, que es como se arma un loop.
     if (response.status === 401 && !omitirAuth && CODIGOS_SESION_INVALIDA.includes(codigo)) {
-      setToken(null);
+      marcarSesion(false);
       if (alPerderSesion) alPerderSesion(codigo);
     }
 
@@ -160,16 +172,16 @@ export const put = (path, cuerpo) =>
 export const del = (path) => request(path, { method: 'DELETE' });
 
 /**
- * Descarga un archivo (PDF) que la API sirve con autenticacion. Un <a href>
- * no puede llevar el token, asi que se pide con fetch, se arma un Blob y se
- * dispara la descarga. El nombre sale de Content-Disposition.
+ * Descarga un archivo (PDF) que la API sirve con autenticacion. Se pide con
+ * fetch (con la cookie de sesion), se arma un Blob y se dispara la descarga.
+ * El nombre sale de Content-Disposition.
  */
 export async function descargarArchivo(path, nombrePorOmision = 'informe.pdf') {
-  const token = getToken();
   let response;
   try {
     response = await fetch(`${BASE_URL}${path}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: CABECERAS_CLIENTE,
+      credentials: 'include',
     });
   } catch {
     throw new ErrorApi(
@@ -181,7 +193,7 @@ export async function descargarArchivo(path, nombrePorOmision = 'informe.pdf') {
     let payload = null;
     try { payload = JSON.parse(await response.text()); } catch { /* sin cuerpo JSON */ }
     if (response.status === 401 && CODIGOS_SESION_INVALIDA.includes(payload?.codigo)) {
-      setToken(null);
+      marcarSesion(false);
       if (alPerderSesion) alPerderSesion(payload.codigo);
     }
     throw new ErrorApi(payload?.mensaje ?? `Error ${response.status}`, {

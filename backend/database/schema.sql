@@ -64,6 +64,13 @@ CREATE TABLE usuarios (
   token_recuperacion  VARCHAR(255) NULL DEFAULT NULL,
   token_expira        DATETIME     NULL DEFAULT NULL,
 
+  -- Los JWT emitidos ANTES de este momento dejan de valer: se fija al
+  -- cerrar sesion y al restablecer la contrasena. Sin esto, un token robado
+  -- seguia sirviendo hasta vencer aunque la persona cambiara la clave.
+  -- Con microsegundos: un token emitido en el mismo segundo que el cierre
+  -- de sesion tiene que quedar revocado igual.
+  sesiones_validas_desde DATETIME(6) NULL DEFAULT NULL,
+
   fecha_creacion      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
   PRIMARY KEY (id),
@@ -6248,12 +6255,15 @@ BEGIN
     ELSE
       -- El token es de un solo uso. Restablecer tambien levanta el bloqueo:
       -- es la salida natural de quien se quedo afuera por intentos fallidos.
+      -- Tambien cierra todas las sesiones abiertas: si la clave se cambio
+      -- porque alguien mas la conocia, sus tokens dejan de servir ya.
       UPDATE usuarios
          SET contrasena_hash = p_hash_nuevo,
              token_recuperacion = NULL,
              token_expira = NULL,
              intentos_fallidos = 0,
-             bloqueado_hasta = NULL
+             bloqueado_hasta = NULL,
+             sesiones_validas_desde = NOW(6)
        WHERE id = v_id;
       COMMIT;
       SET p_restablecida = TRUE;

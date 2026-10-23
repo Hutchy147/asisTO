@@ -22,6 +22,14 @@ CODIGO_TOKEN_INVALIDO = 'token_invalido'
 CODIGO_TOKEN_EXPIRADO = 'token_expirado'
 CODIGO_ROL_NO_AUTORIZADO = 'rol_no_autorizado'
 CODIGO_USUARIO_INACTIVO = 'usuario_inactivo'
+CODIGO_SOLICITUD_NO_CONFIABLE = 'solicitud_no_confiable'
+
+# Cabecera que manda el frontend en cada pedido. Un formulario o una imagen de
+# otro sitio no pueden ponerla, y un fetch de otro origen con esa cabecera
+# dispara una verificacion CORS que el servidor rechaza: es la defensa contra
+# CSRF cuando la sesion viaja en cookie.
+CABECERA_CLIENTE = 'X-AsisTO'
+METODOS_SEGUROS = ('GET', 'HEAD', 'OPTIONS')
 
 
 # --- Contrasenas ---------------------------------------------------------
@@ -104,7 +112,9 @@ def generar_token(usuario):
         'sub': str(usuario.id),   # str: PyJWT valida que 'sub' sea string
         'rol': usuario.rol,
         'email': usuario.email,
-        'iat': ahora,
+        # Con decimales (no se redondea al segundo): la revocacion compara
+        # contra sesiones_validas_desde, que guarda microsegundos.
+        'iat': ahora.timestamp(),
         'exp': ahora + dt.timedelta(seconds=segundos),
     }
 
@@ -146,6 +156,29 @@ def obtener_token_del_header():
     return token or None
 
 
+def obtener_token():
+    """
+    (token, viene_de_cookie). El navegador usa la cookie HttpOnly; los
+    clientes de la API (pruebas, scripts) pueden seguir mandando el header.
+    """
+    token = obtener_token_del_header()
+    if token:
+        return token, False
+    token = request.cookies.get(current_app.config.get('COOKIE_SESION', 'asisto_sesion'))
+    return (token or None), bool(token)
+
+
+def token_revocado(usuario, payload):
+    """True si el token se emitio antes del ultimo cierre de sesion o cambio de clave."""
+    desde = getattr(usuario, 'sesiones_validas_desde_epoch', None)
+    if desde is None:
+        return False
+    try:
+        return float(payload.get('iat', 0)) < float(desde)
+    except (TypeError, ValueError):
+        return True
+
+
 def _respuesta_error(mensaje, codigo, status):
     return jsonify({'mensaje': mensaje, 'codigo': codigo}), status
 
@@ -172,7 +205,7 @@ def requiere_rol(*roles):
             # Import local: los modelos importan db desde app
             from app.models import Usuario
 
-            token = obtener_token_del_header()
+            token, de_cookie = obtener_token()
             if not token:
                 return _respuesta_error(
                     'Falta el token de autenticacion.',
@@ -191,6 +224,17 @@ def requiere_rol(*roles):
                     CODIGO_TOKEN_INVALIDO, 401,
                 )
 
+            # CSRF: con la sesion en cookie, un pedido que modifica datos tiene
+            # que traer la cabecera propia del frontend (ver CABECERA_CLIENTE).
+            if de_cookie and request.method not in METODOS_SEGUROS \
+                    and request.headers.get(CABECERA_CLIENTE) != '1':
+                logger.warning('Pedido con cookie sin cabecera del cliente: %s %s',
+                               request.method, request.path)
+                return _respuesta_error(
+                    'La solicitud no se pudo verificar. Recargue la página e intente nuevamente.',
+                    CODIGO_SOLICITUD_NO_CONFIABLE, 403,
+                )
+
             usuario = db_obtener_usuario(Usuario, payload.get('sub'))
 
             # El token puede seguir siendo criptograficamente valido despues
@@ -200,6 +244,13 @@ def requiere_rol(*roles):
                 return _respuesta_error(
                     'La cuenta no esta habilitada.',
                     CODIGO_USUARIO_INACTIVO, 401,
+                )
+
+            # Cerro sesion o cambio la clave despues de emitido este token.
+            if token_revocado(usuario, payload):
+                return _respuesta_error(
+                    'La sesión se cerró. Vuelva a iniciar sesión.',
+                    CODIGO_TOKEN_INVALIDO, 401,
                 )
 
             if roles and usuario.rol not in roles:

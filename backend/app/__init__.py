@@ -21,6 +21,13 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    # Detras de un proxy inverso: la IP real del cliente sale de
+    # X-Forwarded-For, pero solo de los saltos configurados como confiables.
+    if app.config.get('PROXIES_CONFIABLES', 0) > 0:
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        saltos = app.config['PROXIES_CONFIABLES']
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=saltos, x_proto=saltos, x_host=0)
+
     configurar_logging(app)
 
     db.init_app(app)
@@ -33,6 +40,7 @@ def create_app(config_class=Config):
     )
 
     registrar_manejadores_de_error(app)
+    registrar_cabeceras_de_seguridad(app)
     registrar_acentuacion_de_mensajes(app)
     registrar_validacion_de_cuerpo(app)
     register_blueprints(app)
@@ -85,7 +93,7 @@ def registrar_manejadores_de_error(app):
             'mensaje': error.mensaje,
             'codigo': 'error_aplicacion',
             'campo': error.campo or campo_para_mensaje(error.mensaje),
-        }), error.http_status
+        }), error.http_status, error.encabezados
 
     @app.errorhandler(SQLAlchemyError)
     def manejar_error_db(error):
@@ -112,8 +120,23 @@ def registrar_manejadores_de_error(app):
             'codigo': 'metodo_no_permitido',
         }), 405
 
+    @app.errorhandler(413)
+    def manejar_cuerpo_demasiado_grande(error):
+        return jsonify({
+            'mensaje': 'La solicitud es demasiado grande.',
+            'codigo': 'solicitud_demasiado_grande',
+        }), 413
+
     @app.errorhandler(Exception)
     def manejar_error_inesperado(error):
+        # Un error HTTP de Werkzeug (400, 415...) no es un error del
+        # servidor: se responde con su propio codigo, sin traza.
+        from werkzeug.exceptions import HTTPException
+        if isinstance(error, HTTPException):
+            return jsonify({
+                'mensaje': 'La solicitud no es válida.',
+                'codigo': 'solicitud_invalida',
+            }), error.code or 400
         # Datos con el tipo equivocado (un numero o una lista donde iba un
         # texto): los servicios llaman `.strip()` sobre lo que llega y fallan
         # recien ahi. Es un error de quien manda la solicitud, no del servidor.
@@ -138,6 +161,35 @@ def registrar_manejadores_de_error(app):
             'mensaje': 'Ocurrió un error inesperado. Intente nuevamente.',
             'codigo': 'error_interno',
         }), 500
+
+
+def registrar_cabeceras_de_seguridad(app):
+    """
+    Cabeceras de endurecimiento en TODAS las respuestas de la API:
+
+    - nosniff: el navegador no adivina tipos (un JSON no se ejecuta como script).
+    - frame-ancestors / X-Frame-Options: nadie puede embeber la API en un
+      iframe (clickjacking).
+    - Referrer-Policy no-referrer: ninguna URL (ni un enlace de recuperacion)
+      viaja a terceros en la cabecera Referer.
+    - Cache-Control no-store: los datos clinicos no quedan en la cache del
+      navegador ni de un proxy intermedio (computadoras compartidas).
+    - HSTS solo si la cookie es Secure (es decir, hay HTTPS).
+    """
+    @app.after_request
+    def agregar_cabeceras(respuesta):
+        h = respuesta.headers
+        h.setdefault('X-Content-Type-Options', 'nosniff')
+        h.setdefault('X-Frame-Options', 'DENY')
+        h.setdefault('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'")
+        h.setdefault('Referrer-Policy', 'no-referrer')
+        h.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+        h.setdefault('Cross-Origin-Opener-Policy', 'same-origin')
+        h['Cache-Control'] = 'no-store'
+        h['Pragma'] = 'no-cache'
+        if app.config.get('COOKIE_SEGURA'):
+            h.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+        return respuesta
 
 
 def registrar_validacion_de_cuerpo(app):

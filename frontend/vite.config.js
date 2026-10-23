@@ -22,6 +22,52 @@ import react from '@vitejs/plugin-react';
 const PUERTO_VITE = 5173;
 const DESTINO_API = 'http://127.0.0.1:5000';
 
+// --- Endurecimiento de la pagina ---
+// Politica de contenido: solo scripts propios (un XSS no puede cargar codigo
+// de afuera ni mandar datos a otro servidor), estilos propios + los que
+// inyecta MUI en linea, y las fuentes de Google. `connect-src` suma el origen
+// de la API si se publica aparte (VITE_API_URL).
+function politicaDeContenido(urlApi) {
+  let origenApi = '';
+  try { origenApi = urlApi && /^https?:/.test(urlApi) ? new URL(urlApi).origin : ''; } catch { origenApi = ''; }
+  return [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: blob:",
+    `connect-src 'self'${origenApi ? ` ${origenApi}` : ''}`,
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join('; ');
+}
+
+// Cabeceras para el servidor de desarrollo y la vista previa del build. En
+// produccion las tiene que poner el servidor web (ver docs/seguridad.md).
+const CABECERAS_SEGURIDAD = {
+  'X-Frame-Options': 'DENY',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+};
+
+// La CSP va como <meta> en el build (asi viaja con los archivos aunque el
+// servidor no la configure). En desarrollo no: Vite inyecta un script en
+// linea para la recarga en caliente y la politica lo bloquearia.
+// frame-ancestors no vale en <meta>: se saca de esa copia.
+function cspEnElBuild(urlApi) {
+  return {
+    name: 'asisto-csp',
+    apply: 'build',
+    transformIndexHtml(html) {
+      const meta = politicaDeContenido(urlApi).replace(/; frame-ancestors 'none'/, '');
+      return html.replace('<meta charset="UTF-8" />', `<meta charset="UTF-8" />\n    <meta http-equiv="Content-Security-Policy" content="${meta}" />`);
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   // loadEnv y no process.env a secas: asi los valores tambien se pueden dejar
   // escritos en un .env del front, que es donde alguien los va a buscar.
@@ -33,8 +79,12 @@ export default defineConfig(({ mode }) => {
   const destino = env.ASISTO_API_URL || DESTINO_API;
 
   return {
-    plugins: [react()],
+    plugins: [react(), cspEnElBuild(env.VITE_API_URL)],
+    preview: {
+      headers: { ...CABECERAS_SEGURIDAD, 'Content-Security-Policy': politicaDeContenido(env.VITE_API_URL) },
+    },
     server: {
+      headers: CABECERAS_SEGURIDAD,
       port: puerto,
       // NO se pone `strictPort: true`, y es una decision. Seria mejor para
       // quien automatiza —pedir 5175 y recibir 5176 es hablarle a un servidor

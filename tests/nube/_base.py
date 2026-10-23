@@ -53,7 +53,13 @@ class BaseApi(unittest.TestCase):
     def setUpClass(cls):
         cls.app = create_app()
         cls.app.config['TESTING'] = False  # que los errores salgan como en produccion
-        cls.client = cls.app.test_client()
+        # Las pruebas fallan logins a proposito miles de veces desde la misma
+        # IP: el limite por IP se apaga aca y se prueba aparte (test_seguridad_web).
+        cls.app.config['LIMITES_POR_IP'] = {k: (0, 15) for k in cls.app.config['LIMITES_POR_IP']}
+        # Sin cookies: cada pedido lleva SOLO el header que la prueba elige.
+        # Con cookies, el login dejaba la sesion puesta y un pedido "sin token"
+        # salia autenticado.
+        cls.client = cls.app.test_client(use_cookies=False)
         cls._tokens = {}
 
     def token(self, quien):

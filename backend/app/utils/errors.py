@@ -82,11 +82,13 @@ class ErrorAplicacion(Exception):
     correcto sin tener que adivinar leyendo el mensaje.
     """
 
-    def __init__(self, mensaje, http_status=400, campo=None):
+    def __init__(self, mensaje, http_status=400, campo=None, encabezados=None):
         super().__init__(mensaje)
         self.mensaje = mensaje
         self.http_status = http_status
         self.campo = campo
+        # Cabeceras extra de la respuesta (p. ej. Retry-After en un 429).
+        self.encabezados = encabezados or {}
 
 
 def obtener_errno(error):

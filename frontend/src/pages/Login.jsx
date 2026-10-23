@@ -72,7 +72,11 @@ export default function Login() {
       // pidió el estado que arrastraba la sesión anterior. Avisarle de algo
       // que no hizo solo lo confunde.
       const guardado = ubicacion.state?.desde;
-      const destino = guardado && rolPuedeVer(usuario.rol, guardado)
+      // Solo rutas internas: nada de «//otro-sitio» ni barras invertidas, que
+      // algunos navegadores leen como otro dominio (redirección abierta).
+      const interno = typeof guardado === 'string' && guardado.startsWith('/')
+        && !guardado.startsWith('//') && !guardado.includes('\\');
+      const destino = interno && rolPuedeVer(usuario.rol, guardado)
         ? guardado
         : (RUTA_POR_ROL[usuario.rol] ?? '/');
 

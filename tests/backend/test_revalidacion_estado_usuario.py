@@ -81,25 +81,25 @@ class TestRevalidacionEstadoUsuario(unittest.TestCase):
             'usando para decidir.'
         )
 
-    def test_token_reutilizado_despues_del_logout_sigue_sirviendo_documentado(self):
+    def test_token_reutilizado_despues_del_logout_ya_no_sirve(self):
         """
-        NO es un hallazgo nuevo: es la decision 9 de ESTADO.md, confirmada
-        aca para dejar constancia de que el comportamiento actual coincide
-        con lo documentado. El JWT no tiene estado en el servidor, asi que
-        logout no lo revoca: un token copiado antes del logout sigue
-        sirviendo hasta que expira. Limitacion conocida y aceptada.
+        Era la decision 9 de ESTADO.md (limitacion conocida: el logout no
+        revocaba el JWT). Desde la auditoria de seguridad de la V6 el logout
+        fija sesiones_validas_desde y todo token anterior queda revocado.
         """
         token = e.token_valido(self.id_usuario, self.rol_original, self.email)
+        try:
+            resp_logout = self.cliente.post('/api/auth/logout', headers=e.encabezado_auth(token))
+            self.assertEqual(resp_logout.status_code, 200)
 
-        resp_logout = self.cliente.post('/api/auth/logout', headers=e.encabezado_auth(token))
-        self.assertEqual(resp_logout.status_code, 200)
-
-        resp_reuso = self.cliente.get('/api/auth/me', headers=e.encabezado_auth(token))
-        self.assertEqual(
-            resp_reuso.status_code, 200,
-            'El token dejo de servir despues del logout: si esto cambio, hay que '
-            'actualizar la decision 9 de ESTADO.md (ya no seria una limitacion conocida).'
-        )
+            resp_reuso = self.cliente.get('/api/auth/me', headers=e.encabezado_auth(token))
+            self.assertEqual(resp_reuso.status_code, 401,
+                             'Un token copiado antes del logout no puede seguir sirviendo.')
+            # control positivo: un token emitido despues del logout entra
+            nuevo = e.token_valido(self.id_usuario, self.rol_original, self.email)
+            self.assertEqual(self.cliente.get('/api/auth/me', headers=e.encabezado_auth(nuevo)).status_code, 200)
+        finally:
+            e.restaurar_sesiones(self.id_usuario)
 
 
 if __name__ == '__main__':

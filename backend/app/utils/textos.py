@@ -40,6 +40,9 @@ _TILDES = {
     'renglon': 'renglón', 'vacia': 'vacía', 'despues': 'después',
     'limite': 'límite', 'reactivelo': 'reactívelo', 'valida': 'válida',
     'creo': 'creó', 'vinculo': 'vínculo',
+    # Seguridad (23-oct)
+    'comun': 'común', 'facilmente': 'fácilmente', 'cerro': 'cerró',
+    'pagina': 'página',
 }
 
 # "esta" se acentua solo cuando es el verbo ("esta cerrada", "no esta

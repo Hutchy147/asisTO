@@ -198,12 +198,16 @@ def obtener_app():
     if _app is None:
         _app = create_app()
         _app.config['TESTING'] = True
+        # Las mediciones de tiempo fallan logins decenas de veces desde la misma
+        # IP: el limite por IP se apaga (se prueba en tests/nube).
+        _app.config['LIMITES_POR_IP'] = {k: (0, 15) for k in _app.config['LIMITES_POR_IP']}
         _registrar_rutas_de_prueba(_app)
     return _app
 
 
 def cliente():
-    return obtener_app().test_client()
+    # Sin cookies: cada ataque manda exactamente el header que arma.
+    return obtener_app().test_client(use_cookies=False)
 
 
 def obtener_usuario_por_email(email):
@@ -228,6 +232,14 @@ def desbloquear(id_usuario):
         usuario = db.session.get(Usuario, id_usuario)
         usuario.intentos_fallidos = 0
         usuario.bloqueado_hasta = None
+        db.session.commit()
+
+
+def restaurar_sesiones(id_usuario):
+    """Deshace la revocacion de un logout de prueba (sesiones_validas_desde)."""
+    with obtener_app().app_context():
+        usuario = db.session.get(Usuario, id_usuario)
+        usuario.sesiones_validas_desde = None
         db.session.commit()
 
 
@@ -263,7 +275,9 @@ def token_valido(id_usuario, rol, email, segundos_vida=3600):
         'sub': str(id_usuario),
         'rol': rol,
         'email': email,
-        'iat': ahora,
+        # Con decimales, como los emite la app: un iat redondeado al segundo
+        # podria quedar antes de un logout del mismo segundo (revocado).
+        'iat': ahora.timestamp(),
         'exp': ahora + dt.timedelta(seconds=segundos_vida),
     }
     return jwt.encode(payload, _secreto_real(), algorithm=_algoritmo_real())

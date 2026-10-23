@@ -85,6 +85,35 @@ class Config:
         'pool_recycle': 3600,
     }
 
+    # --- Seguridad ---
+    # La sesion del navegador viaja en una cookie HttpOnly (el JavaScript de
+    # la pagina no la puede leer: un XSS no se lleva la sesion). `Secure` la
+    # manda solo por HTTPS: por omision va encendido fuera de desarrollo.
+    COOKIE_SESION = 'asisto_sesion'
+    COOKIE_SEGURA = os.getenv('COOKIE_SEGURA', '0' if DEBUG else '1') == '1'
+    # Strict: el navegador no manda la cookie en pedidos que nacen en otro
+    # sitio (un enlace o formulario de una pagina de phishing).
+    COOKIE_SAMESITE = 'Strict'
+
+    # Tope del cuerpo de una solicitud. El texto mas largo del sistema (un
+    # informe) ronda las decenas de KB; 1 MB deja margen y corta abusos.
+    MAX_CONTENT_LENGTH = _env_int('MAX_CONTENT_LENGTH', 1024 * 1024)
+
+    # Detras de un proxy inverso (nginx, IIS) request.remote_addr es la IP del
+    # proxy. Con N > 0 se confia en los N saltos de X-Forwarded-For para
+    # conocer la IP real del cliente (auditoria y limites por IP). En 0 no se
+    # confia en esa cabecera: cualquiera podria inventarla.
+    PROXIES_CONFIABLES = _env_int('PROXIES_CONFIABLES', 0)
+
+    # Limites por IP de los endpoints publicos: (maximo, minutos). 0 = apagado.
+    LIMITES_POR_IP = {
+        # Solo cuentan los FALLOS: el bloqueo por cuenta frena a quien prueba
+        # claves contra un email; esto, a quien prueba una clave contra muchos.
+        'login_fallido': (_env_int('LIMITE_LOGIN_FALLIDOS_POR_IP', 30), 15),
+        'recuperar': (_env_int('LIMITE_RECUPERAR_POR_IP', 10), 15),
+        'restablecer': (_env_int('LIMITE_RESTABLECER_POR_IP', 20), 15),
+    }
+
     # --- CORS ---
     # Lista separada por comas. En desarrollo alcanza con el origen de Vite.
     CORS_ORIGINS = [
@@ -100,6 +129,10 @@ class Config:
     # a arrancar antes que funcionar con un secreto publico.
     SECRETOS_REQUERIDOS = ('SECRET_KEY', 'JWT_SECRET_KEY')
 
+    # Un secreto corto se puede adivinar por fuerza bruta offline a partir de
+    # un JWT cualquiera: con el, se fabrican tokens de cualquier rol.
+    LARGO_MINIMO_SECRETO = 32
+
     @classmethod
     def validar(cls):
         """Corta el arranque si falta un secreto. Se llama en create_app()."""
@@ -109,6 +142,28 @@ class Config:
         ]
 
         if not faltantes:
+            cortos = [
+                nombre for nombre in cls.SECRETOS_REQUERIDOS
+                if len(getattr(cls, nombre).strip()) < cls.LARGO_MINIMO_SECRETO
+            ]
+            if cortos:
+                raise ConfigInvalida(
+                    'Secreto demasiado corto en backend/.env: ' + ', '.join(cortos)
+                    + f' (minimo {cls.LARGO_MINIMO_SECRETO} caracteres).\n'
+                    f'Generar uno nuevo con:\n  {COMANDO_GENERAR_SECRETO}'
+                )
+            if cls.SECRET_KEY.strip() == cls.JWT_SECRET_KEY.strip():
+                raise ConfigInvalida(
+                    'SECRET_KEY y JWT_SECRET_KEY tienen que ser distintos. '
+                    f'Generar otro con:\n  {COMANDO_GENERAR_SECRETO}'
+                )
+            if cls.RECUPERACION_MOSTRAR_TOKEN and not cls.DEBUG:
+                # El enlace de recuperacion en la respuesta es una toma de
+                # cuenta para cualquiera que conozca un email. Solo desarrollo.
+                raise ConfigInvalida(
+                    'RECUPERACION_MOSTRAR_TOKEN=1 solo se admite con FLASK_DEBUG=1 '
+                    '(desarrollo). En produccion tiene que quedar en 0.'
+                )
             return
 
         raise ConfigInvalida(

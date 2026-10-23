@@ -5,3 +5,9 @@
 # correr `pnpm approve-builds` a mano.
 allowBuilds:
   esbuild: true
+
+# Dependencias transitivas de Vite (via postcss) con parches de seguridad que
+# la version publicada todavia no arrastra (pnpm audit, 23/10/2026).
+overrides:
+  nanoid@<3.3.18: ^3.3.18
+  source-map-js@<1.2.2: ^1.2.2

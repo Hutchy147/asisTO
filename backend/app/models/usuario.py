@@ -39,6 +39,13 @@ class Usuario(db.Model):
     bloqueado_hasta = db.Column(db.DateTime, nullable=True)
     token_recuperacion = db.Column(db.String(255), nullable=True)
     token_expira = db.Column(db.DateTime, nullable=True)
+    # Tokens con `iat` anterior a esto quedan revocados (logout, nueva clave).
+    sesiones_validas_desde = db.Column(db.DateTime, nullable=True)
+    # El mismo instante en segundos UNIX, calculado por MySQL con la misma zona
+    # horaria con la que se escribio (NOW()): se compara con el `iat` del JWT.
+    sesiones_validas_desde_epoch = db.column_property(
+        db.func.unix_timestamp(sesiones_validas_desde)
+    )
 
     # El valor lo pone la base (DEFAULT CURRENT_TIMESTAMP). Ver el comentario
     # equivalente en app/models/objetivo.py.

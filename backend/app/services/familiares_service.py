@@ -145,8 +145,12 @@ def _texto(datos, clave, etiqueta, maximo, obligatorio=True):
 
 
 def generar_contrasena_temporal():
-    """Contrasena de 10 caracteres con letras y numeros (cumple la politica)."""
-    alfabeto = string.ascii_letters + string.digits
+    """
+    Contrasena de 10 caracteres con letras y numeros (cumple la politica).
+    Sin caracteres que se confunden al dictarla o copiarla a mano: I, l, 1,
+    O, 0 (QA, Leandro).
+    """
+    alfabeto = ''.join(c for c in string.ascii_letters + string.digits if c not in 'IlO01')
     while True:
         clave = ''.join(secrets.choice(alfabeto) for _ in range(10))
         if any(c.isalpha() for c in clave) and any(c.isdigit() for c in clave):

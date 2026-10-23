@@ -28,6 +28,10 @@ const RESULTADOS = {
   exitoso: { etiqueta: 'Exitoso', color: 'success' },
   fallido: { etiqueta: 'Fallido', color: 'warning' },
   bloqueado: { etiqueta: 'Bloqueado', color: 'error' },
+  // Desde la auditoría de seguridad de la V6 también quedan registrados:
+  inactiva: { etiqueta: 'Cuenta deshabilitada', color: 'default' },
+  recuperacion: { etiqueta: 'Pidió recuperar la clave', color: 'info' },
+  restablecida: { etiqueta: 'Cambió la clave', color: 'primary' },
 };
 
 // Local, no UTC: ver aIsoLocal.
@@ -93,7 +97,8 @@ export default function AuditoriaAccesos() {
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Typography variant="h4">Auditoría de accesos</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Cada intento de inicio de sesión: exitoso, fallido o bloqueado. No se guardan contraseñas.
+          Cada intento de inicio de sesión (exitoso, fallido, bloqueado o con la cuenta deshabilitada),
+          cada pedido de recuperación y cada cambio de contraseña. No se guardan contraseñas.
         </Typography>
 
         <Box
