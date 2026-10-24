@@ -12,6 +12,7 @@ import { RUTA_POR_ROL, useAuth } from './context/AuthContext.jsx';
 import AuditoriaAccesos from './pages/AuditoriaAccesos.jsx';
 import AdminAsignaciones from './pages/AdminAsignaciones.jsx';
 import AdminFormulariosIngreso from './pages/AdminFormulariosIngreso.jsx';
+import AdminUsuarios from './pages/AdminUsuarios.jsx';
 import AdminPlantillasObjetivos from './pages/AdminPlantillasObjetivos.jsx';
 import SesionesRegistradas from './pages/SesionesRegistradas.jsx';
 import ControlInformes from './pages/ControlInformes.jsx';
@@ -47,6 +48,7 @@ const ELEMENTO_POR_RUTA = {
   '/admin': <AdminAsignaciones />,
   '/admin/formularios': <AdminFormulariosIngreso />,
   '/admin/plantillas': <AdminPlantillasObjetivos />,
+  '/admin/usuarios': <AdminUsuarios />,
   '/sesiones': <SesionesRegistradas />,
   '/informes': <ControlInformes />,
   '/familiar': <PortalFamiliar />,

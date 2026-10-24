@@ -162,6 +162,8 @@ export const CAPACIDADES = {
 
   // Administrador (V3): único rol que abre y cierra asignaciones. Pantalla /admin.
   'admin.asignaciones': { entrega: 3, nombre: 'administración de asignaciones de terapeutas' },
+  // Cuentas de acceso: alta de correos con su clave, habilitar y restablecer. Pantalla /admin/usuarios.
+  'admin.usuarios': { entrega: 3, nombre: 'gestión de cuentas de acceso' },
 
   // --- Versión 4 (19/10) ---
   // LAS DOS DEL FAMILIAR VENÍAN EN 3 Y PASAN A 4. En el plan de cuatro, el

@@ -49,6 +49,7 @@ export const RUTAS_PROTEGIDAS = [
   { ruta: '/admin', roles: ['admin'], capacidad: 'admin.asignaciones' },
   { ruta: '/admin/formularios', roles: ['admin'], capacidad: 'ingreso.configurar' },
   { ruta: '/admin/plantillas', roles: ['admin'], capacidad: 'objetivos.plantillas' },
+  { ruta: '/admin/usuarios', roles: ['admin'], capacidad: 'admin.usuarios' },
   { ruta: '/familiar', roles: ['familiar'], capacidad: 'familiar.portal' },
   { ruta: '/familiar/notificaciones', roles: ['familiar'], capacidad: 'notificaciones' },
   { ruta: '/familiar/informes', roles: ['familiar'], capacidad: 'familiar.informes' },

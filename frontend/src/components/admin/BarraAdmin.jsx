@@ -36,6 +36,7 @@ export default function BarraAdmin({ activa }) {
         <Typography variant="h6" sx={{ mr: 4 }}>AsisTO · Administración</Typography>
         <Stack direction="row" spacing={1} sx={{ flexGrow: 1 }}>
           {enlace('asignaciones', 'Asignaciones', '/admin')}
+          {hayCapacidad('admin.usuarios') && enlace('usuarios', 'Cuentas de acceso', '/admin/usuarios')}
           {hayCapacidad('ingreso.configurar') && enlace('formularios', 'Formulario de ingreso', '/admin/formularios')}
           {hayCapacidad('objetivos.plantillas') && enlace('plantillas', 'Plantillas de objetivos', '/admin/plantillas')}
         </Stack>

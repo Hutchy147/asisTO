@@ -260,6 +260,7 @@ def register_blueprints(app):
     from app.routes.portal_paciente import portal_paciente_bp
     from app.routes.rrhh import rrhh_bp
     from app.routes.sesiones import sesiones_bp
+    from app.routes.usuarios import usuarios_bp
 
     app.register_blueprint(health_bp, url_prefix='/api')
     app.register_blueprint(auth_bp, url_prefix='/api')
@@ -271,6 +272,7 @@ def register_blueprints(app):
     app.register_blueprint(sesiones_bp, url_prefix='/api')
     app.register_blueprint(evoluciones_bp, url_prefix='/api')
     app.register_blueprint(familiares_bp, url_prefix='/api')
+    app.register_blueprint(usuarios_bp, url_prefix='/api')
     app.register_blueprint(portal_familiar_bp, url_prefix='/api')
     app.register_blueprint(portal_paciente_bp, url_prefix='/api')
     app.register_blueprint(informes_bp, url_prefix='/api')

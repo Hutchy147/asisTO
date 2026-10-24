@@ -63,6 +63,7 @@ recuperación y cambios de contraseña, con fecha, email e IP.
 
 - **Bloqueo como molestia:** cualquiera que conozca un email puede bloquear esa cuenta 15 minutos equivocando la clave 5 veces. Es el costo de frenar la fuerza bruta; la salida es esperar o restablecer la contraseña. No se avisa cuántos intentos quedan: el contador de una cuenta real y el de un email inexistente no coinciden siempre, y el número permitiría distinguirlos.
 - **Límite por IP en memoria:** con un solo proceso (waitress con hilos) es exacto; con varios procesos cada uno cuenta por su lado. Se reinicia al reiniciar el servidor.
+- **Claves que conoce el administrador:** las cuentas nuevas y las claves restablecidas desde «Cuentas de acceso» tienen una contraseña que eligió (o generó) el administrador. Se muestra una sola vez; se recomienda a la persona cambiarla al entrar. Las altas y los cambios quedan en el log del servidor, no en la auditoría de accesos de RRHH.
 - **Sin envío de correo:** la recuperación genera el enlace pero el centro todavía no definió el servidor de mail. Hasta entonces, en producción lo restablece el administrador.
 - **Sin segundo factor (MFA).** Recomendable si el sistema se publica fuera de la red del centro.
 - **React Router 6:** dos avisos que solo corrige la v7. Uno es de renderizado en servidor (AsisTO no lo usa); el otro es una redirección abierta con barra invertida, mitigada en el único `navigate` con destino variable (el login).
