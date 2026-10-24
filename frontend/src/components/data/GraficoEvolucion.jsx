@@ -183,6 +183,12 @@ export default function GraficoEvolucion({ serie, titulo }) {
     y: yDeValor(verProgreso ? alcanzado[i] : p.valor),
   }));
   const trazoCurva = curvaSuave(puntosCurva);
+  // Marcador de la última calificación: es "dónde está hoy" el objetivo.
+  const ultimo = calificados.length > 1 ? calificados[calificados.length - 1] : null;
+  const xUltimo = ultimo ? xDeFecha(ultimo.fecha) : 0;
+  const yUltimo = ultimo ? yDeValor(ultimo.valor) : 0;
+  // Si no hay lugar a la derecha para el rótulo, va arriba y a la izquierda.
+  const cercaDelBorde = xUltimo > ancho - derecha - 96;
   const areaCurva = puntosCurva.length > 1
     ? `${trazoCurva} L ${puntosCurva[puntosCurva.length - 1].x} ${PISO_ESCALA} L ${puntosCurva[0].x} ${PISO_ESCALA} Z`
     : '';
@@ -247,29 +253,51 @@ export default function GraficoEvolucion({ serie, titulo }) {
       >
         <title>{resumen}</title>
 
-        {/* Los cinco escalones, con su palabra. El número 1..5 NO aparece
-            en ningún lado: es representación interna. Ver decisión 13. */}
-        {ESCALA_VALORES.map((paso) => (
-          <g key={paso.valor}>
-            <line
-              x1={izquierda}
-              y1={yDeValor(paso.valor)}
-              x2={ancho - derecha}
-              y2={yDeValor(paso.valor)}
-              stroke={tema.palette.superficie.borde}
-              strokeWidth="1"
+        {/* Bandas alternadas entre escalones: dan la sensación de "subir de
+            nivel" (referencia: gráficos de progreso hacia una meta). */}
+        {ESCALA_VALORES.filter((paso) => paso.valor < ESCALA_VALORES.length).map((paso) => (
+          paso.valor % 2 === 1 && (
+            <rect
+              key={`banda-${paso.valor}`}
+              x={izquierda}
+              y={yDeValor(paso.valor + 1)}
+              width={anchoUtil}
+              height={PASO_Y}
+              fill={colorLinea}
+              fillOpacity="0.05"
             />
-            <text
-              x={izquierda - 10}
-              y={yDeValor(paso.valor) + 4}
-              textAnchor="end"
-              fontSize="12"
-              fill={tema.palette.text.secondary}
-            >
-              {paso.etiqueta}
-            </text>
-          </g>
+          )
         ))}
+
+        {/* Los cinco escalones, con su palabra. El número 1..5 NO aparece
+            en ningún lado: es representación interna. Ver decisión 13.
+            El más alto ("Logrado") es la meta y va resaltado. */}
+        {ESCALA_VALORES.map((paso) => {
+          const meta = paso.valor === ESCALA_VALORES.length;
+          return (
+            <g key={paso.valor}>
+              <line
+                x1={izquierda}
+                y1={yDeValor(paso.valor)}
+                x2={ancho - derecha}
+                y2={yDeValor(paso.valor)}
+                stroke={meta ? colorLinea : tema.palette.superficie.borde}
+                strokeOpacity={meta ? 0.55 : 1}
+                strokeWidth={meta ? 1.75 : 1}
+              />
+              <text
+                x={izquierda - 10}
+                y={yDeValor(paso.valor) + 4}
+                textAnchor="end"
+                fontSize="12"
+                fontWeight={meta ? 600 : 400}
+                fill={meta ? colorLinea : tema.palette.text.secondary}
+              >
+                {paso.etiqueta}
+              </text>
+            </g>
+          );
+        })}
 
         {/* Marca de cierre del objetivo archivado */}
         {archivadoEnRango && (
@@ -326,6 +354,26 @@ export default function GraficoEvolucion({ serie, titulo }) {
               </circle>
             );
           })}
+
+          {ultimo && (
+            <g>
+              <circle cx={xUltimo} cy={yUltimo} r={RADIO_PUNTO + 5} fill={colorLinea} fillOpacity="0.22" />
+              <circle
+                cx={xUltimo} cy={yUltimo} r={RADIO_PUNTO + 1}
+                fill={colorLinea} stroke={tema.palette.superficie.tarjeta} strokeWidth="1.5"
+              />
+              <text
+                x={cercaDelBorde ? xUltimo - 12 : xUltimo + 14}
+                y={cercaDelBorde ? yUltimo - 12 : yUltimo + 4}
+                textAnchor={cercaDelBorde ? 'end' : 'start'}
+                fontSize="12"
+                fontWeight="600"
+                fill={colorLinea}
+              >
+                {etiquetaDeValor(ultimo.valor)}
+              </text>
+            </g>
+          )}
         </g>
 
         {/* Eje X, SEPARADO de la fila más baja de la escala */}
