@@ -13,14 +13,11 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
-import ToggleButton from '@mui/material/ToggleButton';
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
 
 import ModalCargarEvolucion from '../components/evoluciones/ModalCargarEvolucion.jsx';
 import AppLayout from '../components/layout/AppLayout.jsx';
 import ModalAgendarSesion from '../components/sesiones/ModalAgendarSesion.jsx';
-import ModalAgendaSemanal from '../components/sesiones/ModalAgendaSemanal.jsx';
 import ModalDetalleSesion from '../components/sesiones/ModalDetalleSesion.jsx';
 import ModalEditarSesion from '../components/sesiones/ModalEditarSesion.jsx';
 import ModalRegistrarSesion from '../components/sesiones/ModalRegistrarSesion.jsx';
@@ -187,7 +184,7 @@ function desdeIso(iso) {
   return Number.isNaN(fecha.getTime()) ? null : fecha;
 }
 
-function CalendarioPorDia({ selectorVista = null }) {
+function CalendarioPorDia() {
   // La semana va en la URL (?semana=AAAA-MM-DD): F5 o un enlace la conservan.
   const [params, setParams] = useSearchParams();
   const lunes = useMemo(
@@ -200,7 +197,6 @@ function CalendarioPorDia({ selectorVista = null }) {
     setParams(siguiente, { replace: true });
   };
   const [modalSesion, setModalSesion] = useState(null); // null | {fecha, hora}
-  const [agendaSemanal, setAgendaSemanal] = useState(false);
   const [idEvolucion, setIdEvolucion] = useState(null);
   const [idDetalle, setIdDetalle] = useState(null);
   const [sesionAEditar, setSesionAEditar] = useState(null);
@@ -269,13 +265,6 @@ function CalendarioPorDia({ selectorVista = null }) {
       subtitulo={`${formatearFecha(desde)} al ${formatearFecha(hasta)}${sesiones.datos ? ` · ${sesiones.datos.total} ${sesiones.datos.total === 1 ? 'sesión' : 'sesiones'}` : ''}`}
       acciones={
         <>
-          {selectorVista}
-          {/* Con la semana tipo a un clic, el modal viejo de agenda semanal sobra. */}
-          {hayCapacidad('agenda.recurrente') && !selectorVista && (
-            <Button variant="outlined" onClick={() => setAgendaSemanal(true)} sx={{ mr: 1 }}>
-              Agenda semanal
-            </Button>
-          )}
           <Button variant="contained" onClick={() => abrirAlta()}>
             {soloAgenda ? 'Agendar sesión' : 'Registrar sesión'}
           </Button>
@@ -629,15 +618,6 @@ function CalendarioPorDia({ selectorVista = null }) {
         />
       )}
 
-      {hayCapacidad('agenda.recurrente') && agendaSemanal && (
-        <ModalAgendaSemanal
-          abierto
-          pacientes={pacientesAsignados(pacientes.datos?.pacientes)}
-          onCerrar={() => setAgendaSemanal(false)}
-          onGenerada={recargar}
-        />
-      )}
-
       {soloAgenda && (
         <>
           <ModalDetalleSesion
@@ -690,34 +670,10 @@ function CalendarioPorDia({ selectorVista = null }) {
 }
 
 
-function SelectorVista({ vista }) {
-  const [params, setParams] = useSearchParams();
-  const cambiar = (_, valor) => {
-    if (!valor || valor === vista) return;
-    const siguiente = new URLSearchParams(params);
-    if (valor === 'fechas') siguiente.set('vista', 'fechas');
-    else { siguiente.delete('vista'); siguiente.delete('semana'); }
-    setParams(siguiente);
-  };
-  return (
-    <ToggleButtonGroup
-      exclusive size="small" value={vista} onChange={cambiar}
-      aria-label="Vista del calendario" sx={{ mr: 1, height: 37 }}
-    >
-      <ToggleButton value="semana" sx={{ px: 1.75, textTransform: 'none', fontWeight: 600 }}>Semana tipo</ToggleButton>
-      <ToggleButton value="fechas" sx={{ px: 1.75, textTransform: 'none', fontWeight: 600 }}>Agenda por fecha</ToggleButton>
-    </ToggleButtonGroup>
-  );
-}
-
-// Desde la Entrega 3 el calendario tiene dos vistas: la semana tipo (turnos que
-// se repiten) y la agenda por fecha, donde se agenda una sesión puntual, se
-// reprograma y se navega entre semanas. Antes de esa entrega solo existe la
-// segunda. La vista elegida va en la URL (?vista=fechas).
+// Desde la Entrega 3 el calendario es solo la semana tipo (turnos que se repiten
+// y agendan solos las próximas sesiones). Antes de esa entrega solo existe la
+// vista por fecha, que se conserva para que VITE_ENTREGA=1/2 siga igual.
 export default function Calendario() {
-  const [params] = useSearchParams();
   if (!hayCapacidad('agenda.recurrente')) return <CalendarioPorDia />;
-  return params.get('vista') === 'fechas'
-    ? <CalendarioPorDia selectorVista={<SelectorVista vista="fechas" />} />
-    : <CalendarioSemanal selectorVista={<SelectorVista vista="semana" />} />;
+  return <CalendarioSemanal />;
 }

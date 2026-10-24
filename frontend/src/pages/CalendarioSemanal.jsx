@@ -35,7 +35,7 @@ import { listarPacientes } from '../services/pacientesService.js';
 // Rango por omisión de la grilla; se amplía si hay un turno fuera de él.
 const HORA_INICIO_BASE = 8;
 const HORA_FIN_BASE = 19;
-const ALTO_HORA = 56;
+const ALTO_HORA = 64;
 const ANCHO_GUTTER = 62;
 
 function aDecimal(hora) {
@@ -45,6 +45,15 @@ function aDecimal(hora) {
 
 const hh = (n) => `${String(n).padStart(2, '0')}:00`;
 
+// «Bruno Peralta» -> «Bruno P.». Solo para la dupla en un turno corto, donde dos
+// nombres completos no entran en el ancho de la columna; el nombre entero queda
+// en el tooltip y en el aria-label.
+function nombreCorto(completo) {
+  const partes = String(completo).trim().split(/\s+/);
+  if (partes.length < 2) return partes[0] ?? '';
+  return `${partes[0]} ${partes[partes.length - 1][0].toUpperCase()}.`;
+}
+
 function BloqueTurno({ turno, onAbrir, horaInicio }) {
   const inicio = aDecimal(turno.hora_inicio);
   const fin = aDecimal(turno.hora_fin);
@@ -52,6 +61,9 @@ function BloqueTurno({ turno, onAbrir, horaInicio }) {
   const compacto = fin - inicio < 1;
   const enDupla = Boolean(turno.companero);
   const nombres = enDupla ? `${turno.paciente} y ${turno.companero.paciente}` : turno.paciente;
+  const nombresVisibles = enDupla && compacto
+    ? `${nombreCorto(turno.paciente)} y ${nombreCorto(turno.companero.paciente)}`
+    : nombres;
   return (
     <Box
       component="button"
@@ -66,7 +78,7 @@ function BloqueTurno({ turno, onAbrir, horaInicio }) {
         backgroundColor: t.palette.sesionEstado.completa.bg,
         border: '1px solid transparent',
         borderLeft: `3px solid ${t.palette.sesionEstado.completa.fg}`,
-        borderRadius: '6px', padding: compacto ? '0 8px' : '5px 8px', textAlign: 'left',
+        borderRadius: '6px', padding: compacto ? (enDupla ? '2px 8px' : '0 8px') : '5px 8px', textAlign: 'left',
         cursor: 'pointer', font: 'inherit', color: t.palette.text.primary,
         display: 'flex', flexDirection: compacto && !enDupla ? 'row' : 'column',
         justifyContent: 'center',
@@ -74,14 +86,15 @@ function BloqueTurno({ turno, onAbrir, horaInicio }) {
         '&:focus-visible': { outline: 'none', boxShadow: t.foco.anillo },
       })}
     >
-      <Box component="span" sx={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0,
+      <Box component="span" sx={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.35, overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0,
+        ...(compacto ? { flexShrink: 0 } : {}),
         ...(enDupla && !compacto
           ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal' }
           : { whiteSpace: 'nowrap' }) }}>
-        {nombres}
+        {nombresVisibles}
       </Box>
       {/* El horario va siempre, también en la dupla de 45 minutos (H15). */}
-      <Box component="span" className="tabular" sx={{ fontSize: 11, color: 'text.secondary', whiteSpace: 'nowrap', flex: 'none' }}>
+      <Box component="span" className="tabular" sx={{ fontSize: 11, lineHeight: 1.2, color: 'text.secondary', whiteSpace: 'nowrap', flex: 'none' }}>
         {turno.hora_inicio.slice(0, 5)} a {turno.hora_fin.slice(0, 5)}
       </Box>
     </Box>
@@ -258,7 +271,7 @@ function DialogoTurno({ turno, pacientes, onCerrar, onVerPaciente, onQuitar, onS
   );
 }
 
-export default function CalendarioSemanal({ selectorVista = null }) {
+export default function CalendarioSemanal() {
   const navigate = useNavigate();
   const agenda = usePeticion(listarAgendaSemanal, []);
   const pacientes = usePeticion(listarPacientes, []);
@@ -324,38 +337,18 @@ export default function CalendarioSemanal({ selectorVista = null }) {
       titulo="Calendario"
       subtitulo={`Semana tipo, de lunes a viernes${agenda.datos ? ` · ${visibles.length} ${visibles.length === 1 ? 'turno' : 'turnos'}` : ''}`}
       acciones={(
-        <>
-          {selectorVista}
-          <Button variant="contained" onClick={() => setNuevo({ dia: 1, hora: '' })}>Nuevo turno</Button>
-        </>
+        <Button variant="contained" onClick={() => setNuevo({ dia: 1, hora: '' })}>Nuevo turno</Button>
       )}
     >
-      {selectorVista && (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Los turnos de la semana tipo se repiten todas las semanas y agendan solos las próximas
-          sesiones. Para una sesión puntual, para reprogramar o para ver una semana en particular,
-          use «Agenda por fecha».
-        </Typography>
-      )}
       {agenda.cargando && !agenda.datos && <Cargando texto="Cargando la agenda..." />}
       {agenda.error && <EstadoError error={agenda.error} onReintentar={agenda.recargar} />}
 
       {agenda.datos && (
         <>
           {turnos.length === 0 && (
-            // Vacía asustaba: un terapeuta con sesiones sueltas creía no tener
-            // agenda (pruebas de usabilidad). Se ofrece la vista por fecha.
-            <Alert
-              severity="info" sx={{ mb: 2 }}
-              action={selectorVista ? (
-                <Button color="inherit" size="small" sx={{ whiteSpace: 'nowrap' }} onClick={() => navigate('/calendario?vista=fechas')}>
-                  Ver mis sesiones por fecha
-                </Button>
-              ) : null}
-            >
-              Todavía no hay turnos fijos. Las sesiones agendadas día por día se ven en «Agenda por fecha».
-              Para cargar un paciente que se atiende todas las semanas en el mismo día y hora, seleccione
-              un horario de la grilla o use «Nuevo turno».
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Todavía no hay turnos fijos. Para cargar un paciente que se atiende todas las semanas
+              en el mismo día y hora, seleccione un horario de la grilla o use «Nuevo turno».
             </Alert>
           )}
           <Box sx={(t) => ({ border: `1px solid ${t.palette.divider}`, borderRadius: '10px', overflowX: 'auto', backgroundColor: t.palette.background.paper })}>
