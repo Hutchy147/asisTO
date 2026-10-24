@@ -9,8 +9,20 @@
 // El componente dibuja UNA serie. Varios objetivos = varios gráficos, que
 // es la decisión de producto: promediar "No logrado" con "Logrado" entre
 // objetivos que miden cosas distintas da un número sin significado clínico.
+//
+// FORMA DE LA CURVA (rehecha el 2026-10-24). Antes se unían las calificaciones
+// con rectas, sólidas o punteadas: con objetivos que suben y bajan seguido
+// quedaba un zigzag que no se leía como evolución. Ahora la curva es suave y
+// con área debajo, y por defecto muestra el NIVEL ALCANZADO: sube cuando el
+// paciente avanza y se allana cuando no. Cada calificación real sigue
+// dibujada como punto; los que quedan por debajo del nivel alcanzado (una
+// sesión peor que la mejor hasta ahora) van huecos, así una baja no se
+// esconde. Un selector permite ver la curva por cada calificación.
 
+import { useId, useState } from 'react';
 import Box from '@mui/material/Box';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
@@ -69,38 +81,21 @@ function tiempo(iso) {
 }
 
 /**
- * Tramos entre calificaciones CONSECUTIVAS.
- *
- * La línea une siempre: cortarla donde hubo una sesión sin calificar
- * dejaba el gráfico sin trayectoria, que es para lo único que existe. Con
- * 3 o 4 objetivos por paciente, que una sesión no califique un objetivo
- * dado es el caso NORMAL, no la excepción — medido sobre el paciente 1:
- * ~40 puntos de sesión y solo dos segmentos unidos en todo el tratamiento.
- *
- * Lo que se conserva es la señal: el tramo va PUNTEADO cuando en el medio
- * hubo sesiones sin calificar, y SÓLIDO cuando las dos calificaciones son
- * de sesiones consecutivas. Se lee la trayectoria sin afirmar que se midió
- * lo que no se midió.
+ * Curva suave por los puntos {x, y}. Cada tramo es una S con tangente
+ * horizontal en los dos extremos: la curva se allana al pasar por cada punto
+ * y sube o baja entre uno y otro, sin picos ni excesos (nunca pasa de los
+ * valores que unen, a diferencia de un spline común).
  */
-function tramosEntreCalificaciones(puntos) {
-  const tramos = [];
-  let anterior = null;
-  let huecosDesdeElAnterior = 0;
-
-  puntos.forEach((punto) => {
-    const calificado = punto.valor !== null && punto.valor !== undefined;
-    if (!calificado) {
-      if (anterior) huecosDesdeElAnterior += 1;
-      return;
-    }
-    if (anterior) {
-      tramos.push({ desde: anterior, hasta: punto, punteado: huecosDesdeElAnterior > 0 });
-    }
-    anterior = punto;
-    huecosDesdeElAnterior = 0;
-  });
-
-  return tramos;
+function curvaSuave(pts) {
+  if (pts.length === 0) return '';
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 1; i < pts.length; i += 1) {
+    const a = pts[i - 1];
+    const b = pts[i];
+    const medio = (a.x + b.x) / 2;
+    d += ` C ${medio} ${a.y}, ${medio} ${b.y}, ${b.x} ${b.y}`;
+  }
+  return d;
 }
 
 /** Una entrada del conteo al pie, con el color de su marca al lado. */
@@ -125,6 +120,8 @@ function Conteo({ color, cantidad, texto, singular }) {
 
 export default function GraficoEvolucion({ serie, titulo }) {
   const tema = useTheme();
+  const idDegradado = `degradado-${useId().replace(/:/g, '')}`;
+  const [modo, setModo] = useState('progreso'); // 'progreso' | 'calificaciones'
   const puntos = serie?.puntos ?? [];
   // En el celular el SVG de 720 se achicaba a la mitad y los rótulos quedaban
   // de 5 px (usabilidad, madre): con un lienzo angosto se ven a tamaño real.
@@ -172,7 +169,23 @@ export default function GraficoEvolucion({ serie, titulo }) {
 
   const calificados = puntos.filter((p) => p.valor !== null && p.valor !== undefined);
   const sinCalificar = puntos.filter((p) => p.valor === null || p.valor === undefined);
-  const tramos = tramosEntreCalificaciones(puntos);
+
+  // Mejor nivel alcanzado hasta cada calificación (nunca baja).
+  let techo = 0;
+  const alcanzado = calificados.map((p) => {
+    techo = Math.max(techo, p.valor);
+    return techo;
+  });
+  const hayBajas = calificados.some((p, i) => p.valor < alcanzado[i]);
+  const verProgreso = modo === 'progreso' || !hayBajas;
+  const puntosCurva = calificados.map((p, i) => ({
+    x: xDeFecha(p.fecha),
+    y: yDeValor(verProgreso ? alcanzado[i] : p.valor),
+  }));
+  const trazoCurva = curvaSuave(puntosCurva);
+  const areaCurva = puntosCurva.length > 1
+    ? `${trazoCurva} L ${puntosCurva[puntosCurva.length - 1].x} ${PISO_ESCALA} L ${puntosCurva[0].x} ${PISO_ESCALA} Z`
+    : '';
 
   const ausencias = sinCalificar.filter((p) => p.estado_sesion === 'ausencia');
   const trabajadasSinCalificar = sinCalificar.length - ausencias.length;
@@ -204,11 +217,27 @@ export default function GraficoEvolucion({ serie, titulo }) {
     ? 'Sin calificaciones en el período.'
     : `${calificados.length} ${calificados.length === 1 ? 'calificación' : 'calificaciones'} en el período, de "${
       etiquetaDeValor(calificados[0].valor)}" a "${
-      etiquetaDeValor(calificados[calificados.length - 1].valor)}".`;
+      etiquetaDeValor(calificados[calificados.length - 1].valor)}"${
+      verProgreso ? `; mejor nivel alcanzado: "${etiquetaDeValor(alcanzado[alcanzado.length - 1])}"` : ''}.`;
 
   return (
     <Box sx={{ mb: 1 }}>
       {titulo}
+      {hayBajas && (
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.5 }}>
+          <ToggleButtonGroup
+            exclusive size="small" value={modo} aria-label="Qué mostrar la curva"
+            onChange={(_, valor) => { if (valor) setModo(valor); }}
+          >
+            <ToggleButton value="progreso" sx={{ px: 1.25, py: 0.25, textTransform: 'none', fontSize: 12 }}>
+              Nivel alcanzado
+            </ToggleButton>
+            <ToggleButton value="calificaciones" sx={{ px: 1.25, py: 0.25, textTransform: 'none', fontSize: 12 }}>
+              Cada calificación
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+      )}
       <Box
         component="svg"
         viewBox={`0 0 ${ancho} ${ALTO}`}
@@ -255,38 +284,48 @@ export default function GraficoEvolucion({ serie, titulo }) {
           />
         )}
 
-        {/* Los tramos. Punteado = hubo sesiones sin calificar en el medio. */}
-        <g opacity={opacidadSerie}>
-          {tramos.map((tramo) => (
-            <line
-              key={`t-${tramo.desde.id_sesion}-${tramo.hasta.id_sesion}`}
-              x1={xDeFecha(tramo.desde.fecha)}
-              y1={yDeValor(tramo.desde.valor)}
-              x2={xDeFecha(tramo.hasta.fecha)}
-              y2={yDeValor(tramo.hasta.valor)}
-              stroke={colorLinea}
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeDasharray={tramo.punteado ? '5 4' : undefined}
-            />
-          ))}
+        <defs>
+          <linearGradient id={idDegradado} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={colorLinea} stopOpacity="0.30" />
+            <stop offset="100%" stopColor={colorLinea} stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
 
-          {calificados.map((punto) => (
-            <circle
-              key={`p-${punto.id_sesion}`}
-              cx={xDeFecha(punto.fecha)}
-              cy={yDeValor(punto.valor)}
-              r={RADIO_PUNTO}
-              fill={colorLinea}
-              stroke={tema.palette.superficie.tarjeta}
-              strokeWidth="1.5"
-            >
-              <title>
-                {`${formatearFecha(punto.fecha)} — ${etiquetaDeValor(punto.valor)}`}
-                {punto.terapeuta ? ` — ${punto.terapeuta}` : ''}
-              </title>
-            </circle>
-          ))}
+        {/* La curva: suave, con área debajo. Se allana cuando no hay avance. */}
+        <g opacity={opacidadSerie}>
+          {areaCurva && <path d={areaCurva} fill={`url(#${idDegradado})`} stroke="none" />}
+          {trazoCurva && puntosCurva.length > 1 && (
+            <path
+              d={trazoCurva}
+              fill="none"
+              stroke={colorLinea}
+              strokeWidth="2.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          )}
+
+          {calificados.map((punto, i) => {
+            // Hueco = calificación por debajo del mejor nivel ya alcanzado.
+            const porDebajo = verProgreso && punto.valor < alcanzado[i];
+            return (
+              <circle
+                key={`p-${punto.id_sesion}`}
+                cx={xDeFecha(punto.fecha)}
+                cy={yDeValor(punto.valor)}
+                r={RADIO_PUNTO}
+                fill={porDebajo ? tema.palette.superficie.tarjeta : colorLinea}
+                stroke={porDebajo ? colorLinea : tema.palette.superficie.tarjeta}
+                strokeWidth={porDebajo ? 2 : 1.5}
+              >
+                <title>
+                  {`${formatearFecha(punto.fecha)} — ${etiquetaDeValor(punto.valor)}`}
+                  {porDebajo ? ` (nivel alcanzado: ${etiquetaDeValor(alcanzado[i])})` : ''}
+                  {punto.terapeuta ? ` — ${punto.terapeuta}` : ''}
+                </title>
+              </circle>
+            );
+          })}
         </g>
 
         {/* Eje X, SEPARADO de la fila más baja de la escala */}
@@ -389,14 +428,24 @@ export default function GraficoEvolucion({ serie, titulo }) {
           texto="ausencias"
           singular="ausencia"
         />
-        {tramos.some((t) => t.punteado) && (
+        {calificados.length > 1 && (
+          <Typography variant="body2" color="text.secondary">
+            {verProgreso
+              ? 'curva: mejor nivel alcanzado hasta cada fecha'
+              : 'curva: sigue cada calificación'}
+          </Typography>
+        )}
+        {verProgreso && hayBajas && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
             <Box
               component="span"
-              sx={(t) => ({ width: 18, borderTop: `2px dashed ${t.palette.primary.main}`, flex: 'none' })}
+              sx={(t) => ({
+                width: 9, height: 9, borderRadius: '50%', flex: 'none', boxSizing: 'border-box',
+                border: `2px solid ${archivado ? t.palette.text.secondary : t.palette.primary.main}`,
+              })}
             />
             <Typography variant="body2" color="text.secondary">
-              línea punteada: hubo sesiones sin calificar en el medio
+              punto hueco: calificación por debajo del mejor nivel
             </Typography>
           </Box>
         )}
