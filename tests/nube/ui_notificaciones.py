@@ -36,11 +36,29 @@ def login(page, email):
     page.click('button[type=submit]')
     page.wait_for_timeout(1500)
 
+# Un dia distinto por corrida: el aviso de una sesion sale una sola vez (el
+# texto lleva fecha y hora) y las sesiones de pruebas anteriores quedan en la
+# base, asi que repetir fecha y hora no genera aviso nuevo (o se rechaza por
+# superposicion) y la prueba fallaba en la segunda corrida. Se elige un dia
+# pasado al azar; la hora es fija porque el seed deja libre la tarde.
+import random
+def dia_de_corrida():
+    return random.randint(20, 180)
+
 def dia_habil_pasado(atras):
     d = dt.date.today() - dt.timedelta(days=atras)
     while d.weekday() > 4:
         d -= dt.timedelta(days=1)
     return d.isoformat()
+
+def crear_sesion_pasada(hora):
+    """Sesion realizada de Tomas en un dia pasado al azar; reintenta otro dia si ese ya estaba ocupado."""
+    for _ in range(15):
+        r = api('laura.fernandez@asisto.local', '/sesiones',
+                {'id_paciente': 1, 'fecha': dia_habil_pasado(dia_de_corrida()), 'hora_inicio': hora, 'estado': 'completa'})
+        if 'error' not in r:
+            return r
+    raise RuntimeError(f'no se pudo crear una sesion de prueba a las {hora}: {r}')
 
 with sync_playwright() as p:
     b = p.chromium.launch()
@@ -72,7 +90,7 @@ with sync_playwright() as p:
     interruptor.click(); page.wait_for_timeout(900)
     check(not interruptor.is_checked(), 'se apaga el tipo')
     page.screenshot(path=f'{SALIDA}/avisos_preferencia_apagada.png')
-    api('laura.fernandez@asisto.local', '/sesiones', {'id_paciente': 1, 'fecha': dia_habil_pasado(7), 'hora_inicio': '19:00', 'estado': 'completa'})
+    crear_sesion_pasada('19:00')
     page.reload(); page.wait_for_timeout(1200)
     check(page.get_by_test_id('aviso').count() == inicial, 'tipo apagado: no llega el aviso de la sesion nueva')
     check(not page.get_by_role('checkbox', name='Nueva sesión registrada').is_checked(), 'la preferencia persiste al recargar')
@@ -80,7 +98,7 @@ with sync_playwright() as p:
     # encenderlo y cruzar roles
     page.get_by_role('checkbox', name='Nueva sesión registrada').wait_for(); page.wait_for_timeout(500)
     page.get_by_role('checkbox', name='Nueva sesión registrada').click(); page.wait_for_timeout(900)
-    api('laura.fernandez@asisto.local', '/sesiones', {'id_paciente': 1, 'fecha': dia_habil_pasado(8), 'hora_inicio': '19:00', 'estado': 'completa'})
+    crear_sesion_pasada('21:00')
     page.reload(); page.wait_for_timeout(1200)
     check(page.get_by_test_id('aviso').count() == inicial + 1, 'tipo encendido: llega el aviso de la sesion cargada por la terapeuta')
     check(page.get_by_text('Nuevo', exact=True).count() >= 1, 'el aviso nuevo figura como no leido')
@@ -92,7 +110,10 @@ with sync_playwright() as p:
     page.locator('#filtro-tipo').click(); page.get_by_role('option', name='Todos').click(); page.wait_for_timeout(700)
 
     # marcar leido / no leido y masivo
-    page.get_by_role('button', name='Marcar como leído').first.click(); page.wait_for_timeout(800)
+    # Con un solo aviso sin leer (fin de semana: el seed no tiene sesiones de
+    # los ultimos tres dias) marcarlo dejaria el boton masivo sin nada que hacer.
+    if page.get_by_text('Nuevo', exact=True).count() >= 2:
+        page.get_by_role('button', name='Marcar como leído').first.click(); page.wait_for_timeout(800)
     page.get_by_role('button', name='Marcar todos como leídos').click(); page.wait_for_timeout(900)
     check(page.get_by_text('Nuevo', exact=True).count() == 0, 'marcar todos como leidos')
     check(page.get_by_role('button', name='Marcar todos como leídos').is_disabled(), 'sin pendientes el boton queda deshabilitado')

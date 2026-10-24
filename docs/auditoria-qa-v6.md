@@ -188,3 +188,23 @@ otras no (reprogramar una sesión ya calificada, corregir una calificación).
 ### Verificación
 `tests/nube/run.sh` (incluye `test_usabilidad_ola3`), `tests/backend` y las 20
 pruebas de pantalla (nuevas: `ui_usabilidad_ola2`, `ui_usabilidad_ola3`).
+
+## 6. Después de las pruebas (24/10/2026)
+
+### Cuentas de acceso del administrador
+Antes solo entraban los correos precargados. Ahora el administrador da de alta
+un correo con una clave que él elige o genera, la entrega a la persona, y puede
+habilitar, deshabilitar y restablecer la clave. Ver `docs/api-usuarios.md`.
+
+### Un paciente con el alta «desaparecía»
+Reportado por el usuario: al dar el alta aparecía «Reactivar», pero al salir de
+la ficha el paciente no estaba en ningún lado. Reproducido: el paciente sí está,
+en Pacientes › «En pausa o con alta», pero ese filtro no se descubría y buscar
+el apellido en «En tratamiento» decía «Ningún paciente coincide». Corregido:
+- El filtro muestra cuántos hay: «En pausa o con alta (N)».
+- Buscar en «En tratamiento» algo que está en pausa o con alta lo avisa, dice
+  quién es y ofrece «Ver en pausa o con alta».
+- La ficha de un paciente con alta o en pausa dice dónde se lo encuentra,
+  ofrece «Ver el listado» y «Volver a pacientes en pausa o con alta» lleva
+  directo al listado donde figura.
+- Prueba: `tests/nube/ui_alta_se_encuentra.py`.

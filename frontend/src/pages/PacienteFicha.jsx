@@ -328,6 +328,13 @@ export default function PacienteFicha() {
     },
   ];
 
+  const botonDelListado = (
+    <Button color="inherit" size="small" sx={{ whiteSpace: 'nowrap' }}
+      onClick={() => navigate('/pacientes?estado=inactivos')}>
+      Ver el listado
+    </Button>
+  );
+
   return (
     <AppLayout
       titulo={paciente.nombre_completo}
@@ -340,8 +347,10 @@ export default function PacienteFicha() {
         .join(' · ')}
       acciones={
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <Button variant="outlined" onClick={() => navigate('/pacientes')}>
-            Volver a pacientes
+          {/* Con alta o pausa vuelve al listado donde SÍ figura: en «En
+              tratamiento» ya no está y parecía perdido (reporte del usuario). */}
+          <Button variant="outlined" onClick={() => navigate(soloLectura && conPausa ? '/pacientes?estado=inactivos' : '/pacientes')}>
+            {soloLectura && conPausa ? 'Volver a pacientes en pausa o con alta' : 'Volver a pacientes'}
           </Button>
           {/* Editar, dar de baja y reactivar son de la Entrega 2. En modo 1
               la ficha queda de lectura más alta de objetivos, que es lo que
@@ -378,22 +387,23 @@ export default function PacienteFicha() {
       }
     >
       {soloLectura && paciente.tipo_cierre === 'pausa' && conPausa ? (
-        <Alert severity="info" sx={{ mb: 2.5 }}>
+        <Alert severity="info" sx={{ mb: 2.5 }} action={botonDelListado}>
           <strong>Tratamiento en pausa</strong>
           {paciente.fecha_baja ? ` desde el ${formatearFecha(paciente.fecha_baja)}` : ''}.
           {/* Sin el punto final del motivo: salía «noviembre..». */}
           {' '}Motivo: {(paciente.motivo_baja ?? '').replace(/\.+\s*$/, '')}. Sus objetivos y su asignación siguen como
           estaban; al reactivarlo retoma donde quedó. Mientras tanto, la historia
           clínica se consulta entera pero no se modifica, y las sesiones que ya estaban
-          agendadas siguen en la agenda: conviene reprogramarlas o quitarlas.
+          agendadas siguen en la agenda: conviene reprogramarlas o quitarlas. Lo
+          encuentra después en Pacientes, en «En pausa o con alta».
         </Alert>
       ) : soloLectura && (
-        <Alert severity="info" sx={{ mb: 2.5 }}>
+        <Alert severity="info" sx={{ mb: 2.5 }} action={conPausa ? botonDelListado : null}>
           <strong>{conPausa ? 'Tratamiento finalizado (alta)' : 'Paciente dado de baja'}</strong>
           {paciente.fecha_baja ? ` el ${formatearFecha(paciente.fecha_baja)}` : ''}. Su
           historia clínica se sigue consultando entera —objetivos archivados y todas
           sus sesiones— pero no se puede modificar. Para retomar el tratamiento,
-          reactívelo.
+          reactívelo. Lo encuentra después en Pacientes, en «En pausa o con alta».
         </Alert>
       )}
       {verMinimo && !soloLectura && activos.length < 3 && (

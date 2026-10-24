@@ -40,6 +40,15 @@ export default function Pacientes() {
     () => listarPacientesConFiltros(verInactivos ? { estado: 'inactivos' } : {}),
     [verInactivos],
   );
+  // La otra mitad del listado: sirve para decir cuántos hay del otro lado del
+  // filtro y para avisar cuando lo que se busca está ahí. Un paciente dado de
+  // alta desaparecía de «En tratamiento» y nadie sabía dónde buscarlo.
+  const otros = usePeticion(
+    () => (hayCapacidad('pacientes.pausa')
+      ? listarPacientesConFiltros(verInactivos ? {} : { estado: 'inactivos' })
+      : Promise.resolve(null)),
+    [verInactivos],
+  );
   const terapeutas = usePeticion(listarTerapeutas, []);
   const { perfil } = useAuth();
   const [busqueda, setBusqueda] = useState('');
@@ -75,6 +84,15 @@ export default function Pacientes() {
       return `${p.nombre_completo} ${p.nro_historia}`.toLowerCase().includes(texto);
     });
   }, [pacientes, busqueda, soloMios, conAsignaciones, verInactivos]);
+
+  // Coincidencias de la búsqueda entre los pacientes en pausa o con alta.
+  const enOtroLado = useMemo(() => {
+    const texto = busqueda.trim().toLowerCase();
+    if (verInactivos || !texto) return [];
+    return (otros.datos?.pacientes ?? []).filter(
+      (p) => `${p.nombre_completo} ${p.nro_historia}`.toLowerCase().includes(texto),
+    );
+  }, [otros.datos, busqueda, verInactivos]);
 
   const hayFiltro = Boolean(busqueda.trim()) || (conAsignaciones && soloMios && !verInactivos);
 
@@ -142,6 +160,7 @@ export default function Pacientes() {
   ];
 
   const total = datos?.total ?? 0;
+  const cantidadInactivos = verInactivos ? total : (otros.datos?.pacientes?.length ?? null);
   const subtitulo = cargando
     ? 'Cargando...'
     : hayFiltro
@@ -173,7 +192,9 @@ export default function Pacientes() {
               aria-label="Qué pacientes mostrar" sx={{ mb: 2 }}
             >
               <ToggleButton value="activos" sx={{ textTransform: 'none', fontWeight: 600, px: 1.75 }}>En tratamiento</ToggleButton>
-              <ToggleButton value="inactivos" sx={{ textTransform: 'none', fontWeight: 600, px: 1.75 }}>En pausa o con alta</ToggleButton>
+              <ToggleButton value="inactivos" sx={{ textTransform: 'none', fontWeight: 600, px: 1.75 }}>
+                {cantidadInactivos ? `En pausa o con alta (${cantidadInactivos})` : 'En pausa o con alta'}
+              </ToggleButton>
             </ToggleButtonGroup>
           )}
           {total > 0 && (
@@ -214,7 +235,9 @@ export default function Pacientes() {
           ) : total === 0 ? (
             <EstadoVacio
               titulo="Todavía no hay pacientes cargados"
-              descripcion="Cuando se registre el primer paciente del centro aparecerá aquí, con su edad, su N° de historia y sus objetivos activos."
+              descripcion={cantidadInactivos
+                ? 'No hay pacientes en tratamiento. Los que tuvieron el alta o están en pausa se encuentran en «En pausa o con alta».'
+                : 'Cuando se registre el primer paciente del centro aparecerá aquí, con su edad, su N° de historia y sus objetivos activos.'}
               acciones={
                 <Button variant="contained" onClick={() => setModalAbierto(true)}>
                   Agregar paciente
@@ -224,13 +247,23 @@ export default function Pacientes() {
           ) : filtrados.length === 0 ? (
             <EstadoVacio
               titulo="Ningún paciente coincide con la búsqueda"
-              descripcion={soloMios && !busqueda.trim()
-                ? 'No tiene pacientes asignados. Solicite la asignación al administrador.'
-                : `No encontramos a nadie que coincida con “${busqueda.trim()}”. Pruebe con parte del apellido o con el número de historia.`}
+              descripcion={enOtroLado.length > 0
+                ? `No está entre los pacientes en tratamiento, pero hay ${enOtroLado.length === 1 ? '1 paciente' : `${enOtroLado.length} pacientes`} con ese dato en pausa o con alta${
+                  enOtroLado.length <= 3 ? `: ${enOtroLado.map((p) => p.nombre_completo).join(', ')}` : ''}.`
+                : soloMios && !busqueda.trim()
+                  ? 'No tiene pacientes asignados. Solicite la asignación al administrador.'
+                  : `No encontramos a nadie que coincida con “${busqueda.trim()}”. Pruebe con parte del apellido o con el número de historia.`}
               acciones={
-                <Button variant="outlined" onClick={() => { setBusqueda(''); setSoloMios(false); }}>
-                  Limpiar filtros
-                </Button>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  {enOtroLado.length > 0 && (
+                    <Button variant="contained" onClick={() => setEstado('inactivos')}>
+                      Ver en pausa o con alta
+                    </Button>
+                  )}
+                  <Button variant="outlined" onClick={() => { setBusqueda(''); setSoloMios(false); }}>
+                    Limpiar filtros
+                  </Button>
+                </Box>
               }
             />
           ) : (
