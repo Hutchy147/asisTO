@@ -550,6 +550,38 @@ def _sin_nombre(valor, nombres):
     return valor
 
 
+# Claves que no aportan a la redaccion: identificadores internos y la hora exacta.
+_CLAVES_SIN_VALOR_PARA_IA = {'id', 'id_sesion', 'id_objetivo', 'hora_inicio'}
+
+
+def _compactar(valor, clave=None):
+    """
+    Saca de lo que viaja a la IA lo que no cambia el texto del informe: ids,
+    claves vacias y valores de relleno ("sin_datos", 0 calificaciones previas,
+    objetivo activo). En un modelo local la entrada se procesa en CPU y cada
+    token cuesta, asi que achicarla es lo que mas acelera.
+    """
+    if isinstance(valor, dict):
+        salida = {}
+        for k, x in valor.items():
+            if k in _CLAVES_SIN_VALOR_PARA_IA:
+                continue
+            x = _compactar(x, k)
+            if x in (None, '', [], {}):
+                continue
+            if k in ('tendencia', 'cambio') and x == 'sin_datos':
+                continue
+            if k == 'calificaciones_anterior' and x == 0:
+                continue
+            if k == 'activo' and x is True:
+                continue
+            salida[k] = x
+        return salida
+    if isinstance(valor, list):
+        return [x for x in (_compactar(i) for i in valor) if x not in (None, '', [], {})]
+    return valor
+
+
 def datos_para_ia(datos):
     """Los datos del periodo sin identificacion del paciente, serializables."""
     p = datos['paciente']
@@ -564,7 +596,7 @@ def datos_para_ia(datos):
         'diarios': datos['diarios'],
         'ingreso': datos.get('pti'),
     }
-    return _sin_nombre(bruto, nombres)
+    return _compactar(_sin_nombre(bruto, nombres))
 
 
 # Ideogramas CJK, kana y hangul: en un informe en español nunca corresponden.
