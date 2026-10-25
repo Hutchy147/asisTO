@@ -406,7 +406,8 @@ INSTRUCCIONES_IA = (
 
 _INSTRUCCIONES_PERIODICO = (
     'El sistema YA incluye la asistencia, la lista de objetivos con su nivel y el cierre: no los repita '
-    'ni enumere las sesiones una por una.\n'
+    'ni enumere las sesiones una por una. Usted recibe solo las observaciones del equipo y la tendencia '
+    'de cada objetivo.\n'
     'Redacte SOLO esta sección:\n'
     '## Evolución del período\n'
     'Exactamente {parrafos} párrafos de prosa corrida, de hasta 4 oraciones cada uno, sin listas:\n'
@@ -415,19 +416,20 @@ _INSTRUCCIONES_PERIODICO = (
     '- Cada párrafo aporta ideas nuevas: no repita lo ya dicho ni cierre con una conclusión general.\n'
     '- Cuente solo lo que dicen los datos. No explique causas, no relacione objetivos entre sí y no '
     'proponga estrategias ni actividades nuevas: eso lo decide la profesional.\n'
-    '- Mencione una fecha solo si figura tal cual en los datos.\n'
+    '- No mencione fechas, días, cantidades de sesiones ni niveles: ya figuran en otras secciones.\n'
+    '- Si los datos no alcanzan para un párrafo, escriba en su lugar [COMPLETAR: qué falta].\n'
 )
 
 _GUIA_MENSUAL = (
-    '1) qué se trabajó y cómo respondió el paciente; '
+    '1) qué se trabajó y la disposición del paciente; '
     '2) qué apoyos necesitó y qué dificultades aparecieron; '
-    '3) qué cambió durante el mes.\n'
+    '3) qué cambió, según la tendencia de cada objetivo.\n'
 )
 _GUIA_SEMESTRAL = (
-    '1) qué se trabajó en el semestre y cómo respondió el paciente; '
+    '1) qué se trabajó en el semestre y la disposición del paciente; '
     '2) qué apoyos necesitó y qué dificultades aparecieron; '
-    '3) qué cambió respecto del período anterior; '
-    '4) cómo viene la asistencia y la continuidad.\n'
+    '3) qué cambió respecto del período anterior, según la tendencia de cada objetivo; '
+    '4) los aspectos que conviene sostener o vigilar, solo si las observaciones lo indican.\n'
 )
 
 _INSTRUCCIONES_PTI = (
@@ -634,11 +636,53 @@ def _compactar(valor, clave=None):
     return valor
 
 
+MAXIMO_OBSERVACIONES_IA = 30
+
+
+def _observaciones_para_ia(datos):
+    """
+    Lo cualitativo que registro el equipo, sin fechas ni niveles: notas de la
+    sesion, renglones destacados y observaciones por objetivo. Las fechas, los
+    niveles y los conteos los muestra el sistema en otras secciones; si el
+    modelo los recibe, los mezcla y los cuenta mal.
+    """
+    textos = []
+    for d in datos['diarios']:
+        if d['estado'] == 'ausencia':
+            continue
+        if d['nota']:
+            textos.append(_recortar(d['nota'], 220))
+        textos += [_recortar(r['texto'], 220) for r in d['registro'] if r['destacado']]
+        textos += [_recortar(f"{_recortar(o['objetivo'], 70)}: {o['observaciones']}", 260) for o in d['objetivos'] if o['observaciones']]
+    vistos, unicos = set(), []
+    for t in textos:
+        if t and t not in vistos:
+            vistos.add(t)
+            unicos.append(t)
+    return unicos[:MAXIMO_OBSERVACIONES_IA]
+
+
 def datos_para_ia(datos):
     """Los datos del periodo sin identificacion del paciente, serializables."""
     p = datos['paciente']
     nombres = [p['nombre'], p['apellido']]
     nombres += [parte for parte in f"{p['nombre']} {p['apellido']}".split() if len(parte) >= 3]
+    if datos['tipo'] != 'pti':
+        semestral = datos['tipo'] == 'semestral'
+        bruto = {
+            'tipo_de_informe': datos['tipo'],
+            'edad_del_paciente': p['edad'],
+            'objetivos': [
+                {
+                    'objetivo': _recortar(o['descripcion'], 160),
+                    'tendencia': _TEXTO_TENDENCIA.get(o['tendencia']),
+                    **({'respecto_del_periodo_anterior': _TEXTO_CAMBIO.get(o['cambio'])} if semestral else {}),
+                }
+                for o in datos['objetivos'] if o['calificaciones'] > 0
+            ],
+            'observaciones_del_equipo': _observaciones_para_ia(datos),
+        }
+        return _compactar(_sin_nombre(bruto, nombres))
     bruto = {
         'tipo_de_informe': datos['tipo'],
         'edad_del_paciente': p['edad'],

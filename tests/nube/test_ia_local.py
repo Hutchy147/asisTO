@@ -109,7 +109,7 @@ class IaLocalTest(unittest.TestCase):
             'asistencia': {'sesiones': 4, 'ausencias': 0, 'sin_registrar': 0},
             'objetivos': [{'id': 7, 'descripcion': 'Escribir su nombre', 'activo': True, 'calificaciones': 2,
                            'nivel': 'Inicial', 'calificaciones_anterior': 0, 'nivel_anterior': None,
-                           'tendencia': 'sin_datos', 'cambio': 'sin_datos'}],
+                           'tendencia': 'mejora', 'cambio': 'sin_datos'}],
             'diarios': [{'id_sesion': 3, 'fecha': '2026-09-02', 'hora_inicio': '10:00', 'estado': 'completa',
                          'nota': 'Lucía trabajó bien.', 'plan': [], 'registro': [],
                          'objetivos': [{'id_objetivo': 7, 'objetivo': 'Escribir su nombre', 'valor': 'Inicial',
@@ -119,10 +119,23 @@ class IaLocalTest(unittest.TestCase):
         with self.app.app_context():
             enviado = g.datos_para_ia(datos)
         texto = json.dumps(enviado, ensure_ascii=False)
-        for sobra in ('id_sesion', 'id_objetivo', 'hora_inicio', 'sin_datos', 'plan', 'registro', 'ingreso'):
-            self.assertNotIn(sobra, texto)
+        for sobra in ('id_sesion', 'id_objetivo', 'hora_inicio', 'sin_datos', 'plan', 'registro', 'ingreso',
+                      'asistencia', '2026-09', 'Inicial', 'completa'):
+            self.assertNotIn(sobra, texto)   # sin fechas, niveles, conteos ni ids: eso lo muestra el sistema
         self.assertNotIn('Lucía', texto)            # el nombre sigue sin viajar
         self.assertIn('el paciente trabajó bien', texto)
+        self.assertEqual(enviado['objetivos'][0]['tendencia'], 'tendencia de mejora')
+
+    def test_el_pti_conserva_los_ceros_reales_al_compactar(self):
+        datos = {
+            'tipo': 'pti',
+            'paciente': {'nombre': 'Lucía', 'apellido': 'Molina', 'edad': '9 años'},
+            'periodo': {'desde': __import__('datetime').date(2026, 9, 1), 'hasta': __import__('datetime').date(2026, 9, 30)},
+            'asistencia': {'sesiones': 4, 'ausencias': 0, 'sin_registrar': 0},
+            'objetivos': [], 'diarios': [], 'pti': {'etapas': []},
+        }
+        with self.app.app_context():
+            enviado = g.datos_para_ia(datos)
         self.assertEqual(enviado['asistencia']['ausencias'], 0)   # un cero real no se pierde
 
     def test_el_markdown_de_los_modelos_se_normaliza(self):
