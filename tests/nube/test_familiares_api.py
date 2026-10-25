@@ -26,19 +26,19 @@ class FamiliaresApi(BaseApi):
 
     def test_vincular_existente_y_rechazos(self):
         # candidatos para el paciente 3: Marta y Jorge (ninguno vinculado)
-        r = self.llamar('laura', 'get', '/api/pacientes/3/familiares/candidatos')
+        r = self.llamar('admin', 'get', '/api/pacientes/3/familiares/candidatos')
         self.assertEqual(r.status_code, 200)
         self.assertEqual(len(r.get_json()['familiares']), 2)
-        r = self.llamar('laura', 'get', '/api/pacientes/3/familiares/candidatos?q=Ledesma')
+        r = self.llamar('admin', 'get', '/api/pacientes/3/familiares/candidatos?q=Ledesma')
         self.assertEqual([f['id'] for f in r.get_json()['familiares']], [1])
         # control positivo
-        r = self.llamar('laura', 'post', '/api/pacientes/3/familiares', json={'id_familiar': 1})
+        r = self.llamar('admin', 'post', '/api/pacientes/3/familiares', json={'id_familiar': 1})
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         self.assertNotIn('contrasena_temporal', r.get_json())
         # ya no es candidato, y repetir da 409
-        r = self.llamar('laura', 'get', '/api/pacientes/3/familiares/candidatos')
+        r = self.llamar('admin', 'get', '/api/pacientes/3/familiares/candidatos')
         self.assertEqual([f['id'] for f in r.get_json()['familiares']], [2])
-        r = self.llamar('laura', 'post', '/api/pacientes/3/familiares', json={'id_familiar': 1})
+        r = self.llamar('admin', 'post', '/api/pacientes/3/familiares', json={'id_familiar': 1})
         self.assertEqual(r.status_code, 409)
         # familiar inexistente, paciente de baja
         r = self.llamar('admin', 'post', '/api/pacientes/3/familiares', json={'id_familiar': 99})
@@ -52,8 +52,18 @@ class FamiliaresApi(BaseApi):
         self.assertEqual(r.status_code, 403)
         # limpieza: las pruebas comparten base, y otros modulos cuentan con que
         # Marta (familiar 1) solo tiene vinculado al paciente 1
-        r = self.llamar('laura', 'post', '/api/pacientes/3/familiares/1/desvinculacion')
+        r = self.llamar('admin', 'post', '/api/pacientes/3/familiares/1/desvinculacion')
         self.assertEqual(r.status_code, 200)
+
+    def test_terapeuta_no_gestiona_la_familia(self):
+        # Vincular, buscar candidatos y quitar acceso es solo del administrador;
+        # la terapeuta asignada puede consultar el listado y nada mas.
+        antes = self.sql("SELECT COUNT(*) FROM familiares_pacientes")[0][0]
+        self.assertEqual(self.llamar('laura', 'get', '/api/pacientes/1/familiares').status_code, 200)
+        self.assertEqual(self.llamar('laura', 'get', '/api/pacientes/3/familiares/candidatos').status_code, 403)
+        self.assertEqual(self.llamar('laura', 'post', '/api/pacientes/3/familiares', json={'id_familiar': 1}).status_code, 403)
+        self.assertEqual(self.llamar('laura', 'post', '/api/pacientes/1/familiares/1/desvinculacion').status_code, 403)
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM familiares_pacientes")[0][0], antes)
 
     def test_crear_y_vincular_con_contrasena_temporal(self):
         datos = {'nombre': 'Rosa', 'apellido': 'Paz', 'email': 'Rosa.Paz@Asisto.local',
@@ -88,17 +98,17 @@ class FamiliaresApi(BaseApi):
     def test_desvincular(self):
         # Las pruebas comparten base y se corren en orden alfabetico: este caso
         # arma su propio vinculo (Jorge -> paciente 1) y no toca el de Marta.
-        r = self.llamar('laura', 'post', '/api/pacientes/1/familiares', json={'id_familiar': 2})
+        r = self.llamar('admin', 'post', '/api/pacientes/1/familiares', json={'id_familiar': 2})
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         # control positivo
-        r = self.llamar('laura', 'post', '/api/pacientes/1/familiares/2/desvinculacion')
+        r = self.llamar('admin', 'post', '/api/pacientes/1/familiares/2/desvinculacion')
         self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
         ids = [f['id'] for f in self.llamar('laura', 'get', '/api/pacientes/1/familiares').get_json()['familiares']]
         self.assertEqual(ids, [1])
         # repetir: 409; la cuenta sigue existiendo (vuelve a ser candidata)
-        r = self.llamar('laura', 'post', '/api/pacientes/1/familiares/2/desvinculacion')
+        r = self.llamar('admin', 'post', '/api/pacientes/1/familiares/2/desvinculacion')
         self.assertEqual(r.status_code, 409)
-        r = self.llamar('laura', 'get', '/api/pacientes/1/familiares/candidatos')
+        r = self.llamar('admin', 'get', '/api/pacientes/1/familiares/candidatos')
         self.assertIn(2, [f['id'] for f in r.get_json()['familiares']])
         # sin permiso
         self.assertEqual(self.llamar('diego', 'post', '/api/pacientes/1/familiares/1/desvinculacion').status_code, 403)

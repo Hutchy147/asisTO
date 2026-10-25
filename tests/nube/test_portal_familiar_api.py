@@ -84,9 +84,9 @@ class PortalFamiliarApi(BaseApi):
         self.assertIn(fecha, {p['fecha'] for o in c['objetivos'] for p in o['puntos']})
 
     def test_desvincular_corta_el_acceso(self):
-        self.assertEqual(self.llamar('laura', 'post', '/api/pacientes/3/familiares', json={'id_familiar': 1}).status_code, 201)
+        self.assertEqual(self.llamar('admin', 'post', '/api/pacientes/3/familiares', json={'id_familiar': 1}).status_code, 201)
         self.assertEqual(self.llamar('familiar', 'get', '/api/familiar/pacientes/3/evolucion').status_code, 200)
-        self.assertEqual(self.llamar('laura', 'post', '/api/pacientes/3/familiares/1/desvinculacion').status_code, 200)
+        self.assertEqual(self.llamar('admin', 'post', '/api/pacientes/3/familiares/1/desvinculacion').status_code, 200)
         self.assertEqual(self.llamar('familiar', 'get', '/api/familiar/pacientes/3/evolucion').status_code, 403)
 
 

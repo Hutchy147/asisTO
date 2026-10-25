@@ -1,6 +1,6 @@
 # backend/app/routes/familiares.py
-# Vinculo familiar-paciente (Entrega 4). Lo gestiona el administrador o la
-# terapeuta asignada; el familiar solo consume el portal (portal_familiar).
+# Vinculo familiar-paciente (Entrega 4). Lo gestiona SOLO el administrador (alta,
+# candidatos y desvinculacion); la terapeuta asignada solo lo consulta; el familiar solo consume el portal (portal_familiar).
 
 from flask import Blueprint, jsonify, request
 
@@ -19,13 +19,13 @@ def del_paciente(id_paciente):
 
 
 @familiares_bp.get('/pacientes/<int:id_paciente>/familiares/candidatos')
-@requiere_rol('terapeuta', 'admin')
+@requiere_rol('admin')
 def candidatos(id_paciente):
     return jsonify(listar_candidatos(id_paciente, request.args.get('q'))), 200
 
 
 @familiares_bp.post('/pacientes/<int:id_paciente>/familiares')
-@requiere_rol('terapeuta', 'admin')
+@requiere_rol('admin')
 def alta(id_paciente):
     datos = request.get_json(silent=True) or {}
     familiar, contrasena, mensaje = vincular(id_paciente, datos)
@@ -37,7 +37,7 @@ def alta(id_paciente):
 
 
 @familiares_bp.post('/pacientes/<int:id_paciente>/familiares/<int:id_familiar>/desvinculacion')
-@requiere_rol('terapeuta', 'admin')
+@requiere_rol('admin')
 def baja(id_paciente, id_familiar):
     """POST a un sub-recurso: no se borra la cuenta, solo el acceso."""
     mensaje = desvincular(id_paciente, id_familiar)

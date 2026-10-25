@@ -111,7 +111,8 @@ def _auditar(id_usuario, email, resultado):
                 'id': id_usuario,
                 'email': (email or '')[:180],
                 'resultado': resultado,
-                'ip': (request.remote_addr or '')[:45] or None,
+                # No se guarda la IP: dato personal que la auditoria no necesita.
+                'ip': None,
             },
         )
         db.session.commit()

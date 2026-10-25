@@ -136,10 +136,11 @@ export default function SesionesRegistradas() {
         <CampoTexto id="filtro-estado" etiqueta="Estado" select valor={filtros.estado} onChange={cambiar('estado')}>
           <MenuItem value="">Todos</MenuItem>
           {/* El filtro va por cómo se cerró la sesión; una cerrada sin
-              calificar figura «Por registrar» en la columna. */}
-          <MenuItem value="completa">Cerradas como realizadas</MenuItem>
-          <MenuItem value="incompleta">Sin cerrar</MenuItem>
-          <MenuItem value="ausencia">Ausencias</MenuItem>
+              calificar figura «Sin registrar» en la columna. */}
+          <MenuItem value="completa">Completas</MenuItem>
+          <MenuItem value="cortada">Se cortaron</MenuItem>
+          <MenuItem value="incompleta">Sin registrar</MenuItem>
+          <MenuItem value="ausencia">Ausentes</MenuItem>
         </CampoTexto>
       </Box>
 

@@ -389,7 +389,7 @@ def control_mensual(mes=None):
         # Antes el control contaba cerradas + ausencias y el informe otra
         # cosa: «10» en la lista y «14 realizadas» en el texto (usabilidad).
         con_evolucion = db.session.query(Evolucion.id).filter(Evolucion.id_sesion == Sesion.id).exists()
-        asistio = db.or_(Sesion.estado == 'completa', db.and_(Sesion.estado == 'incompleta', con_evolucion))
+        asistio = db.or_(Sesion.estado.in_(('completa', 'cortada')), db.and_(Sesion.estado == 'incompleta', con_evolucion))
         filas = (
             db.session.query(
                 Sesion.id_paciente,

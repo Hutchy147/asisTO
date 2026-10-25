@@ -9,7 +9,7 @@ from sqlalchemy import bindparam, text
 
 from app import db
 from app.models import Evolucion, ObjetivoTerapeutico, Sesion, Terapeuta, Usuario
-from app.models.sesion import ESTADO_AUSENCIA, ESTADOS, ESTADOS_CON_EVOLUCION, ORIGENES_AUSENCIA
+from app.models.sesion import ESTADO_AUSENCIA, ESTADOS, ESTADOS_CON_EVOLUCION, ESTADOS_PENDIENTES, ORIGENES_AUSENCIA
 from app.utils.db import reintentar_en_deadlock
 from app.utils.errors import ErrorAplicacion
 from app.utils.fechas import mensaje_fecha_invalida
@@ -378,6 +378,7 @@ def listar_de_hoy():
 def listar_pendientes_de_evolucion():
     """
     Sesiones ya ocurridas, en completa o incompleta, sin ninguna evolucion.
+    Las cortadas tampoco se reclaman: ya se cerraron como resultado.
 
     "Ya ocurridas" incluye las de hoy cuyo horario de inicio ya paso: una
     sesion de las 9 de la manana esta pendiente a las 11, no recien manana.
@@ -393,7 +394,7 @@ def listar_pendientes_de_evolucion():
         Sesion.query
         .filter(
             Sesion.id_terapeuta == terapeuta.id,
-            Sesion.estado.in_(ESTADOS_CON_EVOLUCION),
+            Sesion.estado.in_(ESTADOS_PENDIENTES),
             db.or_(
                 Sesion.fecha < hoy,
                 db.and_(Sesion.fecha == hoy, Sesion.hora_inicio <= hora_actual),
@@ -758,7 +759,7 @@ def editar_sesion(id_sesion, datos):
 
     # Aviso a la familia (Entrega 4): al cerrar el registro del dia. Mejor
     # esfuerzo, una sola vez por sesion. Ver avisar_sesion_cerrada.
-    if sesion.estado != estado_antes and sesion.estado in ('completa', 'ausencia'):
+    if sesion.estado != estado_antes and sesion.estado in ('completa', 'cortada', 'ausencia'):
         from app.services.notificaciones_service import avisar_sesion_cerrada
         avisar_sesion_cerrada(sesion)
 
@@ -916,7 +917,7 @@ def listar_registradas(filtros):
         Sesion.fecha >= fecha_desde,
         Sesion.fecha <= fecha_hasta,
         db.func.timestamp(Sesion.fecha, Sesion.hora_inicio) <= dt.datetime.now(),
-        db.or_(Sesion.estado.in_(('completa', ESTADO_AUSENCIA)), con_evolucion),
+        db.or_(Sesion.estado.in_(('completa', 'cortada', ESTADO_AUSENCIA)), con_evolucion),
     )
     if alcance == 'mias':
         consulta = consulta.filter(Sesion.id_terapeuta == terapeuta.id)

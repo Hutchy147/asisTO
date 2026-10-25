@@ -110,7 +110,7 @@ class CorreccionesQa(BaseApi):
         self.assertIn(r.status_code, (400, 403))
 
     def test_candidatos_trata_los_comodines_como_texto(self):
-        r = self.llamar('laura', 'get', '/api/pacientes/3/familiares/candidatos?q=%25')
+        r = self.llamar('admin', 'get', '/api/pacientes/3/familiares/candidatos?q=%25')
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.get_json()['familiares'], [])
 

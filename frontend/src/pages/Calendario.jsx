@@ -77,7 +77,7 @@ function BloqueSesion({ sesion, onAbrir }) {
       component="button"
       type="button"
       onClick={() => onAbrir(sesion)}
-      title={`${sesion.paciente.nombre_completo} · ${visible.etiqueta}${falta ? ' · falta cargar la evolución' : ''}`}
+      title={`${sesion.paciente.nombre_completo} · ${visible.etiqueta}${falta ? ' · sin registrar' : ''}`}
       sx={(t) => {
         const colores = t.palette.sesionEstado[claveColor];
         return {
@@ -128,7 +128,7 @@ function BloqueSesion({ sesion, onAbrir }) {
       >
         {/* El color y la regla izquierda ya dicen el estado; el texto se
             usa para lo accionable cuando hay algo que hacer. */}
-        {falta ? 'Falta la evolución' : (futura ? 'Agendada' : ETIQUETA_ESTADO[sesion.estado])}
+        {falta ? ETIQUETA_ESTADO.incompleta : (futura ? 'Agendada' : visible.etiqueta)}
       </Box>
     </Box>
   );
@@ -137,8 +137,9 @@ function BloqueSesion({ sesion, onAbrir }) {
 function Leyenda() {
   const items = [
     { clave: 'agendada', etiqueta: 'Agendada' },
-    // Mismas palabras que los bloques de la grilla (Realizada / En registro / Ausente).
+    // Mismas cinco palabras que los bloques de la grilla.
     { clave: 'completa', etiqueta: ETIQUETA_ESTADO.completa },
+    { clave: 'cortada', etiqueta: ETIQUETA_ESTADO.cortada },
     { clave: 'incompleta', etiqueta: ETIQUETA_ESTADO.incompleta },
     { clave: 'ausencia', etiqueta: ETIQUETA_ESTADO.ausencia },
   ];
@@ -159,19 +160,6 @@ function Leyenda() {
           {etiqueta}
         </Box>
       ))}
-      <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.9, fontSize: 12, fontWeight: 500, color: 'text.primary' }}>
-        <Box
-          component="i"
-          sx={(t) => ({
-            width: 11,
-            height: 11,
-            borderRadius: '2px',
-            outline: `1.5px dashed ${t.palette.text.primary}80`,
-            outlineOffset: '-1.5px',
-          })}
-        />
-        Falta la evolución
-      </Box>
     </Box>
   );
 }

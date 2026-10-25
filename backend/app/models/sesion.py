@@ -5,13 +5,20 @@ from app import db
 ESTADO_COMPLETA = 'completa'
 ESTADO_INCOMPLETA = 'incompleta'
 ESTADO_AUSENCIA = 'ausencia'
+# Se dio pero se corto antes de tiempo por un imprevisto. Es un resultado
+# cerrado (como completa): admite evoluciones y no queda "pendiente".
+ESTADO_CORTADA = 'cortada'
 
-ESTADOS = (ESTADO_COMPLETA, ESTADO_INCOMPLETA, ESTADO_AUSENCIA)
+ESTADOS = (ESTADO_COMPLETA, ESTADO_INCOMPLETA, ESTADO_AUSENCIA, ESTADO_CORTADA)
 
 # Estados sobre los que SI se puede cargar evolucion. 'ausencia' queda
 # afuera por la regla 2, y quien lo aplica es el trigger de evoluciones:
 # esta constante solo sirve para filtrar listados, no para validar.
-ESTADOS_CON_EVOLUCION = (ESTADO_COMPLETA, ESTADO_INCOMPLETA)
+ESTADOS_CON_EVOLUCION = (ESTADO_COMPLETA, ESTADO_INCOMPLETA, ESTADO_CORTADA)
+
+# Estados que pueden quedar "pendientes de evolucion": la cortada es un
+# resultado cerrado y no se reclama.
+ESTADOS_PENDIENTES = (ESTADO_COMPLETA, ESTADO_INCOMPLETA)
 
 AUSENCIA_DE_PACIENTE = 'paciente'
 AUSENCIA_DE_TERAPEUTA = 'terapeuta'

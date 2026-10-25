@@ -23,6 +23,5 @@ class AuditoriaAcceso(db.Model):
             'id_usuario': self.id_usuario,
             'email': self.email,
             'resultado': self.resultado,
-            'ip': self.ip,
             'fecha': self.fecha.isoformat(sep=' ') if self.fecha else None,
         }

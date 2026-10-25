@@ -219,7 +219,7 @@ def _tendencias(id_paciente, desde, hasta):
 def recolectar(paciente, tipo, desde, hasta, pti=None):
     """Todos los datos que el generador necesita, sin texto armado."""
     diarios = diarios_del_periodo(paciente.id, desde, hasta)
-    completas = sum(1 for d in diarios if d['estado'] == 'completa' or (d['estado'] == 'incompleta' and d['objetivos']))
+    completas = sum(1 for d in diarios if d['estado'] in ('completa', 'cortada') or (d['estado'] == 'incompleta' and d['objetivos']))
     ausencias = sum(1 for d in diarios if d['estado'] == 'ausencia')
     # Ya ocurridas pero sin nada cargado: no se sabe si asistio. El borrador
     # lo marca para que la terapeuta lo resuelva antes de publicar.

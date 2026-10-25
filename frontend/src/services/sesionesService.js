@@ -11,6 +11,8 @@ import { hayCapacidad } from '../config/entregas.js';
 // si mostrar el aviso y el label de "motivo de la ausencia".
 const ESTADO_COMPLETA = 'completa';
 const ESTADO_INCOMPLETA = 'incompleta';
+// Se dio pero se cortó antes de tiempo por un imprevisto. Resultado cerrado.
+export const ESTADO_CORTADA = 'cortada';
 export const ESTADO_AUSENCIA = 'ausencia';
 
 // Quien faltó, solo cuando estado = ESTADO_AUSENCIA. Eje distinto del
@@ -166,26 +168,25 @@ export function obtenerSesion(idSesion) {
  * momento van a mostrar cosas distintas sobre la misma sesion.
  */
 export function faltaEvolucion(sesion) {
+  // Una sesión cortada ya está cerrada: no se reclama su evolución.
+  if (sesion?.estado === ESTADO_CORTADA) return false;
   return Boolean(sesion?.admite_evolucion) && !sesion?.tiene_evolucion;
 }
 
 /**
  * Estado que se MUESTRA de una sesión: su etapa en el ciclo de trabajo.
  *
- * El estado de la base (completa / incompleta / ausencia) describe cómo
- * terminó la sesión, pero una sesión agendada se guarda como «incompleta»
- * hasta que se registra, y por eso la pantalla mostraba «Incompleta» solo
- * porque todavía no había llegado la hora. El ciclo visible es:
+ * Cinco estados, con las mismas palabras en todas las pantallas:
  *
  *   Agendada      -> aún no comenzó (fecha futura, u hoy con hora posterior)
- *   Por registrar -> ya comenzó y falta cargar la evolución
- *   En registro   -> hay evolución cargada pero la sesión aún no se marcó como realizada
- *   Realizada     -> el terapeuta la cerró como completa
- *   Ausente       -> el paciente no asistió
+ *   Sin registrar -> ya comenzó y el registro todavía no se cerró
+ *   Completa      -> se dio entera y el terapeuta la cerró
+ *   Se cortó      -> se dio, pero se interrumpió antes de tiempo (imprevisto)
+ *   Ausente       -> el paciente (o el terapeuta) no estuvo
  *
- * La base no cambia: esto solo traduce. `estado` elige el color del chip.
- * Si la sesión no trae los datos de evolución (listado de RRHH), se muestra
- * el estado declarado sin interpretarlo.
+ * La base guarda «incompleta» para lo agendado y lo que sigue abierto; esto
+ * solo traduce. `estado` elige el color del chip. Si la sesión no trae los
+ * datos de evolución (listado de RRHH), se muestra el estado declarado.
  */
 export function estadoVisible(sesion, ahora = new Date()) {
   // Antes de la V3 (sin registro de sesión) rige el vocabulario original.
@@ -197,6 +198,7 @@ export function estadoVisible(sesion, ahora = new Date()) {
   const hora = `${pad(ahora.getHours())}:${pad(ahora.getMinutes())}`;
 
   if (sesion.estado === ESTADO_AUSENCIA) return { estado: ESTADO_AUSENCIA, etiqueta: 'Ausente' };
+  if (sesion.estado === ESTADO_CORTADA) return { estado: ESTADO_CORTADA, etiqueta: 'Se cortó' };
 
   const inicio = (sesion.hora_inicio ?? '00:00').slice(0, 5);
   const noComenzo = sesion.fecha > hoy || (sesion.fecha === hoy && inicio > hora);
@@ -205,9 +207,9 @@ export function estadoVisible(sesion, ahora = new Date()) {
   if (sesion.tiene_evolucion === undefined) {
     return { estado: sesion.estado, etiqueta: ETIQUETA_ESTADO[sesion.estado] ?? sesion.estado };
   }
-  if (faltaEvolucion(sesion)) return { estado: ESTADO_INCOMPLETA, etiqueta: 'Por registrar' };
-  if (sesion.estado === ESTADO_COMPLETA) return { estado: ESTADO_COMPLETA, etiqueta: 'Realizada' };
-  return { estado: ESTADO_INCOMPLETA, etiqueta: 'En registro' };
+  if (faltaEvolucion(sesion)) return { estado: ESTADO_INCOMPLETA, etiqueta: 'Sin registrar' };
+  if (sesion.estado === ESTADO_COMPLETA) return { estado: ESTADO_COMPLETA, etiqueta: 'Completa' };
+  return { estado: ESTADO_INCOMPLETA, etiqueta: 'Sin registrar' };
 }
 
 /**
@@ -217,8 +219,8 @@ export function estadoVisible(sesion, ahora = new Date()) {
  * se llamaba «En registro» en una pantalla e «Incompleta» en otra (H12).
  */
 export const ETIQUETA_ESTADO = hayCapacidad('notas.campo')
-  ? { [ESTADO_COMPLETA]: 'Realizada', [ESTADO_INCOMPLETA]: 'En registro', [ESTADO_AUSENCIA]: 'Ausente' }
-  : { [ESTADO_COMPLETA]: 'Completa', [ESTADO_INCOMPLETA]: 'Incompleta', [ESTADO_AUSENCIA]: 'Ausencia' };
+  ? { [ESTADO_COMPLETA]: 'Completa', [ESTADO_INCOMPLETA]: 'Sin registrar', [ESTADO_AUSENCIA]: 'Ausente', [ESTADO_CORTADA]: 'Se cortó' }
+  : { [ESTADO_COMPLETA]: 'Completa', [ESTADO_INCOMPLETA]: 'Incompleta', [ESTADO_AUSENCIA]: 'Ausencia', [ESTADO_CORTADA]: 'Cortada' };
 
 /**
  * Las tres opciones del radio "Estado de la sesion", con su descripcion,
@@ -235,14 +237,23 @@ export const OPCIONES_ESTADO_SESION = [
     etiqueta: 'Completa',
     descripcion: 'El paciente asistió y se trabajaron los objetivos previstos.',
   },
+  ...(hayCapacidad('notas.campo')
+    ? [{
+        valor: ESTADO_CORTADA,
+        etiqueta: 'Se cortó',
+        descripcion: 'El paciente asistió pero la sesión se interrumpió antes de tiempo por un imprevisto.',
+      }]
+    : []),
   {
     valor: ESTADO_INCOMPLETA,
-    etiqueta: 'Incompleta',
-    descripcion: 'El paciente asistió pero la sesión se interrumpió o se acortó.',
+    etiqueta: hayCapacidad('notas.campo') ? 'Sin registrar' : 'Incompleta',
+    descripcion: hayCapacidad('notas.campo')
+      ? 'Se dio, pero todavía no se terminó de cargar.'
+      : 'El paciente asistió pero la sesión se interrumpió o se acortó.',
   },
   {
     valor: ESTADO_AUSENCIA,
-    etiqueta: 'Ausencia',
+    etiqueta: hayCapacidad('notas.campo') ? 'Ausente' : 'Ausencia',
     descripcion: 'El paciente no asistió, con o sin aviso previo.',
   },
 ];

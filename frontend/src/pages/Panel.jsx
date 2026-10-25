@@ -205,7 +205,7 @@ export default function Panel() {
           <SesionEstadoChip estado={s.estado} />
           {faltaEvolucion(s) && (
             <Box component="span" sx={{ fontSize: 11, fontWeight: 500 }}>
-              Falta la evolución
+              Sin registrar
             </Box>
           )}
         </Box>

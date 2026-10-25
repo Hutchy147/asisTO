@@ -907,22 +907,22 @@ INSERT INTO plantillas_objetivos (area, descripcion) VALUES
   (CONVERT(0x4175746f6e6f6dc3ad6120656e206c612065736375656c61 USING utf8mb4), CONVERT(0x4f7267616e697a61722073757320c3ba74696c6573206573636f6c617265732073696e20617975646120616e74657320646520636f6d656e7a6172206c6120636c617365 USING utf8mb4));
 
 INSERT INTO auditoria_accesos (id_usuario, email, resultado, ip, fecha) VALUES
-  (1,    'laura.fernandez@asisto.local', 'exitoso',   '192.168.1.24',  '2026-06-01 08:45:00'),
-  (2,    'diego.moyano@asisto.local',    'exitoso',   '192.168.1.31',  '2026-06-01 08:50:00'),
-  (3,    'paula.cabrera@asisto.local',   'exitoso',   '192.168.1.44',  '2026-06-01 08:52:00'),
-  (4,    'silvia.quiroga@asisto.local',  'fallido',   '192.168.1.15',  '2026-06-05 09:12:00'),
-  (NULL, 'noexiste@asisto.local',        'fallido',   '201.190.44.10', '2026-06-05 09:14:00'),
-  (4,    'silvia.quiroga@asisto.local',  'exitoso',   '192.168.1.15',  '2026-06-05 09:15:00'),
-  (13,   'andrea.suarez@asisto.local',   'bloqueado', '190.15.22.100', '2026-06-08 21:03:00');
+  (1,    'laura.fernandez@asisto.local', 'exitoso',   NULL,  '2026-06-01 08:45:00'),
+  (2,    'diego.moyano@asisto.local',    'exitoso',   NULL,  '2026-06-01 08:50:00'),
+  (3,    'paula.cabrera@asisto.local',   'exitoso',   NULL,  '2026-06-01 08:52:00'),
+  (4,    'silvia.quiroga@asisto.local',  'fallido',   NULL,  '2026-06-05 09:12:00'),
+  (NULL, 'noexiste@asisto.local',        'fallido',   NULL, '2026-06-05 09:14:00'),
+  (4,    'silvia.quiroga@asisto.local',  'exitoso',   NULL,  '2026-06-05 09:15:00'),
+  (13,   'andrea.suarez@asisto.local',   'bloqueado', NULL, '2026-06-08 21:03:00');
 
 -- Intentos recientes, relativos a la carga: la auditoria de "esta semana" no
 -- quedaba vacia en la demostracion.
 INSERT INTO auditoria_accesos (id_usuario, email, resultado, ip, fecha) VALUES
-  (2,    'diego.moyano@asisto.local',    'fallido',      '192.168.1.31', DATE_SUB(NOW(), INTERVAL 2 DAY)),
-  (2,    'diego.moyano@asisto.local',    'exitoso',      '192.168.1.31', DATE_SUB(NOW(), INTERVAL 2 DAY) + INTERVAL 1 MINUTE),
-  (NULL, 'laura.fernandes@asisto.local', 'fallido',      '186.12.40.7',  DATE_SUB(NOW(), INTERVAL 1 DAY)),
-  (7,    'rosa.aguilar@asisto.local',    'recuperacion', '181.47.3.92',  DATE_SUB(NOW(), INTERVAL 1 DAY) + INTERVAL 3 HOUR),
-  (7,    'rosa.aguilar@asisto.local',    'restablecida', '181.47.3.92',  DATE_SUB(NOW(), INTERVAL 1 DAY) + INTERVAL 3 HOUR + INTERVAL 5 MINUTE);
+  (2,    'diego.moyano@asisto.local',    'fallido',      NULL, DATE_SUB(NOW(), INTERVAL 2 DAY)),
+  (2,    'diego.moyano@asisto.local',    'exitoso',      NULL, DATE_SUB(NOW(), INTERVAL 2 DAY) + INTERVAL 1 MINUTE),
+  (NULL, 'laura.fernandes@asisto.local', 'fallido',      NULL,  DATE_SUB(NOW(), INTERVAL 1 DAY)),
+  (7,    'rosa.aguilar@asisto.local',    'recuperacion', NULL,  DATE_SUB(NOW(), INTERVAL 1 DAY) + INTERVAL 3 HOUR),
+  (7,    'rosa.aguilar@asisto.local',    'restablecida', NULL,  DATE_SUB(NOW(), INTERVAL 1 DAY) + INTERVAL 3 HOUR + INTERVAL 5 MINUTE);
 
 
 

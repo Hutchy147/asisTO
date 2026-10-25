@@ -312,7 +312,7 @@ CREATE TABLE sesiones (
   fecha           DATE         NOT NULL,
   hora_inicio     TIME         NOT NULL,
   hora_fin        TIME         NULL DEFAULT NULL,
-  estado          ENUM('completa','incompleta','ausencia')
+  estado          ENUM('completa','incompleta','ausencia','cortada')
                     NOT NULL DEFAULT 'incompleta',
   -- QUIEN FALTO, solo cuando estado='ausencia'. Es un eje distinto del
   -- estado: `estado` describe QUE paso con la sesion (se hizo, se corto,
@@ -1404,7 +1404,7 @@ BEGIN
     IF NEW.estado <> 'incompleta' THEN
       SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT =
-          'Una sesion realizada o ausente no se puede pasar a una fecha futura';
+          'Una sesion cerrada (completa, cortada o ausente) no se puede pasar a una fecha futura';
     END IF;
     SELECT COUNT(*) INTO v_evoluciones
       FROM evoluciones
@@ -1707,7 +1707,7 @@ CREATE TRIGGER trg_evoluciones_validar_insert
 BEFORE INSERT ON evoluciones
 FOR EACH ROW
 BEGIN
-  DECLARE v_estado_sesion     ENUM('completa','incompleta','ausencia') DEFAULT NULL;
+  DECLARE v_estado_sesion     ENUM('completa','incompleta','ausencia','cortada') DEFAULT NULL;
   DECLARE v_paciente_sesion   INT UNSIGNED DEFAULT NULL;
   DECLARE v_terapeuta_sesion  INT UNSIGNED DEFAULT NULL;
   DECLARE v_paciente_objetivo INT UNSIGNED DEFAULT NULL;
@@ -1869,7 +1869,7 @@ CREATE TRIGGER trg_evoluciones_validar_update
 BEFORE UPDATE ON evoluciones
 FOR EACH ROW
 BEGIN
-  DECLARE v_estado_sesion     ENUM('completa','incompleta','ausencia') DEFAULT NULL;
+  DECLARE v_estado_sesion     ENUM('completa','incompleta','ausencia','cortada') DEFAULT NULL;
   DECLARE v_paciente_sesion   INT UNSIGNED DEFAULT NULL;
   DECLARE v_paciente_objetivo INT UNSIGNED DEFAULT NULL;
   DECLARE v_objetivo_activo   BOOLEAN      DEFAULT NULL;
@@ -3270,7 +3270,7 @@ BEGIN
         SET MESSAGE_TEXT = 'Solo el terapeuta que atendio la sesion puede corregir sus calificaciones';
     END IF;
 
-    IF v_estado = 'completa' THEN
+    IF v_estado IN ('completa','cortada') THEN
       SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT = 'La sesion ya fue terminada: reabra el registro para corregir una calificacion';
     END IF;
@@ -6884,6 +6884,7 @@ SELECT
   COALESCE(SUM(s.estado = 'completa'), 0)            AS sesiones_completas,
   COALESCE(SUM(s.estado = 'incompleta'), 0)          AS sesiones_incompletas,
   COALESCE(SUM(s.estado = 'ausencia'), 0)            AS ausencias,
+  COALESCE(SUM(s.estado = 'cortada'), 0)             AS sesiones_cortadas,
   MAX(s.fecha)                                       AS fecha_ultima_sesion
   FROM pacientes p
   LEFT JOIN sesiones s ON s.id_paciente = p.id

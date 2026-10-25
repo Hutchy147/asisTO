@@ -88,6 +88,8 @@ def _texto_sesion(sesion):
     nombre = _nombre(sesion.id_paciente)
     if sesion.estado == 'ausencia':
         return f'Se registró una ausencia en la sesión del {cuando} de {nombre}.'
+    if sesion.estado == 'cortada':
+        return f'Se registró la sesión del {cuando} de {nombre}; se cortó antes de lo previsto.'
     return f'Se registró la sesión del {cuando} de {nombre}.'
 
 
@@ -97,7 +99,7 @@ def avisar_sesion(sesion):
     el registro cerrado: una sesion 'incompleta' todavia no se informa, el
     aviso sale cuando pasa a realizada o a ausencia.
     """
-    if sesion.estado not in ('completa', 'ausencia'):
+    if sesion.estado not in ('completa', 'cortada', 'ausencia'):
         return 0
     return avisar_sesion_cerrada(sesion)
 

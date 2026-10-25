@@ -506,7 +506,8 @@ export default function PacienteFicha() {
 
       {/* --- Pestaña Familia (Entrega 4) --- */}
       {verFamiliaAhora && pestania === 'familia' && (
-        <SeccionFamiliares paciente={paciente} soloQuitar={soloLectura} onAviso={setAviso} />
+        // El alta y la baja del acceso son del administrador; acá solo se consulta.
+        <SeccionFamiliares paciente={paciente} puedeGestionar={false} onAviso={setAviso} />
       )}
 
       {/* --- Pestaña Asignación (HDU 11) --- */}

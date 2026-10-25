@@ -115,7 +115,7 @@ function resumenPorTerapeuta(sesiones) {
   const mapa = new Map();
   sesiones.forEach((s) => {
     const fila = mapa.get(s.id_terapeuta) ?? {
-      id_terapeuta: s.id_terapeuta, terapeuta: s.terapeuta, total: 0, completa: 0, incompleta: 0,
+      id_terapeuta: s.id_terapeuta, terapeuta: s.terapeuta, total: 0, completa: 0, cortada: 0, incompleta: 0,
       falto_paciente: 0, falto_terapeuta: 0, sin_declarar: 0,
     };
     fila.total += 1;
@@ -125,6 +125,7 @@ function resumenPorTerapeuta(sesiones) {
       else if (quien === 'terapeuta') fila.falto_terapeuta += 1;
       else fila.sin_declarar += 1;
     } else if (s.estado === 'completa') fila.completa += 1;
+    else if (s.estado === 'cortada') fila.cortada += 1;
     else fila.incompleta += 1;
     mapa.set(s.id_terapeuta, fila);
   });
@@ -134,8 +135,9 @@ function resumenPorTerapeuta(sesiones) {
 const COLUMNAS_RESUMEN = [
   { clave: 'terapeuta', etiqueta: 'Terapeuta' },
   { clave: 'total', etiqueta: 'Sesiones' },
-  { clave: 'completa', etiqueta: 'Realizadas' },
-  { clave: 'incompleta', etiqueta: 'Sin cerrar' },
+  { clave: 'completa', etiqueta: 'Completas' },
+  { clave: 'cortada', etiqueta: 'Se cortaron' },
+  { clave: 'incompleta', etiqueta: 'Sin registrar' },
   { clave: 'falto_paciente', etiqueta: 'Faltó el paciente' },
   { clave: 'falto_terapeuta', etiqueta: 'Faltó el terapeuta' },
   { clave: 'sin_declarar', etiqueta: 'Ausencia sin declarar' },
@@ -309,12 +311,8 @@ export default function PanelRrhh() {
       clave: 'estado',
       etiqueta: 'Estado',
       ancho: 128,
-      // Mismas palabras que las tarjetas y el resumen: «Sin cerrar», no
-      // «En registro» (usabilidad, RRHH).
-      render: (s) => {
-        const visible = estadoVisible(s);
-        return <SesionEstadoChip {...visible} etiqueta={visible.estado === 'incompleta' ? 'Sin cerrar' : visible.etiqueta} />;
-      },
+      // Mismas cinco palabras que las tarjetas y el resumen.
+      render: (s) => <SesionEstadoChip {...estadoVisible(s)} />,
     },
     {
       clave: 'ausencia_de',
@@ -508,16 +506,19 @@ export default function PanelRrhh() {
           <>
             {/* --- Recuento del período --- */}
             <Grid container spacing={1.5} sx={{ mb: 2 }}>
-              <Grid item xs={12} sm={3}>
+              <Grid item xs={12} sm={2.4}>
                 <StatTile etiqueta="Sesiones del período" valor={resumen.total_sesiones} nota="Todas las cargadas" />
               </Grid>
-              <Grid item xs={12} sm={3}>
-                <StatTile etiqueta="Realizadas" valor={resumen.por_estado?.completa ?? 0} nota="Se dieron y están registradas" />
+              <Grid item xs={12} sm={2.4}>
+                <StatTile etiqueta="Completas" valor={resumen.por_estado?.completa ?? 0} nota="Se dieron y están registradas" />
               </Grid>
-              <Grid item xs={12} sm={3}>
-                <StatTile etiqueta="Sin cerrar" valor={resumen.por_estado?.incompleta ?? 0} nota="Se dieron; el terapeuta no terminó de registrarlas" />
+              <Grid item xs={12} sm={2.4}>
+                <StatTile etiqueta="Se cortaron" valor={resumen.por_estado?.cortada ?? 0} nota="Se interrumpieron antes de tiempo" />
               </Grid>
-              <Grid item xs={12} sm={3}>
+              <Grid item xs={12} sm={2.4}>
+                <StatTile etiqueta="Sin registrar" valor={resumen.por_estado?.incompleta ?? 0} nota="El terapeuta no terminó de registrarlas" />
+              </Grid>
+              <Grid item xs={12} sm={2.4}>
                 <StatTile etiqueta="Ausencias" valor={resumen.por_estado?.ausencia ?? 0} nota="Desglose abajo" />
               </Grid>
             </Grid>
@@ -565,7 +566,7 @@ export default function PanelRrhh() {
                   claveFila={(f) => f.id_terapeuta}
                 />
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                  «Sin cerrar»: la sesión se dio pero el terapeuta todavía no terminó de cargarla.
+                  «Sin registrar»: la sesión se dio pero el terapeuta todavía no terminó de cargarla.
                   «Superpuestas» (en el listado): sesiones de la misma terapeuta que se pisan en el horario; conviene revisarlas.
                 </Typography>
               </>
@@ -584,7 +585,7 @@ export default function PanelRrhh() {
                 <MenuItem value="ausencias">Solo ausencias</MenuItem>
                 <MenuItem value="paciente">Ausencias: faltó el paciente</MenuItem>
                 <MenuItem value="terapeuta">Ausencias: faltó el terapeuta</MenuItem>
-                <MenuItem value="sin_cerrar">Solo sin cerrar</MenuItem>
+                <MenuItem value="sin_cerrar">Solo sin registrar</MenuItem>
               </TextField>
             </Box>
             {sesiones.length > 0 && sesionesListadas.length === 0 ? (

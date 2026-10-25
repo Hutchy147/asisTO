@@ -92,7 +92,6 @@ export default function AuditoriaAccesos() {
       clave: 'cuenta', etiqueta: '¿Existe la cuenta?', ancho: 170,
       render: (a) => (a.id_usuario ? 'Usuario del sistema' : <Box component="span" sx={{ color: 'text.secondary' }}>Email sin cuenta</Box>),
     },
-    { clave: 'ip', etiqueta: 'IP', ancho: 140, render: (a) => a.ip ?? '—' },
   ];
 
   return (

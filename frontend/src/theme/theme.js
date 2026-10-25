@@ -127,6 +127,7 @@ const theme = createTheme({
       completa: { fg: EUCALIPTO_700, bg: EUCALIPTO_100 },
       incompleta: { fg: AMBAR_700, bg: AMBAR_100 },
       ausencia: { fg: LADRILLO_700, bg: LADRILLO_100 },
+      cortada: { fg: ARCILLA_700, bg: ARCILLA_100 },
       agendada: { fg: NAVY, bg: NAVY_100 },
     },
 

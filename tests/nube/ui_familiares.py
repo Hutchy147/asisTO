@@ -39,6 +39,21 @@ with sync_playwright() as p:
     check(page.get_by_text('Familiares con acceso').count() > 0, 'se muestra la seccion')
     page.screenshot(path=f'{SALIDA}/familia_lista.png')
 
+    # La terapeuta solo consulta: vincular y quitar acceso es del administrador
+    check(page.get_by_role('button', name='Crear cuenta').count() == 0, 'terapeuta: no ve Crear cuenta')
+    check(page.get_by_role('button', name='Vincular existente').count() == 0, 'terapeuta: no ve Vincular existente')
+    check(page.get_by_role('button', name='Quitar acceso').count() == 0, 'terapeuta: no ve Quitar acceso')
+    check(page.get_by_text('pida al administrador').count() > 0, 'terapeuta: el texto dice a quien pedirlo')
+
+    # administrador: gestiona desde Asignaciones
+    page.get_by_role('button', name='Salir').click() if page.get_by_role('button', name='Salir').count() else None
+    ctx2 = b.new_context(viewport={'width': 1400, 'height': 900})
+    pa = ctx2.new_page()
+    login(pa, 'admin@asisto.local')
+    pa.goto(BASE + '/admin'); pa.wait_for_timeout(1500)
+    pa.locator('tbody tr').first.get_by_role('button', name='Familia').click(); pa.wait_for_timeout(1200)
+    page = pa
+
     # crear cuenta nueva
     sufijo = str(int(time.time()))
     page.get_by_role('button', name='Crear cuenta').click(); page.wait_for_timeout(500)

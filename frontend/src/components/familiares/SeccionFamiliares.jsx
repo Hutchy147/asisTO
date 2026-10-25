@@ -1,7 +1,7 @@
 // frontend/src/components/familiares/SeccionFamiliares.jsx
 // Pestaña "Familia" de la ficha (Entrega 4): quiénes tienen acceso al portal
 // con la evolución de este paciente. Vincular y desvincular lo hace el
-// terapeuta asignado o el administrador.
+// administrador; el terapeuta asignado solo la consulta.
 
 import { useState } from 'react';
 import Box from '@mui/material/Box';
@@ -24,8 +24,8 @@ export default function SeccionFamiliares({ paciente, puedeGestionar = true, sol
   const lista = usePeticion(() => listarFamiliaresDePaciente(paciente.id), [paciente.id]);
   const candidatos = usePeticion(
     // Con el paciente de baja no se vincula a nadie: no hace falta la lista.
-    () => (soloQuitar ? Promise.resolve({ familiares: [] }) : listarCandidatos(paciente.id)),
-    [paciente.id, soloQuitar],
+    () => (soloQuitar || !puedeGestionar ? Promise.resolve({ familiares: [] }) : listarCandidatos(paciente.id)),
+    [paciente.id, soloQuitar, puedeGestionar],
   );
 
   const [modal, setModal] = useState(null); // null | 'existente' | 'nuevo'
@@ -96,6 +96,7 @@ export default function SeccionFamiliares({ paciente, puedeGestionar = true, sol
             Cada familiar vinculado puede consultar la evolución del paciente y recibe
             avisos del tratamiento. En el portal no ve el diagnóstico ni las notas de cada
             sesión; sí lee completos los informes que se publiquen.
+            {!puedeGestionar && ' Para vincular a alguien o quitarle el acceso, pida al administrador.'}
           </Typography>
         </Box>
         {puedeGestionar && !soloQuitar && (

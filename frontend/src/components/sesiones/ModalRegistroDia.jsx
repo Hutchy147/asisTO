@@ -38,7 +38,7 @@ import {
   corregirEvolucion, etiquetaDeValor, quitarEvolucion, registrarEvolucion,
 } from '../../services/evolucionesService.js';
 import {
-  editarSesion, estadoVisible, ESTADO_AUSENCIA, ETIQUETA_AUSENCIA_DE,
+  editarSesion, estadoVisible, ESTADO_AUSENCIA, ESTADO_CORTADA, ETIQUETA_AUSENCIA_DE,
   OPCIONES_AUSENCIA_DE, obtenerSesion,
 } from '../../services/sesionesService.js';
 import { formatearFecha, formatearHora } from '../../utils/fechas.js';
@@ -72,7 +72,7 @@ function Bloque({ titulo, nota, contador, children }) {
 // Una fila por objetivo: si ya tiene evolución se lee; si no, se despliega la
 // escala de cinco palabras con observaciones opcionales y se guarda ahí mismo.
 function FilaEvolucion({
-  objetivo, evolucion, planeado = false, habilitada, corregible = false, ocupado, onGuardar, onQuitar,
+  objetivo, evolucion, prefijo = null, planeado = false, habilitada, corregible = false, ocupado, onGuardar, onQuitar,
 }) {
   const [abierta, setAbierta] = useState(false);
   const [valor, setValor] = useState('');
@@ -104,15 +104,10 @@ function FilaEvolucion({
 
   return (
     <Box component="li" sx={(t) => ({ py: 0.75, borderBottom: `1px solid ${t.palette.superficie.hundida}` })}>
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-        <Box className="texto-libre" sx={{ flex: 1, minWidth: 0, fontSize: 14, lineHeight: 1.4, fontWeight: planeado ? 600 : 400 }}>
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+        {prefijo}
+        <Box className="texto-libre" sx={{ flex: 1, minWidth: 0, fontSize: 14, lineHeight: 1.4, py: prefijo ? 0.5 : 0, fontWeight: planeado ? 600 : 400 }}>
           {objetivo.descripcion}
-          {planeado && !evolucion && (
-            // En su propio renglón: pegado al título se leía como parte del objetivo.
-            <Box component="span" sx={{ display: 'block', fontSize: 11.5, fontWeight: 400, color: 'text.secondary' }}>
-              Planeado para hoy
-            </Box>
-          )}
         </Box>
         {evolucion ? (
           <Box sx={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -177,6 +172,10 @@ export default function ModalRegistroDia({
   const [error, setError] = useState('');
   const [marcandoAusencia, setMarcandoAusencia] = useState(false);
   const [quienFalto, setQuienFalto] = useState('');
+  // «Se cortó»: se carga trabajando una sesión sin registrar. La hora real de
+  // fin es opcional y se guarda en hora_fin; el motivo no se guarda.
+  const [cortando, setCortando] = useState(false);
+  const [horaCorte, setHoraCorte] = useState('');
 
   const datos = detalle.datos;
   const sesion = datos?.sesion;
@@ -184,6 +183,7 @@ export default function ModalRegistroDia({
 
   const esPropia = sesion?.es_propia !== false;
   const esAusencia = sesion?.estado === ESTADO_AUSENCIA;
+  const esCortada = sesion?.estado === ESTADO_CORTADA;
   const futura = Boolean(sesion && sesion.fecha > hoyIso());
   const puedeEscribir = Boolean(sesion && esPropia);
   const puedeRegistrar = puedeEscribir && !esAusencia && !futura;
@@ -191,9 +191,12 @@ export default function ModalRegistroDia({
     puedeEscribir && !futura && sesion?.admite_evolucion && (datos?.objetivos_activos?.length ?? 0) > 0,
   );
   const evolucionPorObjetivo = new Map((datos?.evoluciones ?? []).map((e) => [e.id_objetivo, e]));
-  // «Realizada» tiene que querer decir algo: terminada, se lee y para cambiar
-  // algo se reabre (usabilidad, terapeuta: seguía todo editable).
-  const terminada = Boolean(sesion && sesion.estado === 'completa' && evolucionPorObjetivo.size > 0);
+  // «Completa» (o «Se cortó») tiene que querer decir algo: terminada, se lee y
+  // para cambiar algo se reabre (usabilidad, terapeuta: seguía todo editable).
+  const terminada = Boolean(sesion && (esCortada || (sesion.estado === 'completa' && evolucionPorObjetivo.size > 0)));
+  // Abierta: sin cerrar, o «completa» pero sin ninguna calificación (cargada
+  // con el formato viejo): en ambos casos figura «Sin registrar».
+  const abierta = Boolean(sesion && (sesion.estado === ESTADO_SIN_CERRAR || (sesion.estado === 'completa' && evolucionPorObjetivo.size === 0)));
   const editable = puedeEscribir && !terminada;
   const registrable = puedeRegistrar && !terminada;
   const calificable = puedeCargarEvolucion && !terminada;
@@ -229,22 +232,33 @@ export default function ModalRegistroDia({
   // "Ausente" y su deshacer pasan por el mismo editar de la sesión, con los
   // demás datos tal cual: el servidor aplica sus reglas (no se puede marcar
   // ausente con evolución ni registro escritos).
-  async function cambiarAsistencia(estado, ausenciaDe) {
+  async function cambiarAsistencia(estado, ausenciaDe, horaFin) {
     await ejecutar(() => editarSesion(sesion.id, {
       estado,
       ausencia_de: ausenciaDe,
       notas: sesion.notas ?? null,
       fecha: sesion.fecha,
       hora_inicio: sesion.hora_inicio?.slice(0, 5),
-      hora_fin: sesion.hora_fin?.slice(0, 5) ?? null,
+      hora_fin: horaFin ?? sesion.hora_fin?.slice(0, 5) ?? null,
     }), { recargarSesion: true });
     setMarcandoAusencia(false);
     setQuienFalto('');
+    setCortando(false);
+    setHoraCorte('');
   }
 
+  // La hora de corte tiene que caer dentro de la sesión; si no, se avisa antes
+  // de mandar nada. En duplas no se toca el horario: es compartido.
+  const puedeFijarHoraCorte = Boolean(sesion && !sesion.companero);
+  const inicioHHMM = sesion?.hora_inicio?.slice(0, 5) ?? '';
+  const finHHMM = sesion?.hora_fin?.slice(0, 5) ?? '';
+  const horaCorteInvalida = Boolean(
+    horaCorte && (horaCorte <= inicioHHMM || (finHHMM && horaCorte > finHHMM)),
+  );
+
   // Una sesión cerrada sin calificar (pendiente de antes de la V3) se reabre
-  // sola al calificar: así sigue el ciclo En registro -> Terminar, en vez de
-  // saltar a «Realizada» con la primera calificación.
+  // sola al calificar: así sigue el ciclo Sin registrar -> Terminar, en vez de
+  // saltar a «Completa» con la primera calificación.
   async function calificar(objetivo, valor, observaciones) {
     if (sesion.estado === 'completa' && evolucionPorObjetivo.size === 0) {
       await editarSesion(sesion.id, {
@@ -278,19 +292,6 @@ export default function ModalRegistroDia({
       onPedirCierre={onCerrar}
       // La acción de terminar va al pie, siempre a la vista: antes aparecía en
       // el medio recién después de calificar y parecía que no había cómo guardar.
-      accionPie={datos && lista && puedeRegistrar && !esAusencia && sesion.estado === ESTADO_SIN_CERRAR && (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1, flexWrap: 'wrap' }}>
-          <Typography variant="caption" color="text.secondary" sx={{ flex: 1, minWidth: 180 }}>
-            {evolucionPorObjetivo.size > 0
-              ? 'Todo lo escrito ya quedó guardado. Al terminar, la sesión figura «Realizada».'
-              : 'Todo se guarda al momento. Para terminar, califique al menos un objetivo.'}
-          </Typography>
-          <Button variant="contained" disabled={ocupado || evolucionPorObjetivo.size === 0}
-            onClick={() => cambiarAsistencia('completa', null).catch(() => {})}>
-            Terminar la sesión
-          </Button>
-        </Box>
-      )}
     >
       {(detalle.cargando || renglones.cargando) && !datos && <Cargando texto="Abriendo la sesión..." minHeight={140} />}
       {detalle.error && <EstadoError error={detalle.error} onReintentar={detalle.recargar} />}
@@ -318,7 +319,21 @@ export default function ModalRegistroDia({
               escrito sigue pendiente y pasa a la próxima sesión.
             </Alert>
           )}
-          {terminada && puedeEscribir && (
+          {esCortada && (
+            <Alert
+              severity="warning" sx={{ mb: 2 }}
+              action={puedeEscribir && (
+                <Button color="inherit" size="small" disabled={ocupado} sx={{ whiteSpace: 'nowrap' }}
+                  onClick={() => cambiarAsistencia(ESTADO_SIN_CERRAR, null).catch(() => {})}>
+                  Reabrir el registro
+                </Button>
+              )}
+            >
+              <strong>Se cortó antes de tiempo{finHHMM ? `: terminó a las ${finHHMM}` : ''}.</strong>{' '}
+              Lo que se alcanzó a trabajar queda registrado.
+            </Alert>
+          )}
+          {terminada && puedeEscribir && !esCortada && (
             <Alert
               severity="success" sx={{ mb: 2 }}
               action={(
@@ -334,167 +349,39 @@ export default function ModalRegistroDia({
           )}
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
-          {lista.arrastre.length > 0 && (
+          {!futura && (esAusencia || abierta) && puedeEscribir && (
             <Bloque
-              titulo="Pendiente de antes"
-              contador={lista.arrastre.length}
-              nota="Quedó sin cerrar en sesiones anteriores. Se sigue arrastrando hasta que se lo marque como hecho o se lo descarte."
+              titulo="¿Cómo fue la sesión?"
+              nota={esAusencia ? undefined : 'Mientras no la cierre, figura «Sin registrar». Todo lo que cargue abajo se guarda al momento.'}
             >
-              <ListaRenglones
-                renglones={lista.arrastre}
-                editable={editable}
-                conCierre
-                ocupado={ocupado}
-                onDestacar={destacar}
-                onCerrar={cerrar}
-              />
-            </Bloque>
-          )}
-
-          <Bloque
-            titulo="Objetivos a trabajar"
-            contador={`${lista.objetivos_plan.length} de ${datos.objetivos_activos.length} marcados`}
-            nota={editable ? 'Los objetivos activos del paciente. Marque los que se trabajarán en esta sesión.' : undefined}
-          >
-            {datos.objetivos_activos.length === 0 ? (
-              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', py: 0.5 }}>
-                El paciente aún no tiene objetivos activos. Se cargan desde su ficha.
+          {cortando ? (
+            <Box sx={(t) => ({ p: 1.5, mb: 1, borderRadius: `${t.formas.sm}px`, backgroundColor: t.palette.superficie.hundida })}>
+              <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
+                La sesión se cortó antes de tiempo
               </Typography>
-            ) : (
-              <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }}>
-                {datos.objetivos_activos.map((o) => {
-                  const marcado = lista.objetivos_plan.includes(o.id);
-                  // Con calificación no se desmarca: quedaba «no trabajado» pero calificado.
-                  const calificado = evolucionPorObjetivo.has(o.id);
-                  return (
-                    <Box
-                      component="li"
-                      key={o.id}
-                      sx={(t) => ({
-                        display: 'flex', alignItems: 'flex-start', gap: 0.5, py: 0.25,
-                        borderBottom: `1px solid ${t.palette.superficie.hundida}`,
-                      })}
-                    >
-                      <Checkbox
-                        size="small"
-                        checked={marcado}
-                        disabled={!editable || ocupado || (marcado && calificado)}
-                        title={marcado && calificado ? 'Tiene una calificación: para desmarcarlo, quite primero la calificación.' : undefined}
-                        onChange={(e) => marcarObjetivo(o, e.target.checked)}
-                        inputProps={{ 'aria-label': `Trabajar hoy: ${o.descripcion}` }}
-                        sx={{ p: 0.5, mt: 0.25 }}
-                      />
-                      <Box className="texto-libre" sx={{ flex: 1, minWidth: 0, fontSize: 14, lineHeight: 1.4, py: 0.5, fontWeight: marcado ? 600 : 400 }}>
-                        {o.descripcion}
-                      </Box>
-                    </Box>
-                  );
-                })}
-              </Box>
-            )}
-          </Bloque>
-
-          <Bloque titulo="Otras notas del plan" contador={lista.plan.length}>
-            <ListaRenglones
-              renglones={lista.plan}
-              editable={editable}
-              conCierre
-              ocupado={ocupado}
-              etiquetaVacio="Sin otras notas."
-              onDestacar={destacar}
-              onBorrar={borrar}
-              onCerrar={cerrar}
-              onEditar={editar}
-              alPie={editable && (
-                <CampoRenglon placeholder="Otra actividad prevista" onAgregar={agregar(MOMENTO_PLAN)} deshabilitado={ocupado} />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                Queda cerrada como «Se cortó». Lo ya calificado y anotado se conserva.
+              </Typography>
+              {puedeFijarHoraCorte && (
+                <TextField
+                  type="time" size="small" label="Hora real de fin (opcional)"
+                  value={horaCorte} onChange={(e) => setHoraCorte(e.target.value)}
+                  disabled={ocupado} InputLabelProps={{ shrink: true }}
+                  error={horaCorteInvalida}
+                  helperText={horaCorteInvalida ? `Tiene que estar entre ${inicioHHMM} y ${finHHMM || 'el fin previsto'}.` : ' '}
+                />
               )}
-            />
-          </Bloque>
-
-          <Bloque
-            titulo="Registro"
-            contador={lista.registro.length}
-            nota={futura ? 'La sesión todavía no ocurrió: por ahora solo admite plan.' : undefined}
-          >
-            <ListaRenglones
-              renglones={lista.registro}
-              editable={registrable}
-              ocupado={ocupado}
-              etiquetaVacio={esAusencia ? 'Sesión cerrada por ausencia: no hay registro.' : 'Todavía no se registró lo ocurrido en la sesión.'}
-              onDestacar={destacar}
-              onBorrar={borrar}
-              onEditar={editar}
-              alPie={registrable && (
-                <CampoRenglon placeholder="Qué pasó en la sesión" onAgregar={agregar(MOMENTO_REGISTRO)} deshabilitado={ocupado} />
-              )}
-            />
-          </Bloque>
-
-          <Bloque
-            titulo="Evolución por objetivo"
-            contador={`${evolucionPorObjetivo.size} de ${datos.objetivos_activos.length + [...evolucionPorObjetivo.keys()].filter((id) => !datos.objetivos_activos.some((o) => o.id === id)).length} calificados`}
-            nota={calificable ? 'Califique cómo evolucionó cada objetivo trabajado. Los que no se trabajaron pueden quedar sin calificar.' : undefined}
-          >
-            {esAusencia ? (
-              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                Sesión cerrada por ausencia: no lleva evolución.
-              </Typography>
-            ) : futura ? (
-              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                La sesión todavía no ocurrió: la evolución se carga cuando termine.
-              </Typography>
-            ) : datos.objetivos_activos.length === 0 && evolucionPorObjetivo.size === 0 ? (
-              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                El paciente no tiene objetivos activos.
-              </Typography>
-            ) : (
-              <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }}>
-                {datos.evoluciones
-                  .filter((e) => !datos.objetivos_activos.some((o) => o.id === e.id_objetivo))
-                  .map((e) => (
-                    <FilaEvolucion key={`ev-${e.id}`} objetivo={e.objetivo ?? { id: e.id_objetivo, descripcion: 'Objetivo archivado' }}
-                      evolucion={e} habilitada={false} ocupado={ocupado} onGuardar={() => {}} />
-                  ))}
-                {datos.objetivos_activos.map((o) => (
-                  <FilaEvolucion
-                    key={o.id}
-                    objetivo={o}
-                    evolucion={evolucionPorObjetivo.get(o.id)}
-                    planeado={lista.objetivos_plan.includes(o.id)}
-                    habilitada={calificable}
-                    corregible={calificable && sesion.estado === ESTADO_SIN_CERRAR}
-                    ocupado={ocupado}
-                    onGuardar={(valor, observaciones) => {
-                      const ev = evolucionPorObjetivo.get(o.id);
-                      return ejecutar(
-                        () => (ev
-                          ? corregirEvolucion(ev.id, { valor, observaciones })
-                          : calificar(o, valor, observaciones)),
-                        { recargarSesion: true },
-                      );
-                    }}
-                    onQuitar={() => ejecutar(() => quitarEvolucion(evolucionPorObjetivo.get(o.id).id), { recargarSesion: true })}
-                  />
-                ))}
+              <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+                <Button variant="contained" size="small" disabled={ocupado || horaCorteInvalida}
+                  onClick={() => cambiarAsistencia(ESTADO_CORTADA, null, puedeFijarHoraCorte && horaCorte ? horaCorte : undefined).catch(() => {})}>
+                  Confirmar «Se cortó»
+                </Button>
+                <Button size="small" disabled={ocupado} onClick={() => { setCortando(false); setHoraCorte(''); }}>
+                  Cancelar
+                </Button>
               </Box>
-            )}
-            {/* Reabrir está arriba, en el aviso de sesión terminada (H11: dice
-                qué hace antes de tocarlo). */}
-            {registrable && evolucionPorObjetivo.size > 0 && sesion.estado === ESTADO_SIN_CERRAR && (
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', pt: 1.25 }}>
-                Mientras no se termine (botón «Terminar la sesión», al pie), la sesión figura «En registro»
-                y cada calificación se puede corregir.
-              </Typography>
-            )}
-          </Bloque>
-
-          {sesion.notas && (
-            <Bloque titulo="Notas escritas antes" nota="Cargadas con el formato anterior del sistema, en un solo texto.">
-              <Typography variant="body2" className="texto-libre" sx={{ whiteSpace: 'pre-wrap' }}>{sesion.notas}</Typography>
-            </Bloque>
-          )}
-
-          {marcandoAusencia ? (
+            </Box>
+          ) : marcandoAusencia ? (
             <Box sx={(t) => ({ p: 1.5, mb: 1, borderRadius: `${t.formas.sm}px`, backgroundColor: t.palette.superficie.hundida })}>
               <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>¿Quién faltó?</Typography>
               <RadioGroup value={quienFalto} onChange={(e) => setQuienFalto(e.target.value)}>
@@ -514,22 +401,162 @@ export default function ModalRegistroDia({
               </Box>
             </Box>
           ) : (
-            puedeEscribir && (
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, pt: 0.5 }}>
+            puedeEscribir && (esAusencia || abierta) && (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
                 {esAusencia ? (
                   <Button variant="outlined" disabled={ocupado}
                     onClick={() => cambiarAsistencia(ESTADO_SIN_CERRAR, null).catch(() => {})}>
                     Deshacer ausencia
                   </Button>
-                ) : sesion.estado !== 'completa' && (
-                  // Con la sesión ya realizada no se ofrece: era fácil tocarlo sin querer.
-                  <Button variant="outlined" disabled={ocupado || futura} onClick={() => setMarcandoAusencia(true)}>
-                    Marcar ausente
-                  </Button>
+                ) : abierta && (
+                  // Solo mientras la sesión está sin registrar: con la sesión ya
+                  // cerrada no se ofrece (era fácil tocarlo sin querer).
+                  <>
+                    <Button variant="contained" disabled={ocupado || futura || evolucionPorObjetivo.size === 0}
+                      onClick={() => cambiarAsistencia('completa', null).catch(() => {})}>
+                      Completa
+                    </Button>
+                    <Button variant="outlined" disabled={ocupado || futura} onClick={() => setCortando(true)}>
+                      Se cortó
+                    </Button>
+                    <Button variant="outlined" disabled={ocupado || futura} onClick={() => setMarcandoAusencia(true)}>
+                      Marcar ausente
+                    </Button>
+                  </>
+                )}
+                {!esAusencia && !futura && evolucionPorObjetivo.size === 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ flexBasis: '100%' }}>
+                    Para cerrarla como «Completa», califique al menos un objetivo. Si no se pudo trabajar, marque «Se cortó» o «Ausente».
+                  </Typography>
                 )}
               </Box>
             )
           )}
+            </Bloque>
+          )}
+
+          {lista.arrastre.length > 0 && (
+            <Bloque
+              titulo="Pendiente de antes"
+              contador={lista.arrastre.length}
+              nota="Quedó sin cerrar en sesiones anteriores. Se sigue arrastrando hasta que se lo marque como hecho o se lo descarte."
+            >
+              <ListaRenglones
+                renglones={lista.arrastre}
+                editable={editable}
+                conCierre
+                ocupado={ocupado}
+                onDestacar={destacar}
+                onCerrar={cerrar}
+              />
+            </Bloque>
+          )}
+
+          <Bloque
+            titulo="Objetivos de la sesión"
+            contador={`${lista.objetivos_plan.length} marcados · ${evolucionPorObjetivo.size} calificados`}
+            nota={futura
+              ? 'Marque los que se van a trabajar. La calificación se carga cuando la sesión termine.'
+              : (esAusencia
+                ? 'Sesión cerrada por ausencia: no lleva evolución.'
+                : (calificable ? 'Marque lo que se trabajó y califique cómo evolucionó cada objetivo. Los que no se trabajaron pueden quedar sin calificar.' : undefined))}
+          >
+            {datos.objetivos_activos.length === 0 && evolucionPorObjetivo.size === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', py: 0.5 }}>
+                El paciente aún no tiene objetivos activos. Se cargan desde su ficha.
+              </Typography>
+            ) : (
+              <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }}>
+                {datos.evoluciones
+                  .filter((e) => !datos.objetivos_activos.some((o) => o.id === e.id_objetivo))
+                  .map((e) => (
+                    <FilaEvolucion key={`ev-${e.id}`} objetivo={e.objetivo ?? { id: e.id_objetivo, descripcion: 'Objetivo archivado' }}
+                      evolucion={e} habilitada={false} ocupado={ocupado} onGuardar={() => {}} />
+                  ))}
+                {datos.objetivos_activos.map((o) => {
+                  const marcado = lista.objetivos_plan.includes(o.id);
+                  const calificado = evolucionPorObjetivo.has(o.id);
+                  return (
+                    <FilaEvolucion
+                      key={o.id}
+                      objetivo={o}
+                      evolucion={evolucionPorObjetivo.get(o.id)}
+                      planeado={marcado}
+                      prefijo={(
+                        <Checkbox
+                          size="small"
+                          checked={marcado}
+                          // Con calificación no se desmarca: quedaba «no trabajado» pero calificado.
+                          disabled={!editable || ocupado || (marcado && calificado)}
+                          title={marcado && calificado ? 'Tiene una calificación: para desmarcarlo, quite primero la calificación.' : undefined}
+                          onChange={(e) => marcarObjetivo(o, e.target.checked)}
+                          inputProps={{ 'aria-label': `Trabajar hoy: ${o.descripcion}` }}
+                          sx={{ p: 0.5, mt: 0.25 }}
+                        />
+                      )}
+                      habilitada={calificable}
+                      corregible={calificable && sesion.estado === ESTADO_SIN_CERRAR}
+                      ocupado={ocupado}
+                      onGuardar={(valor, observaciones) => {
+                        const ev = evolucionPorObjetivo.get(o.id);
+                        return ejecutar(
+                          () => (ev
+                            ? corregirEvolucion(ev.id, { valor, observaciones })
+                            : calificar(o, valor, observaciones)),
+                          { recargarSesion: true },
+                        );
+                      }}
+                      onQuitar={() => ejecutar(() => quitarEvolucion(evolucionPorObjetivo.get(o.id).id), { recargarSesion: true })}
+                    />
+                  );
+                })}
+              </Box>
+            )}
+          </Bloque>
+
+          <Bloque titulo="Plan: otras actividades previstas" contador={lista.plan.length}>
+            <ListaRenglones
+              renglones={lista.plan}
+              editable={editable}
+              conCierre
+              ocupado={ocupado}
+              etiquetaVacio="Sin otras actividades previstas."
+              onDestacar={destacar}
+              onBorrar={borrar}
+              onCerrar={cerrar}
+              onEditar={editar}
+              alPie={editable && (
+                <CampoRenglon placeholder="Otra actividad prevista" onAgregar={agregar(MOMENTO_PLAN)} deshabilitado={ocupado} />
+              )}
+            />
+          </Bloque>
+
+          <Bloque
+            titulo="Qué pasó en la sesión"
+            contador={lista.registro.length}
+            nota={futura ? 'La sesión todavía no ocurrió: por ahora solo admite plan.' : undefined}
+          >
+            <ListaRenglones
+              renglones={lista.registro}
+              editable={registrable}
+              ocupado={ocupado}
+              etiquetaVacio={esAusencia ? 'Sesión cerrada por ausencia: no hay registro.' : 'Todavía no se registró lo ocurrido en la sesión.'}
+              onDestacar={destacar}
+              onBorrar={borrar}
+              onEditar={editar}
+              alPie={registrable && (
+                <CampoRenglon placeholder="Qué pasó en la sesión" onAgregar={agregar(MOMENTO_REGISTRO)} deshabilitado={ocupado} />
+              )}
+            />
+          </Bloque>
+
+
+          {sesion.notas && (
+            <Bloque titulo="Notas escritas antes" nota="Cargadas con el formato anterior del sistema, en un solo texto.">
+              <Typography variant="body2" className="texto-libre" sx={{ whiteSpace: 'pre-wrap' }}>{sesion.notas}</Typography>
+            </Bloque>
+          )}
+
         </>
       )}
     </ModalFormulario>
