@@ -312,22 +312,27 @@ def _observaciones(datos):
     return salida
 
 
+def _seccion_asistencia(datos):
+    return '## Asistencia\n' + _frase_asistencia(datos) + '\n'
+
+
+def _seccion_objetivos(datos):
+    """Objetivos con su nivel en palabras. Siempre lo arma el codigo, nunca la IA."""
+    objetivos = [o for o in datos['objetivos'] if o['activo'] or o['calificaciones'] > 0]
+    if not objetivos:
+        return '## Objetivos trabajados\nNo hay objetivos con actividad en el período.\n'
+    lineas = [_linea_objetivo(o, con_comparacion=(datos['tipo'] == 'semestral')) for o in objetivos]
+    # Franco: no se sabia si el nivel era la ultima calificacion o un resumen.
+    aclaracion = ('El nivel de cada objetivo resume todas sus calificaciones del período; '
+                  'no es la última calificación.')
+    return '## Objetivos trabajados\n' + aclaracion + '\n\n' + '\n'.join(lineas) + '\n'
+
+
 def redactar_plantilla(datos):
     """Informe mensual o semestral armado solo con los datos del periodo."""
     tipo = datos['tipo']
     etiqueta = etiqueta_periodo(tipo, datos.get('clave', ''))
-    partes = [_encabezado(datos, etiqueta)]
-    partes.append('## Asistencia\n' + _frase_asistencia(datos) + '\n')
-
-    objetivos = [o for o in datos['objetivos'] if o['activo'] or o['calificaciones'] > 0]
-    if objetivos:
-        lineas = [_linea_objetivo(o, con_comparacion=(tipo == 'semestral')) for o in objetivos]
-        # Franco: no se sabia si el nivel era la ultima calificacion o un resumen.
-        aclaracion = ('El nivel de cada objetivo resume todas sus calificaciones del período; '
-                      'no es la última calificación.')
-        partes.append('## Objetivos trabajados\n' + aclaracion + '\n\n' + '\n'.join(lineas) + '\n')
-    else:
-        partes.append('## Objetivos trabajados\nNo hay objetivos con actividad en el período.\n')
+    partes = [_encabezado(datos, etiqueta), _seccion_asistencia(datos), _seccion_objetivos(datos)]
 
     observaciones = _observaciones(datos)
     if observaciones:
@@ -382,18 +387,46 @@ INSTRUCCIONES_IA = (
     'Usted redacta BORRADORES de informes de terapia ocupacional que una profesional va a revisar '
     'y firmar. Escriba en español, en tercera persona y con registro formal y clínico.\n'
     'Reglas estrictas:\n'
-    '- Sea conciso: como maximo 350 palabras en un informe mensual y 600 en uno semestral o PTI. Priorice lo que cambio en el periodo.\n'
     '- Escriba SIEMPRE y exclusivamente en español rioplatense formal. Nunca use otro idioma ni otro alfabeto.\n'
     '- Use únicamente los datos entregados. No invente hechos, fechas, diagnósticos ni recomendaciones.\n'
     '- Refiérase a la persona como "el paciente". Nunca escriba nombres propios.\n'
     '- Comunique la evolución solo con las palabras de la escala (No logrado, Inicial, En proceso, '
     'Avanzado, Logrado). No use números, porcentajes ni promedios de calificaciones.\n'
     '- No incluya datos de identificación ni encabezado: ya los agrega el sistema.\n'
-    '- Estructure con encabezados de la forma "## Título" y listas con "- ".\n'
-    '- Donde falte información para una sección, escriba "[COMPLETAR: qué falta]" en lugar de inventarla.\n'
-    '- Termine con una sección "## Cierre y próximos pasos" que solo contenga una marca [COMPLETAR: ...] '
-    'si los datos no alcanzan para proponer los pasos.'
+    '- Donde falte información, escriba "[COMPLETAR: qué falta]" en lugar de inventarla.\n'
+    '- Formato: texto plano. Los títulos son líneas que empiezan con "## ". No use asteriscos, '
+    'negritas, cursivas, tablas ni otros símbolos de formato.\n'
 )
+
+_INSTRUCCIONES_PERIODICO = (
+    'El sistema YA incluye la asistencia y la lista de objetivos con su nivel: no las repita ni '
+    'enumere las sesiones una por una.\n'
+    'Redacte SOLO estas dos secciones, en este orden:\n'
+    '## Evolución del período\n'
+    'Entre 2 y 4 párrafos de prosa corrida (sin listas): qué se trabajó, cómo respondió el paciente, '
+    'qué apoyos necesitó, qué cambió y qué dificultades aparecieron. Priorice lo que cambió en el período'
+    '{comparacion}. Máximo {palabras} palabras en total.\n'
+    '## Cierre y próximos pasos\n'
+    'Un párrafo breve con la continuidad que sugieren los datos. Si no alcanzan, escriba solo '
+    '[COMPLETAR: pasos a seguir].\n'
+)
+
+_INSTRUCCIONES_PTI = (
+    'Sea conciso: máximo 600 palabras. Estructure con secciones "## Título" y listas con "- ". '
+    'Termine con "## Cierre y próximos pasos", que solo contenga una marca [COMPLETAR: ...] '
+    'si los datos no alcanzan para proponerlos.'
+)
+
+
+def instrucciones_ia(tipo):
+    """Reglas comunes más las del tipo de informe."""
+    if tipo == 'pti':
+        return INSTRUCCIONES_IA + _INSTRUCCIONES_PTI
+    semestral = tipo == 'semestral'
+    return INSTRUCCIONES_IA + _INSTRUCCIONES_PERIODICO.format(
+        palabras=450 if semestral else 250,
+        comparacion=' y la comparación con el período anterior' if semestral else '',
+    )
 
 
 class ProveedorIA:
@@ -603,8 +636,50 @@ def datos_para_ia(datos):
 _OTRO_ALFABETO = re.compile('[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uff00-\uffef]')
 
 
+def _limpiar_formato(cuerpo):
+    """
+    Los modelos chicos escriben Markdown aunque se les pida texto plano y la
+    pantalla solo entiende "## ", "- " y parrafos. Se normaliza aca: titulos a
+    "## ", vinetas a "- " y sin negritas, cursivas ni codigo.
+    """
+    salida = []
+    for linea in cuerpo.replace('\r\n', '\n').split('\n'):
+        linea = linea.rstrip()
+        titulo = re.match(r'^\s*#{1,6}\s+(.*)$', linea)
+        if titulo:
+            linea = '## ' + titulo.group(1)
+        else:
+            linea = re.sub(r'^\s*(?:[*•]|-)\s+', '- ', linea)
+        linea = re.sub(r'\*\*|__|`', '', linea)
+        linea = re.sub(r'(?<![\w*])\*([^*\n]+)\*(?![\w*])', r'\1', linea)
+        if linea.startswith('## '):
+            linea = linea.rstrip(' :*')
+        salida.append(linea)
+    return re.sub(r'\n{3,}', '\n\n', '\n'.join(salida)).strip()
+
+
+# Secciones que ya arma el codigo: si el modelo las repite, se descartan.
+_SECCIONES_DEL_SISTEMA = ('datos del paciente', 'periodo', 'asistencia', 'objetivos', 'diario', 'sesiones')
+
+
+def _sin_secciones_del_sistema(cuerpo):
+    conservadas = []
+    for parte in re.split(r'(?m)^(?=## )', cuerpo):
+        if not parte.startswith('## '):
+            continue  # texto suelto antes del primer titulo («Aqui esta el informe:»)
+        titulo = parte.split('\n', 1)[0][3:]
+        titulo = unicodedata.normalize('NFD', titulo.lower())
+        titulo = ''.join(c for c in titulo if unicodedata.category(c) != 'Mn').strip()
+        if not titulo.startswith(_SECCIONES_DEL_SISTEMA):
+            conservadas.append(parte.strip())
+    return '\n\n'.join(conservadas)
+
+
 def _redactar_con_ia(proveedor, datos, cabecera):
-    cuerpo = proveedor.redactar(INSTRUCCIONES_IA, json.dumps(datos_para_ia(datos), ensure_ascii=False, separators=(',', ':')))
+    cuerpo = proveedor.redactar(
+        instrucciones_ia(datos['tipo']),
+        json.dumps(datos_para_ia(datos), ensure_ascii=False, separators=(',', ':')),
+    )
     if not cuerpo or '## ' not in cuerpo:
         raise ValueError('La respuesta de la IA no tiene la estructura esperada')
     if len(cuerpo) > 50000:
@@ -612,7 +687,16 @@ def _redactar_con_ia(proveedor, datos, cabecera):
     if _OTRO_ALFABETO.search(cuerpo):
         # Algunos modelos locales se pasan al chino/japonés/coreano a mitad de texto.
         raise ValueError('La respuesta de la IA mezcla otro idioma')
-    return cabecera.rstrip() + '\n\n' + cuerpo.strip() + '\n'
+    cuerpo = _limpiar_formato(cuerpo)
+    if datos['tipo'] == 'pti':
+        return cabecera.rstrip() + '\n\n' + cuerpo + '\n'
+    # Mensual y semestral: los hechos (asistencia, objetivos y niveles) los arma
+    # el codigo y la IA solo redacta la evolucion y el cierre. Asi no hay
+    # listas de sesiones repetidas ni niveles inventados.
+    cuerpo = _sin_secciones_del_sistema(cuerpo)
+    if not cuerpo:
+        raise ValueError('La respuesta de la IA no tiene la estructura esperada')
+    return '\n'.join([cabecera.rstrip() + '\n', _seccion_asistencia(datos), _seccion_objetivos(datos), cuerpo + '\n'])
 
 
 # ---------------------------------------------------------------------------

@@ -28,3 +28,6 @@ dist/
 build/
 .vite/
 *.log
+
+# Salida del comparador de modelos de IA (lleva datos clinicos)
+backend/scripts/_salida_ia/

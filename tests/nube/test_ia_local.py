@@ -125,6 +125,52 @@ class IaLocalTest(unittest.TestCase):
         self.assertIn('el paciente trabajó bien', texto)
         self.assertEqual(enviado['asistencia']['ausencias'], 0)   # un cero real no se pierde
 
+    def test_el_markdown_de_los_modelos_se_normaliza(self):
+        sucio = ('Aquí está el informe:\n### Evolución del período:\n**El paciente** trabajó con *apoyo*.\n'
+                 '* Escribió su nombre\n#### Diarios de Sesiones\n- **2026-10-01**: Sesión trabajada.\n')
+        limpio = g._limpiar_formato(sucio)
+        for sobra in ('**', '###', '####', '`', '* '):
+            self.assertNotIn(sobra, limpio)
+        self.assertIn('## Evolución del período', limpio)
+        self.assertIn('El paciente trabajó con apoyo.', limpio)
+        self.assertIn('- Escribió su nombre', limpio)
+
+    def test_las_secciones_que_arma_el_sistema_no_se_repiten(self):
+        cuerpo = g._limpiar_formato('## Asistencia\nAsistió.\n\n## Diarios de Sesiones\n- 2026-10-01\n\n'
+                                    '## Evolución del período\nMejoró.\n\n## Cierre y próximos pasos\n[COMPLETAR: pasos]')
+        resto = g._sin_secciones_del_sistema(cuerpo)
+        self.assertNotIn('Asistencia', resto)
+        self.assertNotIn('Diarios', resto)
+        self.assertIn('## Evolución del período', resto)
+        self.assertIn('## Cierre y próximos pasos', resto)
+
+    def test_el_informe_con_ia_combina_hechos_del_codigo_y_prosa_del_modelo(self):
+        import datetime as dt
+        RESPUESTA['texto'] = '### Evolución del período\n**El paciente** avanzó con apoyo.\n## Cierre y próximos pasos\n[COMPLETAR: pasos]'
+        datos = {
+            'tipo': 'mensual', 'clave': '2026-09',
+            'paciente': {'nombre': 'Ana', 'apellido': 'Paz', 'nombre_completo': 'Ana Paz', 'edad': '9 años',
+                         'fecha_nacimiento': dt.date(2017, 1, 1)},
+            'periodo': {'desde': dt.date(2026, 9, 1), 'hasta': dt.date(2026, 9, 30)},
+            'asistencia': {'sesiones': 4, 'ausencias': 1, 'sin_registrar': 0},
+            'objetivos': [{'id': 7, 'descripcion': 'Escribir su nombre', 'activo': True, 'calificaciones': 2,
+                           'nivel': 'Inicial', 'calificaciones_anterior': 0, 'nivel_anterior': None,
+                           'tendencia': 'mejora', 'cambio': 'sin_datos'}],
+            'diarios': [], 'pti': None,
+        }
+        try:
+            with self.app.app_context():
+                texto = g._redactar_con_ia(g.obtener_proveedor(), datos, '## Datos del paciente\nAna Paz.\n')
+        finally:
+            RESPUESTA['texto'] = '## Evolución\n- Avanzó con apoyo.'
+        orden = [texto.index(t) for t in ('## Datos del paciente', '## Asistencia', '## Objetivos trabajados',
+                                          '## Evolución del período', '## Cierre y próximos pasos')]
+        self.assertEqual(orden, sorted(orden))
+        self.assertIn('asistió a 4 sesiones y faltó a 1', texto)
+        self.assertIn('Escribir su nombre: Inicial', texto)
+        self.assertNotIn('**', texto)
+        self.assertNotIn('###', texto)
+
 
 if __name__ == '__main__':
     unittest.main()
