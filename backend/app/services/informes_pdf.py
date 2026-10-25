@@ -16,7 +16,7 @@ import unicodedata
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_LEFT
+from reportlab.lib.enums import TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
@@ -26,6 +26,8 @@ from reportlab.platypus import (
 
 NAVY = colors.HexColor('#1F3A5F')
 GRIS = colors.HexColor('#5B6573')
+EUCALIPTO = colors.HexColor('#2F7A6B')
+FONDO_FICHA = colors.HexColor('#F3F1EC')
 BORDE = colors.HexColor('#D5DAE1')
 
 
@@ -35,11 +37,16 @@ def _estilos():
         'titulo': ParagraphStyle('titulo', parent=base['Title'], fontName='Helvetica-Bold', fontSize=18,
                                  textColor=NAVY, alignment=TA_LEFT, spaceAfter=4, leading=22),
         'subtitulo': ParagraphStyle('subtitulo', parent=base['Normal'], fontSize=10, textColor=GRIS, leading=14),
-        'seccion': ParagraphStyle('seccion', parent=base['Heading2'], fontName='Helvetica-Bold', fontSize=12,
+        'seccion': ParagraphStyle('seccion', parent=base['Heading2'], fontName='Helvetica-Bold', fontSize=12, keepWithNext=1,
                                   textColor=NAVY, spaceBefore=14, spaceAfter=4, leading=15),
         'texto': ParagraphStyle('texto', parent=base['Normal'], fontSize=10.5, leading=15, spaceAfter=6),
         'meta_etiqueta': ParagraphStyle('meta_etiqueta', parent=base['Normal'], fontSize=9, textColor=GRIS, leading=12),
         'meta_valor': ParagraphStyle('meta_valor', parent=base['Normal'], fontSize=10.5, leading=14),
+        'objetivo': ParagraphStyle('objetivo', parent=base['Normal'], fontName='Helvetica-Bold', fontSize=10.5, leading=14),
+        'detalle': ParagraphStyle('detalle', parent=base['Normal'], fontSize=9, leading=12, textColor=GRIS),
+        'nivel': ParagraphStyle('nivel', parent=base['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=13,
+                                textColor=EUCALIPTO, alignment=TA_RIGHT),
+        'aclaracion': ParagraphStyle('aclaracion', parent=base['Normal'], fontSize=9, leading=12, textColor=GRIS, spaceAfter=6),
     }
 
 
@@ -47,28 +54,93 @@ def _parrafo(texto, estilo):
     return Paragraph(escape(texto).replace('\n', '<br/>'), estilo)
 
 
+_NIVELES = 'No logrado|Inicial|En proceso|Avanzado|Logrado'
+_RE_OBJETIVO = re.compile(rf'^(.*?): ({_NIVELES}) \(calificado en (una sesión|\d+ sesi(?:ón|ones))\)(?:; (.*?))?\.?$')
+_RE_SIN_CALIFICAR = re.compile(r'^(.*?): no se calificó en el período\.?$')
+_RE_OBSERVACION = re.compile(r'^(\d{2}/\d{2}): (.*)$')
+# Secciones que el PDF muestra en el recuadro de arriba y no en el cuerpo.
+_DE_LA_FICHA = ('datos del paciente', 'periodo')
+
+
+def _normalizar(texto):
+    sin = unicodedata.normalize('NFD', texto.lower())
+    return ''.join(c for c in sin if unicodedata.category(c) != 'Mn').strip()
+
+
+def _tabla_objetivos(items, estilos):
+    """Objetivos con su nivel a la derecha; None si algun item no tiene la forma esperada."""
+    filas = []
+    for it in items:
+        o = _RE_OBJETIVO.match(it)
+        if o:
+            detalle = ' · '.join(x for x in (f'Calificado en {o.group(3)}', o.group(4)) if x)
+            filas.append((o.group(1), detalle[:1].upper() + detalle[1:], o.group(2)))
+            continue
+        sin = _RE_SIN_CALIFICAR.match(it)
+        if not sin:
+            return None
+        filas.append((sin.group(1), 'No se calificó en el período', 'Sin calificar'))
+    tabla = Table(
+        [[[_parrafo(o, estilos['objetivo']), _parrafo(d, estilos['detalle'])], _parrafo(n, estilos['nivel'])]
+         for o, d, n in filas],
+        colWidths=[12.0 * cm, 4.6 * cm],
+    )
+    tabla.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LINEBELOW', (0, 0), (-1, -1), 0.5, BORDE),
+        ('TOPPADDING', (0, 0), (-1, -1), 5), ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0), ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+    ]))
+    return tabla
+
+
 def _cuerpo(contenido, estilos):
-    """Convierte el texto del informe en flowables."""
+    """Convierte el texto del informe en flowables. Devuelve (piezas, ficha)."""
     piezas, parrafo, items = [], [], []
+    ficha = {}
+    seccion = ''
 
     def cerrar_parrafo():
         if parrafo:
-            piezas.append(_parrafo('\n'.join(parrafo), estilos['texto']))
+            texto = '\n'.join(parrafo)
+            if seccion in _DE_LA_FICHA:
+                ficha[seccion] = texto
+            else:
+                estilo = estilos['aclaracion'] if seccion.startswith('objetivos') else estilos['texto']
+                piezas.append(_parrafo(texto, estilo))
             parrafo.clear()
 
     def cerrar_lista():
-        if items:
-            piezas.append(ListFlowable(
-                [ListItem(_parrafo(t, estilos['texto']), leftIndent=14) for t in items],
-                bulletType='bullet', bulletFontSize=7, leftIndent=14, start='•',
-            ))
+        if not items:
+            return
+        if seccion.startswith('objetivos'):
+            tabla = _tabla_objetivos(items, estilos)
+            if tabla is not None:
+                piezas.extend([tabla, Spacer(1, 6)])
+                items.clear()
+                return
+        if seccion.startswith('observaciones') and all(_RE_OBSERVACION.match(t) for t in items):
+            for t in items:
+                m = _RE_OBSERVACION.match(t)
+                piezas.append(Paragraph(f'<b><font color="#2F7A6B">{escape(m.group(1))}</font></b>  {escape(m.group(2))}',
+                                        estilos['texto']))
             items.clear()
+            return
+        piezas.append(ListFlowable(
+            [ListItem(_parrafo(t, estilos['texto']), leftIndent=14) for t in items],
+            bulletType='bullet', bulletFontSize=7, leftIndent=14, start='•',
+        ))
+        items.clear()
 
     for linea in (contenido or '').replace('\r\n', '\n').split('\n'):
         recortada = linea.strip()
         if recortada.startswith('## '):
             cerrar_parrafo(); cerrar_lista()
-            piezas.append(Paragraph(escape(recortada[3:].strip()), estilos['seccion']))
+            titulo = recortada[3:].strip()
+            seccion = _normalizar(titulo)
+            if seccion not in _DE_LA_FICHA:
+                piezas.append(Paragraph(escape(titulo), estilos['seccion']))
+                piezas.append(HRFlowable(width='100%', thickness=0.6, color=BORDE, spaceAfter=5))
         elif re.match(r'^[-*]\s+', recortada):
             cerrar_parrafo()
             items.append(re.sub(r'^[-*]\s+', '', recortada))
@@ -78,7 +150,7 @@ def _cuerpo(contenido, estilos):
             cerrar_lista()
             parrafo.append(recortada)
     cerrar_parrafo(); cerrar_lista()
-    return piezas
+    return piezas, ficha
 
 
 def generar_pdf(informe, paciente, autor):
@@ -103,31 +175,33 @@ def generar_pdf(informe, paciente, autor):
         publicado = 'Versión reemplazada por una posterior'
 
     version = f" · versión {informe['version']}" if informe['version'] > 1 else ''
+    cuerpo, ficha = _cuerpo(informe.get('contenido'), estilos)
     meta = Table(
         [
             [Paragraph('Paciente', estilos['meta_etiqueta']), Paragraph('Período', estilos['meta_etiqueta']),
              Paragraph('Profesional', estilos['meta_etiqueta'])],
-            [Paragraph(escape(paciente), estilos['meta_valor']),
+            [Paragraph(escape(ficha.get('datos del paciente') or paciente), estilos['meta_valor']),
              Paragraph(escape(str(informe['periodo_etiqueta']).capitalize()), estilos['meta_valor']),
              Paragraph(escape(autor or '-'), estilos['meta_valor'])],
         ],
-        colWidths=[6.2 * cm, 5.2 * cm, 5.2 * cm],
+        colWidths=[7.0 * cm, 4.8 * cm, 4.8 * cm],
     )
     meta.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 1), ('TOPPADDING', (0, 1), (-1, 1), 0),
-        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('BACKGROUND', (0, 0), (-1, -1), FONDO_FICHA),
+        ('BOX', (0, 0), (-1, -1), 0.5, BORDE),
+        ('TOPPADDING', (0, 0), (-1, 0), 7), ('BOTTOMPADDING', (0, 0), (-1, 0), 1),
+        ('TOPPADDING', (0, 1), (-1, 1), 0), ('BOTTOMPADDING', (0, 1), (-1, 1), 8),
+        ('LEFTPADDING', (0, 0), (-1, -1), 9), ('RIGHTPADDING', (0, 0), (-1, -1), 6),
     ]))
 
     historia = [
         Paragraph(escape(informe['tipo_etiqueta']), estilos['titulo']),
         Paragraph(escape(publicado + version), estilos['subtitulo']),
-        Spacer(1, 8),
+        Spacer(1, 10),
         meta,
-        Spacer(1, 6),
-        HRFlowable(width='100%', thickness=0.8, color=BORDE),
     ]
-    historia += _cuerpo(informe.get('contenido'), estilos)
+    historia += cuerpo
 
     def pie(canvas, doc):
         canvas.saveState()
