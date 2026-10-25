@@ -382,6 +382,7 @@ INSTRUCCIONES_IA = (
     'Usted redacta BORRADORES de informes de terapia ocupacional que una profesional va a revisar '
     'y firmar. Escriba en español, en tercera persona y con registro formal y clínico.\n'
     'Reglas estrictas:\n'
+    '- Sea conciso: como maximo 350 palabras en un informe mensual y 600 en uno semestral o PTI. Priorice lo que cambio en el periodo.\n'
     '- Escriba SIEMPRE y exclusivamente en español rioplatense formal. Nunca use otro idioma ni otro alfabeto.\n'
     '- Use únicamente los datos entregados. No invente hechos, fechas, diagnósticos ni recomendaciones.\n'
     '- Refiérase a la persona como "el paciente". Nunca escriba nombres propios.\n'
@@ -443,21 +444,25 @@ class ProveedorOllama(ProveedorIA):
     """
     local = True
 
-    def __init__(self, url, modelo, timeout):
+    def __init__(self, url, modelo, timeout, ctx=8192, keep_alive='30m'):
         self.url = url
         self.modelo = modelo
         self.timeout = timeout
+        self.ctx = ctx
+        self.keep_alive = keep_alive
         self.nombre = f'ollama:{modelo}'
+        self.ultima_medicion = None
 
     def redactar(self, instrucciones, datos_json):
         cuerpo = json.dumps({
             'model': self.modelo,
             'stream': False,
+            'keep_alive': self.keep_alive,
             'messages': [
                 {'role': 'system', 'content': instrucciones},
                 {'role': 'user', 'content': 'Datos del período (JSON):\n' + datos_json},
             ],
-            'options': {'temperature': 0.2, 'num_predict': 3000, 'num_ctx': 8192},
+            'options': {'temperature': 0.2, 'num_predict': 2000, 'num_ctx': self.ctx},
         }).encode('utf-8')
         pedido = urllib.request.Request(
             f'{self.url}/api/chat', data=cuerpo, method='POST',
@@ -465,7 +470,26 @@ class ProveedorOllama(ProveedorIA):
         )
         with urllib.request.urlopen(pedido, timeout=self.timeout) as respuesta:
             datos = json.loads(respuesta.read().decode('utf-8'))
+        self._registrar_medicion(datos)
         return (datos.get('message') or {}).get('content', '').strip()
+
+    def _registrar_medicion(self, datos):
+        """Deja en el log cuanto tardo cada etapa, para saber que optimizar."""
+        seg = lambda ns: round((ns or 0) / 1e9, 1)
+        entrada, salida = datos.get('prompt_eval_count') or 0, datos.get('eval_count') or 0
+        t_salida = seg(datos.get('eval_duration'))
+        medicion = {
+            'total_s': seg(datos.get('total_duration')),
+            'carga_modelo_s': seg(datos.get('load_duration')),
+            'entrada_tokens': entrada, 'entrada_s': seg(datos.get('prompt_eval_duration')),
+            'salida_tokens': salida, 'salida_s': t_salida,
+            'tokens_por_s': round(salida / t_salida, 1) if t_salida else None,
+        }
+        self.ultima_medicion = medicion
+        logger.info('IA local (%s): %s', self.modelo, medicion)
+        if entrada + salida >= self.ctx - 64:
+            logger.warning('IA local: el texto llego al limite de contexto (%s tokens); Ollama puede '
+                           'haber recortado el principio. Subir INFORMES_IA_CTX o achicar el periodo.', self.ctx)
 
 
 def obtener_proveedor():
@@ -478,7 +502,8 @@ def obtener_proveedor():
     if proveedor == 'anthropic' and clave:
         return ProveedorAnthropic(clave, modelo or 'claude-sonnet-5-5', timeout)
     if proveedor == 'ollama' and modelo:
-        return ProveedorOllama(config.get('INFORMES_IA_URL') or 'http://127.0.0.1:11434', modelo, timeout)
+        return ProveedorOllama(config.get('INFORMES_IA_URL') or 'http://127.0.0.1:11434', modelo, timeout,
+                               config.get('INFORMES_IA_CTX') or 8192, config.get('INFORMES_IA_KEEP_ALIVE') or '30m')
     return None
 
 
@@ -547,7 +572,7 @@ _OTRO_ALFABETO = re.compile('[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7
 
 
 def _redactar_con_ia(proveedor, datos, cabecera):
-    cuerpo = proveedor.redactar(INSTRUCCIONES_IA, json.dumps(datos_para_ia(datos), ensure_ascii=False))
+    cuerpo = proveedor.redactar(INSTRUCCIONES_IA, json.dumps(datos_para_ia(datos), ensure_ascii=False, separators=(',', ':')))
     if not cuerpo or '## ' not in cuerpo:
         raise ValueError('La respuesta de la IA no tiene la estructura esperada')
     if len(cuerpo) > 50000:

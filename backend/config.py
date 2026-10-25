@@ -67,6 +67,10 @@ class Config:
     INFORMES_IA_TIMEOUT = _env_int('INFORMES_IA_TIMEOUT', 60)
     # Solo para el proveedor 'ollama' (modelo local): direccion del servidor.
     INFORMES_IA_URL = os.getenv('INFORMES_IA_URL', 'http://127.0.0.1:11434').strip().rstrip('/')
+    # Ventana de contexto (tokens) y cuanto tiempo queda el modelo cargado en memoria
+    # despues de usarlo: sin esto cada informe paga la carga del modelo (5 a 15 s).
+    INFORMES_IA_CTX = _env_int('INFORMES_IA_CTX', 8192)
+    INFORMES_IA_KEEP_ALIVE = os.getenv('INFORMES_IA_KEEP_ALIVE', '30m').strip()
 
     # --- Base de datos ---
     DB_HOST = os.getenv('DB_HOST', 'localhost')
