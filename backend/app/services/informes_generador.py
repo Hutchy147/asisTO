@@ -404,6 +404,13 @@ INSTRUCCIONES_IA = (
     'negritas, cursivas, tablas ni otros símbolos de formato.\n'
 )
 
+_EJEMPLO_ESTILO = (
+    'El paciente trabajó con buena disposición en las actividades propuestas y aceptó las consignas '
+    'con apoyo verbal puntual.',
+    'Ante las tareas nuevas pidió acompañamiento al comienzo y luego avanzó con mayor independencia.',
+    'Se observa una tendencia de mejora en la autonomía para organizar el material de trabajo.',
+)
+
 _INSTRUCCIONES_PERIODICO = (
     'El sistema YA incluye la asistencia, la lista de objetivos con su nivel y el cierre: no los repita '
     'ni enumere las sesiones una por una. Usted recibe solo las observaciones del equipo y la tendencia '
@@ -418,13 +425,9 @@ _INSTRUCCIONES_PERIODICO = (
     'proponga estrategias ni actividades nuevas: eso lo decide la profesional.\n'
     '- No mencione fechas, días, cantidades de sesiones ni niveles: ya figuran en otras secciones.\n'
     '- Si los datos no alcanzan para un párrafo, escriba en su lugar [COMPLETAR: qué falta].\n'
-    'Ejemplo del estilo esperado (invente otro contenido a partir de los datos; no copie este):\n'
+    'Ejemplo del estilo esperado, solo de tono y redacción. NO copie sus frases ni sus ideas: escriba lo que dicen los datos.\n'
     '## Evolución del período\n'
-    'El paciente trabajó con buena disposición en las actividades propuestas y aceptó las consignas '
-    'con apoyo verbal puntual.\n\n'
-    'En las tareas nuevas necesitó acompañamiento al comienzo y mostró cansancio hacia el final de algunas '
-    'sesiones.\n\n'
-    'Se observa una tendencia de mejora en la autonomía para organizar el material de trabajo.\n'
+    + '\n\n'.join(_EJEMPLO_ESTILO) + '\n'
 )
 
 _GUIA_MENSUAL = (
@@ -822,6 +825,9 @@ def verificar_evolucion(cuerpo, tipo):
         problemas.append(f'debe tener como máximo {esperados} párrafos y tiene {len(parrafos)}')
     if sum(len(p.split()) for p in parrafos) > 110 * esperados:
         problemas.append('es demasiado largo: sea más breve')
+    del_ejemplo = _trigramas(' '.join(_EJEMPLO_ESTILO))
+    if any(_trigramas(p) and len(_trigramas(p) & del_ejemplo) / len(_trigramas(p)) > 0.4 for p in parrafos):
+        problemas.append('copia frases del ejemplo de estilo: redacte solo con lo que dicen las observaciones')
     vistos = set()
     for p in parrafos:
         gramas = _trigramas(p)

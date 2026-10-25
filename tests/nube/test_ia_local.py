@@ -199,8 +199,9 @@ class IaLocalTest(unittest.TestCase):
             'objetivos': [], 'diarios': [], 'pti': None,
         }
 
-    BUENO = ('## Evolución del período\nEl paciente trabajó con buena disposición.\n\n'
-             'Necesitó apoyo verbal al comienzo de las tareas.\n\nSe observa una tendencia de mejora.')
+    BUENO = ('## Evolución del período\nDurante el mes el paciente participó de las propuestas de motricidad fina.\n\n'
+             'Requirió indicaciones verbales en la segunda parte de algunas actividades.\n\n'
+             'La tolerancia a estímulos sensoriales nuevos muestra una tendencia favorable.')
 
     def test_los_parametros_de_generacion_viajan_a_ollama(self):
         PEDIDOS.clear()
@@ -236,6 +237,8 @@ class IaLocalTest(unittest.TestCase):
         }
         for nombre, texto in casos.items():
             self.assertTrue(g.verificar_evolucion(texto, 'mensual'), nombre)
+        copia = '## Evolución del período\n' + '\n\n'.join(g._EJEMPLO_ESTILO)
+        self.assertTrue(any('ejemplo' in p for p in g.verificar_evolucion(copia, 'mensual')))
         # una marca [COMPLETAR] con números no cuenta como número escrito por el modelo
         self.assertEqual(g.verificar_evolucion('## Evolución del período\n[COMPLETAR: 3 sesiones]', 'mensual'), [])
 
@@ -252,7 +255,7 @@ class IaLocalTest(unittest.TestCase):
         segundo = PEDIDOS[1][1]['messages']
         self.assertEqual([m['role'] for m in segundo], ['system', 'user', 'assistant', 'user'])
         self.assertIn('problemas', segundo[3]['content'])
-        self.assertIn('buena disposición', texto)
+        self.assertIn('motricidad fina', texto)
         self.assertNotIn('12 sesiones debido', texto)
         self.assertEqual(proveedor.reintentos, 1)
         self.assertEqual(proveedor.problemas, ())
