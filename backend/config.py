@@ -21,6 +21,13 @@ class ConfigInvalida(RuntimeError):
     """Falta configuracion obligatoria. La app no puede arrancar."""
 
 
+def _env_float(key, default):
+    try:
+        return float(os.getenv(key, default))
+    except (TypeError, ValueError):
+        return default
+
+
 def _env_int(key, default):
     """Lee un entero del entorno tolerando valores vacios o invalidos."""
     raw = os.getenv(key)
@@ -71,6 +78,11 @@ class Config:
     # despues de usarlo: sin esto cada informe paga la carga del modelo (5 a 15 s).
     INFORMES_IA_CTX = _env_int('INFORMES_IA_CTX', 8192)
     INFORMES_IA_KEEP_ALIVE = os.getenv('INFORMES_IA_KEEP_ALIVE', '30m').strip()
+    # Como "piensa" el modelo local. Valores bajos = mas fiel a los datos y mas
+    # repetible; ver docs/api-informes.md. Semilla 0 = distinta en cada corrida.
+    INFORMES_IA_TEMPERATURA = _env_float('INFORMES_IA_TEMPERATURA', 0.1)
+    INFORMES_IA_REPETICION = _env_float('INFORMES_IA_REPETICION', 1.15)
+    INFORMES_IA_SEMILLA = _env_int('INFORMES_IA_SEMILLA', 7)
 
     # --- Base de datos ---
     DB_HOST = os.getenv('DB_HOST', 'localhost')

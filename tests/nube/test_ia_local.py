@@ -28,8 +28,9 @@ class FalsoOllama(BaseHTTPRequestHandler):
     def do_POST(self):
         cuerpo = json.loads(self.rfile.read(int(self.headers['content-length'])))
         PEDIDOS.append((self.path, cuerpo))
+        texto = RESPUESTA['cola'].pop(0) if RESPUESTA.get('cola') else RESPUESTA['texto']
         salida = json.dumps({
-            'message': {'content': RESPUESTA['texto']},
+            'message': {'content': texto},
             'total_duration': 12_000_000_000, 'load_duration': 2_000_000_000,
             'prompt_eval_count': 1000, 'prompt_eval_duration': 4_000_000_000,
             'eval_count': 200, 'eval_duration': 10_000_000_000,
@@ -185,6 +186,100 @@ class IaLocalTest(unittest.TestCase):
         self.assertNotIn('###', texto)
         self.assertEqual(texto.count('## Cierre y próximos pasos'), 1)
         self.assertTrue(texto.rstrip().endswith(']'))   # termina con la marca [COMPLETAR]
+
+    # --- parametros y retroalimentacion ---------------------------------
+    def _datos_mensual(self):
+        import datetime as dt
+        return {
+            'tipo': 'mensual', 'clave': '2026-09',
+            'paciente': {'nombre': 'Ana', 'apellido': 'Paz', 'nombre_completo': 'Ana Paz', 'edad': '9 años',
+                         'fecha_nacimiento': dt.date(2017, 1, 1)},
+            'periodo': {'desde': dt.date(2026, 9, 1), 'hasta': dt.date(2026, 9, 30)},
+            'asistencia': {'sesiones': 4, 'ausencias': 0, 'sin_registrar': 0},
+            'objetivos': [], 'diarios': [], 'pti': None,
+        }
+
+    BUENO = ('## Evolución del período\nEl paciente trabajó con buena disposición.\n\n'
+             'Necesitó apoyo verbal al comienzo de las tareas.\n\nSe observa una tendencia de mejora.')
+
+    def test_los_parametros_de_generacion_viajan_a_ollama(self):
+        PEDIDOS.clear()
+        with self.app.app_context():
+            g.obtener_proveedor().redactar('i', '{}', max_tokens=700)
+        opciones = PEDIDOS[0][1]['options']
+        self.assertEqual(opciones['temperature'], 0.1)
+        self.assertEqual(opciones['repeat_penalty'], 1.15)
+        self.assertEqual(opciones['seed'], 7)
+        self.assertEqual(opciones['num_predict'], 700)
+
+    def test_el_env_cambia_los_parametros_y_la_semilla_cero_la_quita(self):
+        otra = Flask(__name__)
+        otra.config.update(INFORMES_IA_PROVEEDOR='ollama', INFORMES_IA_MODELO='m', INFORMES_IA_TEMPERATURA=0.4,
+                           INFORMES_IA_REPETICION=1.3, INFORMES_IA_SEMILLA=0)
+        with otra.app_context():
+            opciones = g.obtener_proveedor().opciones
+        self.assertEqual(opciones['temperature'], 0.4)
+        self.assertEqual(opciones['repeat_penalty'], 1.3)
+        self.assertNotIn('seed', opciones)
+
+    def test_la_revision_detecta_lo_que_los_datos_no_respaldan(self):
+        ok = g.verificar_evolucion(self.BUENO, 'mensual')
+        self.assertEqual(ok, [])
+        casos = {
+            'números': '## Evolución del período\nAsistió a 12 sesiones.',
+            'niveles': '## Evolución del período\nEl paciente llegó a "Avanzado" en la tarea.',
+            'causas': '## Evolución del período\nLa sesión se cortó debido a la fatiga.',
+            'pasos': '## Evolución del período\nSe recomienda practicar en casa.',
+            'párrafos': '## Evolución del período\nUno.\n\nDos.\n\nTres.\n\nCuatro.',
+            'repite': '## Evolución del período\nEl paciente trabajó con buena disposición en la mesa.\n\n'
+                      'El paciente trabajó con buena disposición en la mesa.',
+        }
+        for nombre, texto in casos.items():
+            self.assertTrue(g.verificar_evolucion(texto, 'mensual'), nombre)
+        # una marca [COMPLETAR] con números no cuenta como número escrito por el modelo
+        self.assertEqual(g.verificar_evolucion('## Evolución del período\n[COMPLETAR: 3 sesiones]', 'mensual'), [])
+
+    def test_si_el_texto_tiene_problemas_el_modelo_lo_corrige_una_vez(self):
+        PEDIDOS.clear()
+        RESPUESTA['cola'] = ['## Evolución del período\nAsistió a 12 sesiones debido a la fatiga.', self.BUENO]
+        try:
+            with self.app.app_context():
+                proveedor = g.obtener_proveedor()
+                texto = g._redactar_con_ia(proveedor, self._datos_mensual(), '## Datos del paciente\nAna Paz.\n')
+        finally:
+            RESPUESTA['cola'] = []
+        self.assertEqual(len(PEDIDOS), 2)
+        segundo = PEDIDOS[1][1]['messages']
+        self.assertEqual([m['role'] for m in segundo], ['system', 'user', 'assistant', 'user'])
+        self.assertIn('problemas', segundo[3]['content'])
+        self.assertIn('buena disposición', texto)
+        self.assertNotIn('12 sesiones debido', texto)
+        self.assertEqual(proveedor.reintentos, 1)
+        self.assertEqual(proveedor.problemas, ())
+
+    def test_si_la_correccion_no_mejora_se_avisa_y_se_conserva_el_mejor(self):
+        malo = '## Evolución del período\nAsistió a 12 sesiones debido a la fatiga.'
+        RESPUESTA['cola'] = [malo, malo]
+        try:
+            with self.app.app_context():
+                proveedor = g.obtener_proveedor()
+                g._redactar_con_ia(proveedor, self._datos_mensual(), '## Datos del paciente\nAna Paz.\n')
+        finally:
+            RESPUESTA['cola'] = []
+        self.assertEqual(proveedor.reintentos, 1)
+        self.assertTrue(proveedor.problemas)
+
+    def test_un_texto_correcto_no_pide_segunda_pasada(self):
+        PEDIDOS.clear()
+        RESPUESTA['cola'] = [self.BUENO]
+        try:
+            with self.app.app_context():
+                proveedor = g.obtener_proveedor()
+                g._redactar_con_ia(proveedor, self._datos_mensual(), '## Datos del paciente\nAna Paz.\n')
+        finally:
+            RESPUESTA['cola'] = []
+        self.assertEqual(len(PEDIDOS), 1)
+        self.assertEqual(proveedor.reintentos, 0)
 
 
 if __name__ == '__main__':

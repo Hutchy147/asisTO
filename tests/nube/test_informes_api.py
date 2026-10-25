@@ -376,7 +376,7 @@ class InformesApi(BaseApi):
         class Falso:
             nombre = 'falso:modelo-de-prueba'
 
-            def redactar(self, instrucciones, datos_json):
+            def redactar(self, instrucciones, datos_json, **kw):
                 enviados['instrucciones'] = instrucciones
                 enviados['datos'] = datos_json
                 return '## Evolución\nEl paciente mostró avances.\n\n## Cierre y próximos pasos\n[COMPLETAR: pasos]'
@@ -413,7 +413,7 @@ class InformesApi(BaseApi):
         class Roto:
             nombre = 'roto'
 
-            def redactar(self, instrucciones, datos_json):
+            def redactar(self, instrucciones, datos_json, **kw):
                 raise urllib.error.URLError('sin red')
 
         with mock.patch('app.services.informes_generador.obtener_proveedor', return_value=Roto()):
@@ -428,7 +428,7 @@ class InformesApi(BaseApi):
         class Charla:
             nombre = 'charlatan'
 
-            def redactar(self, instrucciones, datos_json):
+            def redactar(self, instrucciones, datos_json, **kw):
                 return 'Claro, aquí tiene su informe sin ninguna sección.'
 
         with mock.patch('app.services.informes_generador.obtener_proveedor', return_value=Charla()):

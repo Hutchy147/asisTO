@@ -10,6 +10,10 @@ Uso (desde backend/, con el venv activo y `ollama serve` corriendo):
     python scripts/comparar_modelos_ia.py --listar
     python scripts/comparar_modelos_ia.py --paciente 3 --periodo 2026-10
     python scripts/comparar_modelos_ia.py --paciente 3 --periodo 2026-10 --modelos llama3.2:3b gemma3:4b
+    python scripts/comparar_modelos_ia.py --paciente 3 --temperatura 0.3 --repeticion 1.1 --semilla 0
+
+Los parametros (--temperatura, --repeticion, --semilla, --top-p) se aplican a
+todos los modelos de la corrida; sin ellos se usan los del .env o los de fabrica.
 
 Solo LEE de la base y no guarda ningun informe. Los textos salen en
 backend/scripts/_salida_ia/ (carpeta ignorada por git: lleva datos clinicos).
@@ -54,6 +58,10 @@ def main():
     ap.add_argument('--tipo', default='mensual', choices=['mensual', 'semestral'])
     ap.add_argument('--periodo', default=_periodo_por_defecto(), help='AAAA-MM o AAAA-S1/S2')
     ap.add_argument('--modelos', nargs='+', default=MODELOS_POR_DEFECTO)
+    ap.add_argument('--temperatura', type=float, help='0 a 1; mas bajo = mas fiel y repetible')
+    ap.add_argument('--repeticion', type=float, help='1.0 a 1.3; mas alto = menos frases repetidas')
+    ap.add_argument('--semilla', type=int, help='0 = distinto en cada corrida')
+    ap.add_argument('--top-p', type=float, dest='top_p')
     ap.add_argument('--url', default='http://127.0.0.1:11434')
     ap.add_argument('--ctx', type=int, default=8192)
     ap.add_argument('--timeout', type=int, default=600)
@@ -83,9 +91,20 @@ def main():
         resumen = []
         for modelo in args.modelos:
             print(f'--- {modelo} ...', flush=True)
-            proveedor = g.ProveedorOllama(args.url, modelo, args.timeout, args.ctx, '10m')
+            opciones = {}
+            if args.temperatura is not None:
+                opciones['temperature'] = args.temperatura
+            if args.repeticion is not None:
+                opciones['repeat_penalty'] = args.repeticion
+            if args.top_p is not None:
+                opciones['top_p'] = args.top_p
+            if args.semilla:
+                opciones['seed'] = args.semilla
+            proveedor = g.ProveedorOllama(args.url, modelo, args.timeout, args.ctx, '10m', opciones)
+            if args.semilla == 0:
+                proveedor.opciones.pop('seed', None)
             inicio = time.time()
-            fila = {'modelo': modelo}
+            fila = {'modelo': modelo, 'reintentos': 0, 'problemas': []}
             try:
                 texto = g._redactar_con_ia(proveedor, datos, cabecera)
                 fila['estado'] = 'ok'
@@ -98,6 +117,8 @@ def main():
             fila['palabras'] = len(texto.split())
             fila['completar'] = texto.count(g.MARCA_COMPLETAR)
             fila['otro_alfabeto'] = bool(g._OTRO_ALFABETO.search(texto))
+            fila['reintentos'] = proveedor.reintentos
+            fila['problemas'] = list(proveedor.problemas)
             nombre = modelo.replace(':', '_').replace('/', '_')
             ruta = os.path.join(SALIDA, f'{args.tipo}_{clave}_p{paciente.id}_{nombre}.md')
             with open(ruta, 'w', encoding='utf-8') as archivo:
@@ -106,10 +127,14 @@ def main():
             resumen.append(fila)
             print(f'    {fila["estado"]} en {fila["segundos"]} s, {fila["tokens_s"]} tokens/s, {fila["palabras"]} palabras')
 
-        print('\nmodelo            estado  seg    tok/s  palabras  [COMPLETAR]  otro alfabeto')
+        print('\nmodelo            estado  seg    tok/s  palabras  [COMPLETAR]  2da pasada  problemas que quedan')
         for f in resumen:
             print(f'{f["modelo"]:<17} {f["estado"][:6]:<7} {f["segundos"]:<6} {str(f["tokens_s"]):<6} '
-                  f'{f["palabras"]:<9} {f["completar"]:<12} {"SI" if f["otro_alfabeto"] else "no"}')
+                  f'{f["palabras"]:<9} {f["completar"]:<12} {"si" if f["reintentos"] else "no":<11} '
+                  f'{len(f["problemas"])}')
+        for f in resumen:
+            for problema in f['problemas']:
+                print(f'  {f["modelo"]}: {problema}')
         print(f'\nInformes en: {SALIDA}')
 
 

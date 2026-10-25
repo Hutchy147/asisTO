@@ -418,6 +418,13 @@ _INSTRUCCIONES_PERIODICO = (
     'proponga estrategias ni actividades nuevas: eso lo decide la profesional.\n'
     '- No mencione fechas, días, cantidades de sesiones ni niveles: ya figuran en otras secciones.\n'
     '- Si los datos no alcanzan para un párrafo, escriba en su lugar [COMPLETAR: qué falta].\n'
+    'Ejemplo del estilo esperado (invente otro contenido a partir de los datos; no copie este):\n'
+    '## Evolución del período\n'
+    'El paciente trabajó con buena disposición en las actividades propuestas y aceptó las consignas '
+    'con apoyo verbal puntual.\n\n'
+    'En las tareas nuevas necesitó acompañamiento al comienzo y mostró cansancio hacia el final de algunas '
+    'sesiones.\n\n'
+    'Se observa una tendencia de mejora en la autonomía para organizar el material de trabajo.\n'
 )
 
 _GUIA_MENSUAL = (
@@ -454,9 +461,24 @@ class ProveedorIA:
     """Interfaz del proveedor. Un proveedor nuevo implementa `redactar`."""
     nombre = ''
     local = False
+    # Lo que dejo el ultimo informe: frases a revisar y si hubo una segunda pasada.
+    problemas = ()
+    reintentos = 0
 
-    def redactar(self, instrucciones, datos_json):
+    def redactar(self, instrucciones, datos_json, correccion=None, max_tokens=None):
+        """
+        `correccion` = (respuesta_anterior, pedido): una segunda pasada en la que
+        el modelo ve su texto y lo que hay que corregir.
+        """
         raise NotImplementedError
+
+
+def _mensajes(datos_json, correccion):
+    mensajes = [{'role': 'user', 'content': 'Datos del período (JSON):\n' + datos_json}]
+    if correccion:
+        anterior, pedido = correccion
+        mensajes += [{'role': 'assistant', 'content': anterior}, {'role': 'user', 'content': pedido}]
+    return mensajes
 
 
 class ProveedorAnthropic(ProveedorIA):
@@ -468,12 +490,12 @@ class ProveedorAnthropic(ProveedorIA):
         self.timeout = timeout
         self.nombre = f'anthropic:{modelo}'
 
-    def redactar(self, instrucciones, datos_json):
+    def redactar(self, instrucciones, datos_json, correccion=None, max_tokens=None):
         cuerpo = json.dumps({
             'model': self.modelo,
-            'max_tokens': 3000,
+            'max_tokens': max_tokens or 3000,
             'system': instrucciones,
-            'messages': [{'role': 'user', 'content': 'Datos del período (JSON):\n' + datos_json}],
+            'messages': _mensajes(datos_json, correccion),
         }).encode('utf-8')
         pedido = urllib.request.Request(
             'https://api.anthropic.com/v1/messages', data=cuerpo, method='POST',
@@ -498,25 +520,27 @@ class ProveedorOllama(ProveedorIA):
     """
     local = True
 
-    def __init__(self, url, modelo, timeout, ctx=8192, keep_alive='30m'):
+    # Pensados para redactar con fidelidad: poca aleatoriedad, sin repetirse y
+    # con semilla fija (mismos datos, mismo texto).
+    OPCIONES_POR_DEFECTO = {'temperature': 0.1, 'top_p': 0.85, 'top_k': 30, 'repeat_penalty': 1.15, 'seed': 7}
+
+    def __init__(self, url, modelo, timeout, ctx=8192, keep_alive='30m', opciones=None):
         self.url = url
         self.modelo = modelo
         self.timeout = timeout
         self.ctx = ctx
         self.keep_alive = keep_alive
+        self.opciones = {**self.OPCIONES_POR_DEFECTO, **(opciones or {})}
         self.nombre = f'ollama:{modelo}'
         self.ultima_medicion = None
 
-    def redactar(self, instrucciones, datos_json):
+    def redactar(self, instrucciones, datos_json, correccion=None, max_tokens=None):
         cuerpo = json.dumps({
             'model': self.modelo,
             'stream': False,
             'keep_alive': self.keep_alive,
-            'messages': [
-                {'role': 'system', 'content': instrucciones},
-                {'role': 'user', 'content': 'Datos del período (JSON):\n' + datos_json},
-            ],
-            'options': {'temperature': 0.2, 'num_predict': 2000, 'num_ctx': self.ctx},
+            'messages': [{'role': 'system', 'content': instrucciones}] + _mensajes(datos_json, correccion),
+            'options': {**self.opciones, 'num_predict': max_tokens or 2000, 'num_ctx': self.ctx},
         }).encode('utf-8')
         pedido = urllib.request.Request(
             f'{self.url}/api/chat', data=cuerpo, method='POST',
@@ -556,8 +580,20 @@ def obtener_proveedor():
     if proveedor == 'anthropic' and clave:
         return ProveedorAnthropic(clave, modelo or 'claude-sonnet-5-5', timeout)
     if proveedor == 'ollama' and modelo:
-        return ProveedorOllama(config.get('INFORMES_IA_URL') or 'http://127.0.0.1:11434', modelo, timeout,
-                               config.get('INFORMES_IA_CTX') or 8192, config.get('INFORMES_IA_KEEP_ALIVE') or '30m')
+        opciones = {}
+        if config.get('INFORMES_IA_TEMPERATURA') is not None:
+            opciones['temperature'] = config['INFORMES_IA_TEMPERATURA']
+        if config.get('INFORMES_IA_REPETICION') is not None:
+            opciones['repeat_penalty'] = config['INFORMES_IA_REPETICION']
+        proveedor_local = ProveedorOllama(config.get('INFORMES_IA_URL') or 'http://127.0.0.1:11434', modelo, timeout,
+                                          config.get('INFORMES_IA_CTX') or 8192,
+                                          config.get('INFORMES_IA_KEEP_ALIVE') or '30m', opciones)
+        semilla = config.get('INFORMES_IA_SEMILLA')
+        if semilla:
+            proveedor_local.opciones['seed'] = semilla
+        elif semilla == 0:
+            proveedor_local.opciones.pop('seed', None)   # 0 = sin semilla, distinto en cada corrida
+        return proveedor_local
     return None
 
 
@@ -738,11 +774,73 @@ def _sin_secciones_del_sistema(cuerpo):
     return '\n\n'.join(conservadas)
 
 
-def _redactar_con_ia(proveedor, datos, cabecera):
-    cuerpo = proveedor.redactar(
-        instrucciones_ia(datos['tipo']),
-        json.dumps(datos_para_ia(datos), ensure_ascii=False, separators=(',', ':')),
-    )
+# ---------------------------------------------------------------------------
+# Revision de lo que escribio el modelo (retroalimentacion)
+# ---------------------------------------------------------------------------
+# Un modelo chico no siempre respeta las reglas. Se revisa el texto con reglas
+# simples y, si falla alguna, se lo devuelve UNA vez con lo que hay que corregir.
+_RE_DIGITO = re.compile(r'\d')
+_RE_NIVEL = re.compile(r'(?<=[a-záéíóúñ,;]\s)(?:No logrado|En proceso|Avanzado|Logrado)\b|["“«](?:Inicial|No logrado|En proceso|Avanzado|Logrado)')
+_RE_CAUSA = re.compile(r'\b(?:debido a|a causa de|por (?:lo cual|ello)|ya que|porque|se debe|provocad[oa])\b', re.I)
+_RE_CONSEJO = re.compile(r'\b(?:se recomienda|se sugiere|sería (?:importante|útil|conveniente)|es necesario)\b', re.I)
+_RE_MARCA = re.compile(r'\[COMPLETAR[^\]]*\]?', re.I)
+
+
+def _parrafos_de_evolucion(cuerpo):
+    for parte in re.split(r'(?m)^(?=## )', cuerpo):
+        if parte.startswith('## ') and _normalizar_titulo(parte.split('\n', 1)[0][3:]).startswith('evolucion'):
+            resto = parte.split('\n', 1)[1] if '\n' in parte else ''
+            return [p.strip() for p in re.split(r'\n\s*\n', resto) if p.strip()]
+    return []
+
+
+def _normalizar_titulo(titulo):
+    sin = unicodedata.normalize('NFD', titulo.lower())
+    return ''.join(c for c in sin if unicodedata.category(c) != 'Mn').strip()
+
+
+def _trigramas(texto):
+    palabras = re.findall(r'\w+', texto.lower())
+    return {tuple(palabras[i:i + 3]) for i in range(len(palabras) - 2)}
+
+
+def verificar_evolucion(cuerpo, tipo):
+    """Lista de problemas del texto del modelo (vacia si esta bien)."""
+    esperados = 4 if tipo == 'semestral' else 3
+    parrafos = _parrafos_de_evolucion(cuerpo)
+    texto = _RE_MARCA.sub('', cuerpo)
+    problemas = []
+    if _RE_DIGITO.search(texto):
+        problemas.append('menciona números, fechas o cantidades: no deben aparecer')
+    if _RE_NIVEL.search(texto):
+        problemas.append('cita niveles de la escala (Avanzado, Logrado, En proceso...): ya figuran en otra sección')
+    if _RE_CAUSA.search(texto):
+        problemas.append('explica causas que los datos no dicen (debido a, porque, ya que)')
+    if _RE_CONSEJO.search(texto):
+        problemas.append('recomienda pasos o actividades: eso lo decide la profesional')
+    if not parrafos or len(parrafos) > esperados:
+        problemas.append(f'debe tener como máximo {esperados} párrafos y tiene {len(parrafos)}')
+    if sum(len(p.split()) for p in parrafos) > 110 * esperados:
+        problemas.append('es demasiado largo: sea más breve')
+    vistos = set()
+    for p in parrafos:
+        gramas = _trigramas(p)
+        if gramas and vistos and len(gramas & vistos) / len(gramas) > 0.3:
+            problemas.append('repite ideas ya dichas en un párrafo anterior')
+            break
+        vistos |= gramas
+    return problemas
+
+
+def _pedido_de_correccion(problemas):
+    lista = '\n'.join(f'- {p}' for p in problemas)
+    return ('Su texto tiene estos problemas:\n' + lista + '\n'
+            'Reescriba la sección "## Evolución del período" completa corrigiéndolos y respetando todas las reglas. '
+            'Responda solo con la sección, sin explicaciones.')
+
+
+def _depurar(cuerpo, datos):
+    """Valida y normaliza lo que devolvio el modelo. Levanta ValueError si no sirve."""
     if not cuerpo or '## ' not in cuerpo:
         raise ValueError('La respuesta de la IA no tiene la estructura esperada')
     if len(cuerpo) > 50000:
@@ -752,14 +850,44 @@ def _redactar_con_ia(proveedor, datos, cabecera):
         raise ValueError('La respuesta de la IA mezcla otro idioma')
     cuerpo = _limpiar_formato(cuerpo)
     if datos['tipo'] == 'pti':
-        return cabecera.rstrip() + '\n\n' + cuerpo + '\n'
-    # Mensual y semestral: los hechos (asistencia, objetivos y niveles) los arma
-    # el codigo y la IA solo redacta la evolucion y el cierre. Asi no hay
-    # listas de sesiones repetidas ni niveles inventados.
+        return cuerpo
     cuerpo = _sin_secciones_del_sistema(cuerpo)
     if not cuerpo:
         raise ValueError('La respuesta de la IA no tiene la estructura esperada')
-    return '\n'.join([cabecera.rstrip() + '\n', _seccion_asistencia(datos), _seccion_objetivos(datos), cuerpo + '\n', _seccion_cierre(datos)])
+    return cuerpo
+
+
+def _redactar_con_ia(proveedor, datos, cabecera):
+    tipo = datos['tipo']
+    instrucciones = instrucciones_ia(tipo)
+    entrada = json.dumps(datos_para_ia(datos), ensure_ascii=False, separators=(',', ':'))
+    tope = {'mensual': 900, 'semestral': 1400}.get(tipo)   # solo un seguro contra un texto sin fin
+    proveedor.problemas, proveedor.reintentos = (), 0
+
+    bruto = proveedor.redactar(instrucciones, entrada, max_tokens=tope)
+    cuerpo = _depurar(bruto, datos)
+    if tipo == 'pti':
+        return cabecera.rstrip() + '\n\n' + cuerpo + '\n'
+
+    # Mensual y semestral: los hechos (asistencia, objetivos y niveles) los arma
+    # el codigo y la IA solo redacta la evolucion. Asi no hay listas de sesiones
+    # repetidas ni niveles inventados.
+    problemas = verificar_evolucion(cuerpo, tipo)
+    if problemas:
+        logger.info('IA: el texto tiene problemas (%s); se pide una correccion', '; '.join(problemas))
+        try:
+            segundo = _depurar(
+                proveedor.redactar(instrucciones, entrada, correccion=(bruto, _pedido_de_correccion(problemas)), max_tokens=tope),
+                datos)
+            proveedor.reintentos = 1
+            pendientes = verificar_evolucion(segundo, tipo)
+            if len(pendientes) < len(problemas):
+                cuerpo, problemas = segundo, pendientes
+        except (ValueError, urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
+            logger.info('IA: la segunda pasada no sirvio; se conserva el primer texto')
+    proveedor.problemas = tuple(problemas)
+    return '\n'.join([cabecera.rstrip() + '\n', _seccion_asistencia(datos), _seccion_objetivos(datos),
+                      cuerpo + '\n', _seccion_cierre(datos)])
 
 
 # ---------------------------------------------------------------------------
@@ -784,7 +912,12 @@ def generar_contenido(datos, usar_ia=True):
     try:
         etiqueta = etiqueta_periodo(datos['tipo'], datos['clave'])
         cabecera = _encabezado(datos, etiqueta) if not es_pti else plantilla.split('## Ingreso')[0]
-        return _redactar_con_ia(proveedor, datos, cabecera), 'ia', proveedor.nombre, None
+        contenido = _redactar_con_ia(proveedor, datos, cabecera)
+        aviso = None
+        if getattr(proveedor, 'problemas', None):
+            aviso = ('El texto de la IA tiene frases para revisar con atención: '
+                     + '; '.join(proveedor.problemas[:3]) + '.')
+        return contenido, 'ia', proveedor.nombre, aviso
     except (urllib.error.URLError, TimeoutError, ValueError, OSError, KeyError, json.JSONDecodeError) as fallo:
         logger.warning('La IA no pudo redactar el informe (%s): se usa la plantilla', type(fallo).__name__)
         return plantilla, 'plantilla', None, 'La IA no respondió: el borrador se armó con la plantilla.'
