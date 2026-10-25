@@ -42,7 +42,7 @@ Un período que todavía no empezó se rechaza (400).
 
 ## Generación: plantilla o IA
 
-El generador es un adaptador. Sin configuración usa la **plantilla** del centro y funciona sin red. Si el `.env` define `INFORMES_IA_PROVEEDOR` e `INFORMES_IA_API_KEY` y la terapeuta no apagó `usar_ia`, redacta con IA. Las dos salidas quedan como borrador y se marcan en `generado_con` (`plantilla` o `ia`) y `proveedor`.
+El generador es un adaptador. Sin configuración usa la **plantilla** del centro y funciona sin red. Si el `.env` define `INFORMES_IA_PROVEEDOR` e `INFORMES_IA_API_KEY` y la terapeuta no apagó `usar_ia`, redacta con IA. También soporta un modelo **local con Ollama** (`INFORMES_IA_PROVEEDOR=ollama`, `INFORMES_IA_MODELO`, opcional `INFORMES_IA_URL`): no necesita clave y los datos no salen del equipo; la respuesta de `GET /api/pacientes/<id>/informes` trae `ia_local`. Las dos salidas quedan como borrador y se marcan en `generado_con` (`plantilla` o `ia`) y `proveedor`.
 
 - Al proveedor **no se envían el nombre ni el apellido del paciente**: se reemplazan por «el paciente» en todos los datos y la cabecera con el nombre se arma del lado del servidor. Es un resguardo de mejor esfuerzo, no una garantía: un nombre propio de otra persona escrito en una nota libre no se detecta. Por eso la terapeuta siempre revisa antes de publicar.
 - Si la IA falla o tarda más que `INFORMES_IA_TIMEOUT`, se genera con la plantilla y la respuesta trae `advertencia`.

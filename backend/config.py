@@ -65,6 +65,8 @@ class Config:
     INFORMES_IA_API_KEY = os.getenv('INFORMES_IA_API_KEY', '').strip()
     INFORMES_IA_MODELO = os.getenv('INFORMES_IA_MODELO', 'claude-sonnet-5-5').strip()
     INFORMES_IA_TIMEOUT = _env_int('INFORMES_IA_TIMEOUT', 60)
+    # Solo para el proveedor 'ollama' (modelo local): direccion del servidor.
+    INFORMES_IA_URL = os.getenv('INFORMES_IA_URL', 'http://127.0.0.1:11434').strip().rstrip('/')
 
     # --- Base de datos ---
     DB_HOST = os.getenv('DB_HOST', 'localhost')

@@ -136,6 +136,7 @@ def listar_de_paciente(id_paciente):
         'informes': [serializar(i, autores) for i in informes],
         'total': len(informes),
         'ia_disponible': generador.ia_disponible(),
+        'ia_local': generador.ia_local(),
     }
 
 

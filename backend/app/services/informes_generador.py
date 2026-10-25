@@ -397,6 +397,7 @@ INSTRUCCIONES_IA = (
 class ProveedorIA:
     """Interfaz del proveedor. Un proveedor nuevo implementa `redactar`."""
     nombre = ''
+    local = False
 
     def redactar(self, instrucciones, datos_json):
         raise NotImplementedError
@@ -432,19 +433,62 @@ class ProveedorAnthropic(ProveedorIA):
         return '\n'.join(bloques).strip()
 
 
+class ProveedorOllama(ProveedorIA):
+    """
+    Modelo local servido por Ollama. No hay clave ni salida a internet: los
+    datos del periodo no abandonan la maquina. Es mas lento que un proveedor
+    en la nube (depende del equipo), por eso conviene un INFORMES_IA_TIMEOUT
+    alto en el .env.
+    """
+    local = True
+
+    def __init__(self, url, modelo, timeout):
+        self.url = url
+        self.modelo = modelo
+        self.timeout = timeout
+        self.nombre = f'ollama:{modelo}'
+
+    def redactar(self, instrucciones, datos_json):
+        cuerpo = json.dumps({
+            'model': self.modelo,
+            'stream': False,
+            'messages': [
+                {'role': 'system', 'content': instrucciones},
+                {'role': 'user', 'content': 'Datos del período (JSON):\n' + datos_json},
+            ],
+            'options': {'temperature': 0.2, 'num_predict': 3000, 'num_ctx': 8192},
+        }).encode('utf-8')
+        pedido = urllib.request.Request(
+            f'{self.url}/api/chat', data=cuerpo, method='POST',
+            headers={'content-type': 'application/json'},
+        )
+        with urllib.request.urlopen(pedido, timeout=self.timeout) as respuesta:
+            datos = json.loads(respuesta.read().decode('utf-8'))
+        return (datos.get('message') or {}).get('content', '').strip()
+
+
 def obtener_proveedor():
     """Proveedor configurado en el .env, o None si la IA esta apagada."""
     config = current_app.config
     proveedor = config.get('INFORMES_IA_PROVEEDOR') or ''
     clave = config.get('INFORMES_IA_API_KEY') or ''
+    modelo = config.get('INFORMES_IA_MODELO') or ''
+    timeout = config.get('INFORMES_IA_TIMEOUT') or 60
     if proveedor == 'anthropic' and clave:
-        return ProveedorAnthropic(clave, config.get('INFORMES_IA_MODELO') or 'claude-sonnet-5-5',
-                                  config.get('INFORMES_IA_TIMEOUT') or 60)
+        return ProveedorAnthropic(clave, modelo or 'claude-sonnet-5-5', timeout)
+    if proveedor == 'ollama' and modelo:
+        return ProveedorOllama(config.get('INFORMES_IA_URL') or 'http://127.0.0.1:11434', modelo, timeout)
     return None
 
 
 def ia_disponible():
     return obtener_proveedor() is not None
+
+
+def ia_local():
+    """True si el proveedor corre en esta maquina y no manda nada afuera."""
+    proveedor = obtener_proveedor()
+    return bool(proveedor and getattr(proveedor, 'local', False))
 
 
 _VARIANTES = {

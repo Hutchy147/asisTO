@@ -88,6 +88,7 @@ export default function ControlInformes() {
         tipo,
         periodo: tipo === 'mensual' ? datos.mes : tipo === 'semestral' ? datos.semestre : 'pti',
         ia: Boolean(historial.ia_disponible),
+        iaLocal: Boolean(historial.ia_local),
         borradores: historial.informes.filter((i) => i.estado === 'borrador'),
       });
     } catch (fallo) {
@@ -170,7 +171,7 @@ export default function ControlInformes() {
       {generar && (
         <ModalGenerarInforme
           key={`${generar.id_paciente}-${generar.tipo}-${generar.periodo}`}
-          abierto idPaciente={generar.id_paciente} nombrePaciente={generar.paciente} iaDisponible={generar.ia}
+          abierto idPaciente={generar.id_paciente} nombrePaciente={generar.paciente} iaDisponible={generar.ia} iaLocal={generar.iaLocal}
           borradores={generar.borradores} tipoInicial={generar.tipo} periodoInicial={generar.periodo}
           onCerrar={() => setGenerar(null)}
           onGenerado={(r) => {

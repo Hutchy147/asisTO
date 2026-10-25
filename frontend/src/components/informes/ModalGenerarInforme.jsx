@@ -37,7 +37,7 @@ function opcionesSemestre() {
 }
 
 export default function ModalGenerarInforme({
-  abierto, idPaciente, nombrePaciente = '', iaDisponible, hayPuedePti = true, borradores = [],
+  abierto, idPaciente, nombrePaciente = '', iaDisponible, iaLocal = false, hayPuedePti = true, borradores = [],
   tipoInicial = 'mensual', periodoInicial = '', onCerrar, onGenerado,
 }) {
   const hoy = new Date();
@@ -112,7 +112,9 @@ export default function ModalGenerarInforme({
         )}
         <Typography variant="body2" color="text.secondary">
           {iaDisponible && usarIa
-            ? 'Se envía a un proveedor externo el resumen del período, sin el nombre del paciente. Siempre queda como borrador para que usted lo revise.'
+            ? (iaLocal
+              ? 'El resumen del período se procesa en este equipo y no sale de él. Puede demorar un poco. Siempre queda como borrador para que usted lo revise.'
+              : 'Se envía a un proveedor externo el resumen del período, sin el nombre del paciente. Siempre queda como borrador para que usted lo revise.')
             : 'Se arma un borrador con la plantilla del centro a partir de los registros del período. Usted lo revisa antes de publicarlo.'}
         </Typography>
         {reemplaza && (
