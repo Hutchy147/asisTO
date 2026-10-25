@@ -382,6 +382,7 @@ INSTRUCCIONES_IA = (
     'Usted redacta BORRADORES de informes de terapia ocupacional que una profesional va a revisar '
     'y firmar. Escriba en español, en tercera persona y con registro formal y clínico.\n'
     'Reglas estrictas:\n'
+    '- Escriba SIEMPRE y exclusivamente en español rioplatense formal. Nunca use otro idioma ni otro alfabeto.\n'
     '- Use únicamente los datos entregados. No invente hechos, fechas, diagnósticos ni recomendaciones.\n'
     '- Refiérase a la persona como "el paciente". Nunca escriba nombres propios.\n'
     '- Comunique la evolución solo con las palabras de la escala (No logrado, Inicial, En proceso, '
@@ -541,12 +542,19 @@ def datos_para_ia(datos):
     return _sin_nombre(bruto, nombres)
 
 
+# Ideogramas CJK, kana y hangul: en un informe en español nunca corresponden.
+_OTRO_ALFABETO = re.compile('[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uff00-\uffef]')
+
+
 def _redactar_con_ia(proveedor, datos, cabecera):
     cuerpo = proveedor.redactar(INSTRUCCIONES_IA, json.dumps(datos_para_ia(datos), ensure_ascii=False))
     if not cuerpo or '## ' not in cuerpo:
         raise ValueError('La respuesta de la IA no tiene la estructura esperada')
     if len(cuerpo) > 50000:
         raise ValueError('La respuesta de la IA es demasiado larga')
+    if _OTRO_ALFABETO.search(cuerpo):
+        # Algunos modelos locales se pasan al chino/japonés/coreano a mitad de texto.
+        raise ValueError('La respuesta de la IA mezcla otro idioma')
     return cabecera.rstrip() + '\n\n' + cuerpo.strip() + '\n'
 
 
