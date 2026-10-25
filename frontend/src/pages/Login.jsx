@@ -13,7 +13,7 @@ import Link from '@mui/material/Link';
 import { Link as RouterLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { hayCapacidad } from '../config/entregas.js';
-import LogoAsisto from '../components/marca/LogoAsisto.jsx';
+import LogoAsisto, { Isotipo } from '../components/marca/LogoAsisto.jsx';
 
 import { rolPuedeVer } from '../config/rutas.js';
 import { RUTA_POR_ROL, useAuth } from '../context/AuthContext.jsx';
@@ -97,7 +97,7 @@ export default function Login() {
         minHeight: '100vh',
         display: 'grid',
         gridTemplateColumns: { xs: '1fr', md: '1.05fr 1fr' },
-        gridTemplateRows: { xs: 'auto 1fr', md: '1fr' },
+        gridTemplateRows: '1fr',
         '@keyframes subir': {
           from: { opacity: 0, transform: 'translateY(14px)' },
           to: { opacity: 1, transform: 'translateY(0)' },
@@ -122,20 +122,27 @@ export default function Login() {
           background: 'linear-gradient(150deg, #1B3B5C 0%, #1F4A63 55%, #2F6F60 100%)',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: { xs: 'center', md: 'space-between' },
-          p: { xs: 3, md: 6 },
-          minHeight: { xs: 150, md: 'auto' },
+          justifyContent: 'space-between',
+          p: 6,
+          // En celular el panel no entra: queda solo el formulario con el logo.
+          display: { xs: 'none', md: 'flex' },
         }}
       >
         {/* manchas que flotan despacio */}
         <Box aria-hidden sx={{ position: 'absolute', width: 380, height: 380, borderRadius: '50%', top: -120, right: -90, background: 'radial-gradient(circle, rgba(127,169,155,0.55), rgba(127,169,155,0) 70%)', animation: 'flotar 14s ease-in-out infinite' }} />
         <Box aria-hidden sx={{ position: 'absolute', width: 320, height: 320, borderRadius: '50%', bottom: -110, left: -80, background: 'radial-gradient(circle, rgba(201,123,90,0.40), rgba(201,123,90,0) 70%)', animation: 'flotar 18s ease-in-out -6s infinite' }} />
 
-        <Box sx={{ position: 'relative', animation: 'subir .7s ease both' }}>
-          <LogoAsisto size={44} claro />
+        <Box
+          sx={{
+            position: 'relative', alignSelf: 'flex-start', animation: 'subir .7s ease both',
+            backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: '16px', p: 1.25,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+          }}
+        >
+          <Isotipo alto={52} />
         </Box>
 
-        <Box sx={{ position: 'relative', display: { xs: 'none', md: 'block' } }}>
+        <Box sx={{ position: 'relative' }}>
           <Typography
             component="h2"
             sx={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 700, fontSize: 34, lineHeight: 1.15, letterSpacing: '-0.02em', maxWidth: 420, animation: 'subir .8s .15s ease both' }}
@@ -160,7 +167,7 @@ export default function Login() {
           </Box>
         </Box>
 
-        <Typography variant="caption" sx={{ position: 'relative', opacity: 0.55, display: { xs: 'none', md: 'block' } }}>
+        <Typography variant="caption" sx={{ position: 'relative', opacity: 0.7 }}>
           Práctica Profesionalizante III · IES 9-023
         </Typography>
       </Box>
@@ -168,6 +175,9 @@ export default function Login() {
       {/* --- Formulario --- */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', p: { xs: 2.5, md: 6 }, backgroundColor: 'background.default' }}>
         <Box sx={{ width: '100%', maxWidth: 380, animation: 'subir .7s .1s ease both' }}>
+          <Box sx={{ mb: 3, animation: 'subir .7s ease both' }}>
+            <LogoAsisto alto={104} />
+          </Box>
           <Typography variant="h4" component="h1" sx={{ mb: 0.5 }}>
             Bienvenido
           </Typography>
