@@ -24,18 +24,16 @@ export default function AppLayout({ titulo, subtitulo, acciones, contadores = {}
     { id: 'informes', etiqueta: 'Informes', ruta: '/informes', capacidad: 'informes.control' },
   ];
 
-  const grupos = [
-    { items: navegacion.filter((item) => hayCapacidad(item.capacidad)) },
-    {
-      // Cerrar sesion no se filtra nunca: es parte de la sesion, no de una
-      // entrega, y dejar a alguien sin salida seria peor que mostrar de mas.
-      items: [{ id: 'salir', etiqueta: 'Cerrar sesión', onClick: logout }],
-    },
-  ];
+  const grupos = [{ items: navegacion.filter((item) => hayCapacidad(item.capacidad)) }];
+
+  // Cerrar sesion no se filtra nunca: es parte de la sesion, no de una
+  // entrega, y dejar a alguien sin salida seria peor que mostrar de mas.
+  // Va al pie, arriba del nombre de quien esta en sesion.
+  const pie = [{ id: 'salir', etiqueta: 'Cerrar sesión', onClick: logout }];
 
   return (
     <Box sx={{ display: 'flex', height: '100vh', backgroundColor: 'background.default' }}>
-      <SidebarNav grupos={grupos} usuario={usuario} />
+      <SidebarNav grupos={grupos} pie={pie} usuario={usuario} />
 
       <Box component="main" sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <Topbar titulo={titulo} subtitulo={subtitulo} acciones={acciones} />

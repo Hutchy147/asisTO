@@ -86,7 +86,9 @@ function ItemNav({ item, onSelect }) {
   );
 }
 
-export default function SidebarNav({ grupos = [], usuario }) {
+// `pie` son items de accion (cerrar sesion) que quedan abajo de todo, justo
+// arriba del nombre de quien esta en sesion.
+export default function SidebarNav({ grupos = [], pie = [], usuario }) {
   return (
     <Box
       component="nav"
@@ -141,6 +143,14 @@ export default function SidebarNav({ grupos = [], usuario }) {
           </Box>
         ))}
       </Box>
+
+      {pie.length > 0 && (
+        <Box sx={{ flex: 'none', p: 1, pb: 0.5, display: 'flex', flexDirection: 'column', gap: '1px' }}>
+          {pie.map((item) => (
+            <ItemNav key={item.id} item={item} />
+          ))}
+        </Box>
+      )}
 
       {usuario && (
         <Box
