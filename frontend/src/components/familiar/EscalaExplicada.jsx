@@ -38,8 +38,7 @@ export default function EscalaExplicada({ abiertaAlInicio = false }) {
           ))}
         </Box>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
-          En el gráfico, la curva muestra el mejor nivel alcanzado hasta cada fecha: sube cuando hay avance y se mantiene plana cuando no. Los puntos son las calificaciones; uno hueco es una calificación por debajo de ese nivel.
-          Las marcas debajo del eje son sesiones donde ese objetivo no se calificó (ámbar) o ausencias (rojo).
+          En el gráfico, la curva une las calificaciones en orden: sube cuando hay avance y se mantiene plana cuando no hay cambio. Cada punto es una calificación.
         </Typography>
       </Collapse>
     </Box>

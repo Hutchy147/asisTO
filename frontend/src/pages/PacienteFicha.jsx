@@ -557,17 +557,13 @@ export default function PacienteFicha() {
                 />
               ) : (
                 <Box sx={{ p: 2.25, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  {/* Referencia de la curva y de las marcas. */}
+                  {/* Referencia de la curva. */}
                   <Typography variant="body2" color="text.secondary">
-                    La curva muestra el <strong>mejor nivel alcanzado</strong> hasta cada
-                    fecha: sube cuando hay avance y se mantiene plana cuando no. Cada
-                    punto es una calificación; si queda <strong>hueco</strong>, fue por
-                    debajo del mejor nivel. Las sesiones donde ese objetivo no se
-                    calificó —lo habitual, porque en cada sesión se califican algunos
-                    objetivos y no todos— aparecen como marcas en la franja de abajo del
-                    eje: en ámbar cuando se trabajó y no se calificó, en ladrillo cuando
-                    fue una ausencia. Cuando hay bajas, un selector permite ver la curva
-                    siguiendo cada calificación.
+                    La curva une las calificaciones de cada objetivo en orden: sube cuando
+                    hay avance, baja cuando hay un retroceso y se mantiene plana cuando no
+                    hay cambio. Cada punto es una calificación; pase el cursor para ver su
+                    fecha. En cada sesión se califican algunos objetivos y no todos, así
+                    que la curva sigue solo las sesiones donde ese objetivo se calificó.
                   </Typography>
 
                   {evolucion.datos.objetivos.map((serie) => (
