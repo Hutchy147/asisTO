@@ -285,9 +285,9 @@ _TEXTO_CAMBIO = {'mejoro': 'mejoró respecto del período anterior', 'igual': 's
 
 def _linea_objetivo(o, con_comparacion):
     if o['calificaciones'] == 0 or o['nivel'] is None:
-        return f"- {o['descripcion']}: no se calificó en el período."
+        return f"- {o['descripcion'].rstrip('. ')}: no se calificó en el período."
     veces = 'una sesión' if o['calificaciones'] == 1 else f"{o['calificaciones']} sesiones"
-    linea = f"- {o['descripcion']}: {o['nivel']} (calificado en {veces})"
+    linea = f"- {o['descripcion'].rstrip('. ')}: {o['nivel']} (calificado en {veces})"
     extras = []
     if _TEXTO_TENDENCIA.get(o['tendencia']):
         extras.append(_TEXTO_TENDENCIA[o['tendencia']])
@@ -328,6 +328,13 @@ def _seccion_objetivos(datos):
     return '## Objetivos trabajados\n' + aclaracion + '\n\n' + '\n'.join(lineas) + '\n'
 
 
+def _seccion_cierre(datos):
+    """Los próximos pasos los decide la profesional: el sistema deja la marca."""
+    cierre = ('Evolución general del semestre y proyección para el próximo' if datos['tipo'] == 'semestral'
+              else 'Cierre del período y próximos pasos')
+    return f'## Cierre y próximos pasos\n{MARCA_COMPLETAR}: {cierre.lower()}]\n'
+
+
 def redactar_plantilla(datos):
     """Informe mensual o semestral armado solo con los datos del periodo."""
     tipo = datos['tipo']
@@ -348,8 +355,7 @@ def redactar_plantilla(datos):
     else:
         partes.append('## Observaciones de las sesiones\nNo hay observaciones registradas en el período.\n')
 
-    cierre = 'Evolución general del semestre y proyección para el próximo' if tipo == 'semestral' else 'Cierre del período y próximos pasos'
-    partes.append(f'## Cierre y próximos pasos\n{MARCA_COMPLETAR}: {cierre.lower()}]\n')
+    partes.append(_seccion_cierre(datos))
     return '\n'.join(partes).strip() + '\n'
 
 
@@ -399,16 +405,29 @@ INSTRUCCIONES_IA = (
 )
 
 _INSTRUCCIONES_PERIODICO = (
-    'El sistema YA incluye la asistencia y la lista de objetivos con su nivel: no las repita ni '
-    'enumere las sesiones una por una.\n'
-    'Redacte SOLO estas dos secciones, en este orden:\n'
+    'El sistema YA incluye la asistencia, la lista de objetivos con su nivel y el cierre: no los repita '
+    'ni enumere las sesiones una por una.\n'
+    'Redacte SOLO esta sección:\n'
     '## Evolución del período\n'
-    'Entre 2 y 4 párrafos de prosa corrida (sin listas): qué se trabajó, cómo respondió el paciente, '
-    'qué apoyos necesitó, qué cambió y qué dificultades aparecieron. Priorice lo que cambió en el período'
-    '{comparacion}. Máximo {palabras} palabras en total.\n'
-    '## Cierre y próximos pasos\n'
-    'Un párrafo breve con la continuidad que sugieren los datos. Si no alcanzan, escriba solo '
-    '[COMPLETAR: pasos a seguir].\n'
+    'Exactamente {parrafos} párrafos de prosa corrida, de hasta 4 oraciones cada uno, sin listas:\n'
+    '{guia}'
+    'Reglas del texto:\n'
+    '- Cada párrafo aporta ideas nuevas: no repita lo ya dicho ni cierre con una conclusión general.\n'
+    '- Cuente solo lo que dicen los datos. No explique causas, no relacione objetivos entre sí y no '
+    'proponga estrategias ni actividades nuevas: eso lo decide la profesional.\n'
+    '- Mencione una fecha solo si figura tal cual en los datos.\n'
+)
+
+_GUIA_MENSUAL = (
+    '1) qué se trabajó y cómo respondió el paciente; '
+    '2) qué apoyos necesitó y qué dificultades aparecieron; '
+    '3) qué cambió durante el mes.\n'
+)
+_GUIA_SEMESTRAL = (
+    '1) qué se trabajó en el semestre y cómo respondió el paciente; '
+    '2) qué apoyos necesitó y qué dificultades aparecieron; '
+    '3) qué cambió respecto del período anterior; '
+    '4) cómo viene la asistencia y la continuidad.\n'
 )
 
 _INSTRUCCIONES_PTI = (
@@ -424,8 +443,8 @@ def instrucciones_ia(tipo):
         return INSTRUCCIONES_IA + _INSTRUCCIONES_PTI
     semestral = tipo == 'semestral'
     return INSTRUCCIONES_IA + _INSTRUCCIONES_PERIODICO.format(
-        palabras=450 if semestral else 250,
-        comparacion=' y la comparación con el período anterior' if semestral else '',
+        parrafos=4 if semestral else 3,
+        guia=_GUIA_SEMESTRAL if semestral else _GUIA_MENSUAL,
     )
 
 
@@ -659,7 +678,7 @@ def _limpiar_formato(cuerpo):
 
 
 # Secciones que ya arma el codigo: si el modelo las repite, se descartan.
-_SECCIONES_DEL_SISTEMA = ('datos del paciente', 'periodo', 'asistencia', 'objetivos', 'diario', 'sesiones')
+_SECCIONES_DEL_SISTEMA = ('datos del paciente', 'periodo', 'asistencia', 'objetivos', 'diario', 'sesiones', 'cierre')
 
 
 def _sin_secciones_del_sistema(cuerpo):
@@ -696,7 +715,7 @@ def _redactar_con_ia(proveedor, datos, cabecera):
     cuerpo = _sin_secciones_del_sistema(cuerpo)
     if not cuerpo:
         raise ValueError('La respuesta de la IA no tiene la estructura esperada')
-    return '\n'.join([cabecera.rstrip() + '\n', _seccion_asistencia(datos), _seccion_objetivos(datos), cuerpo + '\n'])
+    return '\n'.join([cabecera.rstrip() + '\n', _seccion_asistencia(datos), _seccion_objetivos(datos), cuerpo + '\n', _seccion_cierre(datos)])
 
 
 # ---------------------------------------------------------------------------

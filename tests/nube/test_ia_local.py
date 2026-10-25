@@ -142,7 +142,7 @@ class IaLocalTest(unittest.TestCase):
         self.assertNotIn('Asistencia', resto)
         self.assertNotIn('Diarios', resto)
         self.assertIn('## Evolución del período', resto)
-        self.assertIn('## Cierre y próximos pasos', resto)
+        self.assertNotIn('Cierre', resto)   # el cierre lo agrega el sistema, no el modelo
 
     def test_el_informe_con_ia_combina_hechos_del_codigo_y_prosa_del_modelo(self):
         import datetime as dt
@@ -170,6 +170,8 @@ class IaLocalTest(unittest.TestCase):
         self.assertIn('Escribir su nombre: Inicial', texto)
         self.assertNotIn('**', texto)
         self.assertNotIn('###', texto)
+        self.assertEqual(texto.count('## Cierre y próximos pasos'), 1)
+        self.assertTrue(texto.rstrip().endswith(']'))   # termina con la marca [COMPLETAR]
 
 
 if __name__ == '__main__':
