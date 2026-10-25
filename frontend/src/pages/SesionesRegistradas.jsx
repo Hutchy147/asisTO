@@ -101,14 +101,6 @@ export default function SesionesRegistradas() {
       // (usabilidad, terapeuta).
       render: (s) => <SesionEstadoChip {...estadoVisible(s)} />,
     },
-    {
-      clave: 'evolucion', etiqueta: 'Evolución', ancho: 130,
-      render: (s) => (
-        !s.admite_evolucion
-          ? '—'
-          : (s.tiene_evolucion ? 'Calificada' : 'Sin calificar')
-      ),
-    },
   ];
 
   const recargar = () => { listado.recargar(); };
