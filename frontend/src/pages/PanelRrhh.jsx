@@ -329,21 +329,6 @@ export default function PanelRrhh() {
       },
     },
     {
-      clave: 'superposiciones',
-      etiqueta: 'Superpuestas',
-      ancho: 116,
-      alinear: 'right',
-      // Ya venia en el endpoint desde el primer lote: cuenta cuantas otras
-      // sesiones del MISMO terapeuta pisan ese horario, sobre toda su agenda
-      // y no solo sobre el periodo filtrado. Sirve para detectar cargas mal
-      // hechas, que es trabajo administrativo, no clinico.
-      render: (s) => (
-        s.superposiciones > 0
-          ? <Box component="span" sx={{ fontWeight: 600, color: 'warning.main' }}>{s.superposiciones}</Box>
-          : <Box component="span" sx={{ color: 'text.disabled' }}>0</Box>
-      ),
-    },
-    {
       clave: 'obs_rrhh',
       etiqueta: 'Observ.',
       ancho: 96,
@@ -567,7 +552,6 @@ export default function PanelRrhh() {
                 />
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                   «Sin registrar»: la sesión se dio pero el terapeuta todavía no terminó de cargarla.
-                  «Superpuestas» (en el listado): sesiones de la misma terapeuta que se pisan en el horario; conviene revisarlas.
                 </Typography>
               </>
             )}
