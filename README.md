@@ -64,7 +64,7 @@ Instalar una sola vez, en Windows 10/11:
 
 | Herramienta | Versión mínima | Verificar con |
 |---|---|---|
-| Python | 3.11 | `python --version` |
+| Python | 3.14 | `python --version` |
 | Node.js | 18 | `node --version` |
 | pnpm | 9 | `pnpm --version` |
 | MySQL Server | 8.0 | `mysql --version` |
