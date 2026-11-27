@@ -1,16 +1,63 @@
 # AsisTO
 
-Sistema de Gestión de Asistencias y Seguimiento Terapéutico para terapia
-ocupacional. Práctica Profesionalizante III — IES 9-023, Mendoza.
+**Gestión de asistencias y seguimiento terapéutico para terapia ocupacional.**
+Reemplaza el cuaderno de papel de la terapeuta: agenda, pacientes, objetivos,
+evolución sesión por sesión e informes mensuales, semestrales y PTI generados
+con IA. Además tiene un portal para las familias y otro para los pacientes.
+
+Práctica Profesionalizante III · IES 9-023, Mendoza. Lo hice en seis entregas,
+a partir de un [relevamiento](docs/relevamiento-to.md) con una terapeuta en
+ejercicio.
+
+![React](https://img.shields.io/badge/React-Vite%20%2B%20MUI-61DAFB?logo=react&logoColor=black)
+![Flask](https://img.shields.io/badge/Flask-SQLAlchemy-000000?logo=flask)
+![MySQL](https://img.shields.io/badge/MySQL-8-4479A1?logo=mysql&logoColor=white)
+![JWT](https://img.shields.io/badge/auth-JWT%20%2B%20RBAC-black)
+![IA](https://img.shields.io/badge/informes-con%20IA-6E56CF)
+
+| Panel del día | Ficha del paciente |
+|---|---|
+| ![Panel](docs/capturas/panel.png) | ![Ficha](docs/capturas/ficha.png) |
+| **Pacientes** | **Control mensual de informes** |
+| ![Pacientes](docs/capturas/pacientes.png) | ![Informes](docs/capturas/informes.png) |
+
+<sub>Capturas con los datos ficticios de `seed_demo.sql`.</sub>
+
+## Lo más interesante
+
+- **Cinco roles con permisos verificados en el servidor:** terapeuta, RRHH,
+  admin, familiar y paciente. Cada endpoint valida rol y vínculo:
+  el familiar solo ve lo de su paciente y RRHH no ve nada clínico. Un barrido
+  prueba todas las rutas con 8 identidades distintas.
+- **Las reglas de negocio viven en la base:** triggers, procedimientos y
+  restricciones. Por ejemplo, entre 3 y 4 objetivos activos por paciente, o
+  una evolución solo sobre una sesión del terapeuta asignado. Ver
+  [reglas de negocio](docs/metodologia/reglas-de-negocio.md) y
+  [concurrencia](docs/metodologia/concurrencia.md).
+- **Informes con IA y revisión humana:** la IA (la API de Anthropic, o un
+  modelo local con Ollama, sin salida a internet) redacta un borrador a partir
+  de las evoluciones, sin recibir el nombre del paciente. La terapeuta lo
+  revisa, lo corrige y lo publica, y el familiar lo descarga en PDF. Sin IA
+  configurada, el borrador se arma con una plantilla.
+- **Seguridad pensada para datos de salud de menores:** sesión en cookie
+  HttpOnly, CSRF, bloqueo por intentos, el mismo tiempo de respuesta exista o
+  no el email, revocación de sesiones, CSP y auditoría de accesos. Ver
+  [seguridad](docs/seguridad.md).
+- **Contrato de la API documentado con respuestas reales** en [`docs/`](docs).
+- **Tests en tres capas:** base de datos (reglas, bordes, concurrencia,
+  permisos), backend (JWT, RBAC, errores) y frontend.
+
+## Estado
+
+**Completo: Entrega 6 (informes con IA y portal del paciente).** Las seis
+versiones están cerradas: módulo clínico, gestión y RRHH, seguridad y agenda,
+portal familiar e ingreso, duplas y plantillas, e informes con IA con el portal
+del paciente. El detalle está en [Qué funciona hoy](#qué-funciona-hoy) y en
+[Entregas](#entregas).
 
 - **Frontend:** React + Vite + Material UI (pnpm)
 - **Backend:** Python + Flask + SQLAlchemy
-- **Base de datos:** MySQL 8.0+ (una instancia local por integrante)
-
-**Estado: Entrega 6 (informes con IA y portal del paciente).** El sistema está
-completo en sus seis versiones: módulo clínico, gestión y RRHH, seguridad y
-agenda, portal familiar e ingreso, duplas y plantillas, e informes con IA con
-el portal del paciente. Ver [Qué funciona hoy](#qué-funciona-hoy) antes de tocar nada.
+- **Base de datos:** MySQL 8.0+
 
 ---
 
