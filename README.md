@@ -1,4 +1,4 @@
-# AsisTO
+<p align="center"><img src="docs/banner.svg" alt="AsisTO: seguimiento terapéutico para terapia ocupacional" width="100%"></p>
 
 **Gestión de asistencias y seguimiento terapéutico para terapia ocupacional.**
 Reemplaza el cuaderno de papel de la terapeuta: agenda, pacientes, objetivos,
@@ -8,6 +8,22 @@ con IA. Además tiene un portal para las familias y otro para los pacientes.
 Práctica Profesionalizante III · IES 9-023, Mendoza. Lo hice en seis entregas,
 a partir de un [relevamiento](docs/relevamiento-to.md) con una terapeuta en
 ejercicio.
+
+## Por qué existe
+
+En terapia ocupacional, el instrumento real de trabajo es **el cuaderno**: una
+página por día con todos los chicos, donde lo que se planifica antes y lo que
+pasó después se escriben en el mismo renglón, con notas telegráficas como
+«Tomi · enhebrar cuentas». De ese papel, que no se puede buscar ni filtrar,
+salen todos los informes: los mensuales llevan de 10 a 15 minutos cada uno, y
+los semestrales y los PTI, 30. Con una agenda de quince pacientes son **entre 45
+y 60 horas por año** de escritura.
+
+AsisTO no le pide a la terapeuta que cambie su forma de trabajar, sino que la
+sigue: la unidad es el día, lo pendiente se arrastra hasta que se cierra, cada
+chico de una dupla conserva sus propios objetivos y *alta* significa lo mismo
+que en TO, el egreso. Con ese registro, la IA arma el borrador del informe y la
+terapeuta solo lo revisa.
 
 ![React](https://img.shields.io/badge/React-Vite%20%2B%20MUI-61DAFB?logo=react&logoColor=black)
 ![Flask](https://img.shields.io/badge/Flask-SQLAlchemy-000000?logo=flask)

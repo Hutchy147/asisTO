@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" width="1200" height="320" role="img" aria-label="AsisTO · seguimiento terapéutico para terapia ocupacional"><title>AsisTO · seguimiento terapéutico para terapia ocupacional</title><defs><clipPath id="card"><rect width="1200" height="320" rx="18"/></clipPath></defs><g clip-path="url(#card)">
+<rect width="1200" height="320" fill="#f7f1e6"/>
+<circle cx="1080" cy="40" r="150" fill="#dfe9e1"/>
+<circle cx="1150" cy="300" r="90" fill="#f2d9c9"/>
+<circle cx="560" cy="330" r="60" fill="#e7efe8"/>
+<g transform="rotate(-3 270 180)">
+  <rect x="64" y="40" width="420" height="300" rx="6" fill="#fffdf8" stroke="#e6dccb"/>
+  <line x1="70" x2="470" y1="92" y2="92" stroke="#cfe0ea" stroke-width="1.5"/><line x1="70" x2="470" y1="122" y2="122" stroke="#cfe0ea" stroke-width="1.5"/><line x1="70" x2="470" y1="152" y2="152" stroke="#cfe0ea" stroke-width="1.5"/><line x1="70" x2="470" y1="182" y2="182" stroke="#cfe0ea" stroke-width="1.5"/><line x1="70" x2="470" y1="212" y2="212" stroke="#cfe0ea" stroke-width="1.5"/><line x1="70" x2="470" y1="242" y2="242" stroke="#cfe0ea" stroke-width="1.5"/><line x1="70" x2="470" y1="272" y2="272" stroke="#cfe0ea" stroke-width="1.5"/>
+  <line x1="112" x2="112" y1="40" y2="340" stroke="#eab0a6" stroke-width="2"/>
+  <circle cx="86" cy="70" r="6" fill="#f3ece0" stroke="#d9cfbf"/><circle cx="86" cy="112" r="6" fill="#f3ece0" stroke="#d9cfbf"/><circle cx="86" cy="154" r="6" fill="#f3ece0" stroke="#d9cfbf"/><circle cx="86" cy="196" r="6" fill="#f3ece0" stroke="#d9cfbf"/><circle cx="86" cy="238" r="6" fill="#f3ece0" stroke="#d9cfbf"/><circle cx="86" cy="280" r="6" fill="#f3ece0" stroke="#d9cfbf"/>
+  <text x="128" y="76" font-family="'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive" font-size="17" fill="#9a5b44">Lunes 14/10</text>
+  <text x="128" y="118" font-family="'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive" font-size="19" fill="#33415c">Tomi · enhebrar cuentas</text>
+  <path d="M398 104 l8 10 l18 -22" fill="none" stroke="#3f7d66" stroke-width="4" stroke-linecap="round"
+        stroke-dasharray="40" stroke-dashoffset="40">
+    <animate attributeName="stroke-dashoffset" values="40;0;0" keyTimes="0;0.25;1" dur="4s" repeatCount="indefinite"/>
+  </path>
+  <text x="128" y="148" font-family="'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive" font-size="19" fill="#9a5b44">Sofi · ausente</text>
+  <text x="124" y="198" font-family="Georgia, 'Times New Roman', serif" font-size="52" fill="#7a8aa6">{</text>
+  <text x="150" y="178" font-family="'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive" font-size="19" fill="#33415c">Juli</text><text x="150" y="208" font-family="'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive" font-size="19" fill="#33415c">Valen</text>
+  <text x="220" y="193" font-family="'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive" font-size="19" fill="#33415c">circuito motor</text>
+  <text x="128" y="268" font-family="'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive" font-size="19" fill="#3f7d66">→ pendiente: pinza fina</text>
+</g>
+<path d="M500 172 C 530 154, 560 154, 590 166" fill="none" stroke="#c98a6b" stroke-width="3"
+      stroke-dasharray="6 7" stroke-linecap="round"/>
+<path d="M582 156 l12 11 l-15 6" fill="none" stroke="#c98a6b" stroke-width="3" stroke-linecap="round"/>
+<text x="630" y="150" font-family="Georgia, 'Times New Roman', serif" font-size="84" font-weight="700" fill="#2f5d50">Asis<tspan fill="#c46f4e">TO</tspan></text>
+<text x="634" y="196" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="23" fill="#3d4a45">Seguimiento terapéutico para terapia ocupacional</text>
+<text x="634" y="232" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="17" fill="#6b7a74">Del cuaderno de la terapeuta a un sistema que lo entiende:</text>
+<text x="634" y="256" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="17" fill="#6b7a74">agenda, objetivos, evolución e informes.</text>
+<g font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600">
+  <rect x="634" y="274" width="104" height="28" rx="14" fill="#2f5d50"/><text x="686" y="293" text-anchor="middle" fill="#fff">5 roles</text>
+  <rect x="748" y="274" width="132" height="28" rx="14" fill="#c46f4e"/><text x="814" y="293" text-anchor="middle" fill="#fff">informes con IA</text>
+  <rect x="890" y="274" width="150" height="28" rx="14" fill="#dfe9e1"/><text x="965" y="293" text-anchor="middle" fill="#2f5d50">portal familiar</text>
+</g></g></svg>
